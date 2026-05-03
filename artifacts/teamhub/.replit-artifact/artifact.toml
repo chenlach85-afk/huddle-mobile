@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "TeamHub"
+version = "1.0.0"
+id = "artifacts/teamhub"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18692
+
+[services.development]
+run = "pnpm --filter @workspace/teamhub run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/teamhub", "run", "build" ]
+publicDir = "artifacts/teamhub/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18692"
+BASE_PATH = "/"

@@ -3,20 +3,32 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: TeamHub API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: teams
+    description: Team management
+  - name: players
+    description: Player management
+  - name: events
+    description: Event scheduling
+  - name: tasks
+    description: Task tracking
+  - name: messages
+    description: Team messaging
+  - name: dashboard
+    description: Dashboard and summaries
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +36,625 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── TEAMS ────────────────────────────────────────────────────────────────
+  /teams:
+    get:
+      operationId: listTeams
+      tags: [teams]
+      summary: List all teams
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a new team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTeamBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teams/{teamId}:
+    get:
+      operationId: getTeam
+      tags: [teams]
+      summary: Get a team by ID
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateTeam
+      tags: [teams]
+      summary: Update a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTeamBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTeam
+      tags: [teams]
+      summary: Delete a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── PLAYERS ──────────────────────────────────────────────────────────────
+  /teams/{teamId}/players:
+    get:
+      operationId: listPlayers
+      tags: [players]
+      summary: List players on a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Player"
+    post:
+      operationId: createPlayer
+      tags: [players]
+      summary: Add a player to a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlayerBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Player"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /players/{playerId}:
+    get:
+      operationId: getPlayer
+      tags: [players]
+      summary: Get a player by ID
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Player"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updatePlayer
+      tags: [players]
+      summary: Update a player
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlayerBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Player"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deletePlayer
+      tags: [players]
+      summary: Remove a player
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── EVENTS ───────────────────────────────────────────────────────────────
+  /teams/{teamId}/events:
+    get:
+      operationId: listEvents
+      tags: [events]
+      summary: List events for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Event"
+    post:
+      operationId: createEvent
+      tags: [events]
+      summary: Create an event for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEventBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /events/{eventId}:
+    get:
+      operationId: getEvent
+      tags: [events]
+      summary: Get an event by ID
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateEvent
+      tags: [events]
+      summary: Update an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEventBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteEvent
+      tags: [events]
+      summary: Delete an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /events/{eventId}/attendance:
+    get:
+      operationId: listAttendance
+      tags: [events]
+      summary: Get attendance records for an event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Attendance"
+    post:
+      operationId: upsertAttendance
+      tags: [events]
+      summary: Record or update attendance for a player
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertAttendanceBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attendance"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── TASKS ────────────────────────────────────────────────────────────────
+  /teams/{teamId}/tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tasks/{taskId}:
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task (status, title, etc.)
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── MESSAGES ─────────────────────────────────────────────────────────────
+  /teams/{teamId}/messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: createMessage
+      tags: [messages]
+      summary: Post a message to a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /messages/{messageId}:
+    delete:
+      operationId: deleteMessage
+      tags: [messages]
+      summary: Delete a message
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ─── DASHBOARD ────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get overview stats across all teams
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /teams/{teamId}/activity:
+    get:
+      operationId: getTeamActivity
+      tags: [dashboard]
+      summary: Get recent activity feed for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +665,482 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    # ── Teams ──
+    Team:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sport:
+          type: string
+        season:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        coachName:
+          type: string
+        avatarColor:
+          type: string
+        playerCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - sport
+        - coachName
+        - avatarColor
+        - playerCount
+        - createdAt
+        - updatedAt
+
+    CreateTeamBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sport:
+          type: string
+        season:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        coachName:
+          type: string
+        avatarColor:
+          type: string
+      required:
+        - name
+        - sport
+        - coachName
+
+    UpdateTeamBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sport:
+          type: string
+        season:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        coachName:
+          type: string
+        avatarColor:
+          type: string
+
+    # ── Players ──
+    Player:
+      type: object
+      properties:
+        id:
+          type: integer
+        teamId:
+          type: integer
+        name:
+          type: string
+        number:
+          type: ["integer", "null"]
+        position:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        dateOfBirth:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, injured]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - teamId
+        - name
+        - status
+        - createdAt
+        - updatedAt
+
+    CreatePlayerBody:
+      type: object
+      properties:
+        name:
+          type: string
+        number:
+          type: ["integer", "null"]
+        position:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        dateOfBirth:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, injured]
+      required:
+        - name
+
+    UpdatePlayerBody:
+      type: object
+      properties:
+        name:
+          type: string
+        number:
+          type: ["integer", "null"]
+        position:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        dateOfBirth:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [active, inactive, injured]
+
+    # ── Events ──
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+        teamId:
+          type: integer
+        title:
+          type: string
+        type:
+          type: string
+          enum: [practice, game, meeting, other]
+        location:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        attendingCount:
+          type: integer
+        totalCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - teamId
+        - title
+        - type
+        - startsAt
+        - attendingCount
+        - totalCount
+        - createdAt
+        - updatedAt
+
+    CreateEventBody:
+      type: object
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+          enum: [practice, game, meeting, other]
+        location:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+      required:
+        - title
+        - type
+        - startsAt
+
+    UpdateEventBody:
+      type: object
+      properties:
+        title:
+          type: string
+        type:
+          type: string
+          enum: [practice, game, meeting, other]
+        location:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    Attendance:
+      type: object
+      properties:
+        id:
+          type: integer
+        eventId:
+          type: integer
+        playerId:
+          type: integer
+        playerName:
+          type: string
+        status:
+          type: string
+          enum: [attending, not_attending, maybe, no_response]
+        notes:
+          type: ["string", "null"]
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - eventId
+        - playerId
+        - playerName
+        - status
+        - updatedAt
+
+    UpsertAttendanceBody:
+      type: object
+      properties:
+        playerId:
+          type: integer
+        status:
+          type: string
+          enum: [attending, not_attending, maybe, no_response]
+        notes:
+          type: ["string", "null"]
+      required:
+        - playerId
+        - status
+
+    # ── Tasks ──
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        teamId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        assignedToPlayerId:
+          type: ["integer", "null"]
+        assignedToPlayerName:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, in_progress, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - teamId
+        - title
+        - status
+        - priority
+        - createdAt
+        - updatedAt
+
+    CreateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        assignedToPlayerId:
+          type: ["integer", "null"]
+        dueDate:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, in_progress, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+      required:
+        - title
+
+    UpdateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        assignedToPlayerId:
+          type: ["integer", "null"]
+        dueDate:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, in_progress, done]
+        priority:
+          type: string
+          enum: [low, medium, high]
+
+    # ── Messages ──
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        teamId:
+          type: integer
+        senderName:
+          type: string
+        senderRole:
+          type: string
+          enum: [coach, player, admin]
+        content:
+          type: string
+        pinned:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - teamId
+        - senderName
+        - senderRole
+        - content
+        - pinned
+        - createdAt
+
+    CreateMessageBody:
+      type: object
+      properties:
+        senderName:
+          type: string
+        senderRole:
+          type: string
+          enum: [coach, player, admin]
+        content:
+          type: string
+        pinned:
+          type: boolean
+      required:
+        - senderName
+        - senderRole
+        - content
+
+    # ── Dashboard ──
+    DashboardSummary:
+      type: object
+      properties:
+        totalTeams:
+          type: integer
+        totalPlayers:
+          type: integer
+        upcomingEventsCount:
+          type: integer
+        pendingTasksCount:
+          type: integer
+        recentMessages:
+          type: integer
+        teamBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeamStat"
+      required:
+        - totalTeams
+        - totalPlayers
+        - upcomingEventsCount
+        - pendingTasksCount
+        - recentMessages
+        - teamBreakdown
+
+    TeamStat:
+      type: object
+      properties:
+        teamId:
+          type: integer
+        teamName:
+          type: string
+        sport:
+          type: string
+        playerCount:
+          type: integer
+        upcomingEvents:
+          type: integer
+        pendingTasks:
+          type: integer
+      required:
+        - teamId
+        - teamName
+        - sport
+        - playerCount
+        - upcomingEvents
+        - pendingTasks
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [event_created, player_added, task_created, task_completed, message_sent, event_updated]
+        description:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        entityId:
+          type: ["integer", "null"]
+      required:
+        - id
+        - type
+        - description
+        - occurredAt
