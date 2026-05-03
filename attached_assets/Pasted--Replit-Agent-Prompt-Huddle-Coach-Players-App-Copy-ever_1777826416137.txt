@@ -1,0 +1,814 @@
+# Replit Agent Prompt — Huddle (Coach + Players App)
+
+Copy everything below the line into Replit Agent's "Describe your idea" box. Turn ON Plan mode before submitting.
+
+---
+
+Build a mobile-first PWA called **Huddle** for sports team management. Tagline: *"The whole team. One huddle."* (Hebrew: "כל הקבוצה. במקום אחד.")
+
+One app, two roles: **Coach** (manages everything) and **Player** (views schedule, confirms attendance, completes tasks). Generic for any sport. Bilingual: English + Hebrew with full RTL support and a language switcher.
+
+## Design philosophy — sport-team aesthetic
+
+This is NOT a generic SaaS app. It must feel like a sports product. Specific rules:
+
+- **Stadium night vibe**: deep navy base (not slate gray), warm energetic accents
+- **Per-team theming**: each coach picks their team color during onboarding; the app's accent re-themes to that color across all screens
+- **Jersey number identity**: players are represented by their jersey number in a colored tile, not a generic avatar circle
+- **Status as scoreboard stats**: "12 IN · 3 OUT · 5 ?" not "12 confirmed, 3 declined, 5 pending"
+- **Bold condensed typography for display**: Impact / Bebas Neue / Oswald for headers, numbers, and titles. Jersey-number style.
+- **Energy in hero cards**: gradient backgrounds with abstract circular shapes (like stadium scoreboards), not flat plain cards
+- **Action-oriented language**: "Squad" not "Roster" anywhere users see; "Lineup" for upcoming events; "Huddle" for the home screen
+
+## Tech stack
+
+- **Framework**: Next.js 14 with App Router, TypeScript, Tailwind CSS
+- **PWA**: next-pwa with offline support, installable to home screen, push notifications
+- **Database & Auth**: Supabase (Postgres + Auth + Storage)
+- **Realtime**: Supabase Realtime for messages and live updates
+- **Internationalization**: next-intl for Hebrew/English with RTL handling
+- **Push notifications**: Web Push API (free) — fallback to email via Resend
+- **Icons**: lucide-react
+- **Forms**: react-hook-form + zod
+- **Date handling**: date-fns with Hebrew locale support
+- **Fonts**: Inter (body), Bebas Neue or Oswald (display, English), Heebo Black (display, Hebrew)
+
+## Required Replit Secrets
+
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+NEXT_PUBLIC_VAPID_PUBLIC_KEY      (generate with web-push library)
+VAPID_PRIVATE_KEY
+RESEND_API_KEY                     (optional, for email fallback)
+```
+
+## Design system — exact tokens
+
+### Color palette
+
+```js
+// tailwind.config.ts theme.extend.colors
+colors: {
+  // Base — stadium night
+  bg: '#0a0e1a',              // deep navy, primary background
+  'bg-elev': '#161b2e',        // elevated surface (cards)
+  'bg-elev-2': '#1f2742',      // hover / nested elevation
+  border: '#2a3354',           // primary border
+  'border-soft': '#1a2138',    // subtle border
+
+  // Text
+  text: '#ffffff',
+  'text-dim': 'rgba(255,255,255,0.7)',
+  'text-faint': 'rgba(255,255,255,0.5)',
+  'text-ghost': 'rgba(255,255,255,0.3)',
+
+  // Accent — DEFAULT team color (overridden per team)
+  // The team color CSS var is --team-color set on <html> based on teams.primary_color
+  ignition: {
+    DEFAULT: '#FF6B35',
+    dark: '#C73E1D',
+    light: '#FF8C5C',
+  },
+
+  // Status colors (consistent across all teams)
+  trophy: '#F7B538',     // gold — energy, achievement, upload
+  trophy_dark: '#C9931A',
+  kit_green: '#2ECC71',  // confirmed / completed / online
+  kit_green_dark: '#1E8449',
+  kit_red: '#E74C3C',    // declined / overdue / urgent
+  kit_red_dark: '#C0392B',
+  kit_blue: '#4A90E2',   // info / alert / message
+  kit_blue_dark: '#2C5C99',
+  kit_purple: '#9B59B6', // special / featured
+}
+```
+
+**Per-team color theming**: At app boot, after loading the user's active team, set `document.documentElement.style.setProperty('--team-color', team.primary_color)`. All accent surfaces (the home hero card gradient, the active tab indicator, jersey number tiles for the player viewing) use `var(--team-color)` instead of the default ignition orange. Default fallback is `#FF6B35` if a team has no color set.
+
+### Typography
+
+```css
+/* Font families */
+--font-display: 'Bebas Neue', 'Oswald', 'Impact', 'Heebo', sans-serif; /* condensed display */
+--font-body: 'Inter', 'Heebo', system-ui, -apple-system, sans-serif;
+--font-numeric: 'Bebas Neue', 'Oswald', monospace; /* jersey numbers, scores */
+```
+
+For Hebrew: use **Heebo** for body and **Heebo with weight 900** for display (Heebo has a beautiful condensed-bold feel that pairs visually with Bebas Neue).
+
+**Sizing rules**:
+- Display headlines (TUE · 17:00, scoreboard stats): 22-28px, font-display, font-weight 900, letter-spacing -1px
+- Section labels (small caps): 10-11px, letter-spacing 1.5-2px, font-weight 700, uppercase, color text-faint
+- Body: 13-15px, font-body, font-weight 400-500
+- Jersey numbers: font-numeric, weight 900, white text on team-color tile
+
+### Component aesthetic
+
+**Cards**:
+- Standard: `bg-elev` background, `border-radius: 12px`, `padding: 14-16px`, no shadow
+- Hero: gradient from team color to a darker shade, `border-radius: 16px`, decorative circular shapes positioned absolute (top-right and bottom-left) with low opacity
+- Activity row: `bg-elev` with `border-left: 3px solid` in a status color (green/red/blue)
+
+**Buttons**:
+- Primary action: solid `var(--team-color)` background, white text, `border-radius: 12px`, `padding: 14px 20px`, font-weight 600, uppercase if short
+- Secondary: outline with `border-color: rgba(255,255,255,0.2)`, transparent bg, hover bg `bg-elev`
+- Quick action squares: 22x22px colored icon tile in a card with 8-9px label below
+
+**Player tiles** (jersey number representation):
+- 40x40px rounded square (`border-radius: 12px`)
+- Linear gradient background using the team's color (e.g., `linear-gradient(135deg, #FF6B35, #C73E1D)`)
+- Jersey number centered, font-numeric, weight 900, color white
+- Status dot in top-right corner: 10x10px circle, color by status (green=confirmed, red=declined, yellow=pending), 2px navy border (matches bg)
+- Player name below tile, 8-10px, weight 600
+
+**Bottom tab bar** (mobile primary nav):
+- Fixed bottom, height 64px, `bg: rgba(0,0,0,0.4)` with `backdrop-blur(12px)`, `border-top: 0.5px solid rgba(255,255,255,0.08)`
+- 5 equal tabs
+- Active tab: 18x18px solid `var(--team-color)` square icon, label below in `var(--team-color)`, weight 700, letter-spacing 0.5px
+- Inactive tab: 18x18px outline icon (1.5px border, white 40% opacity), label `text-faint` weight 600
+
+**Modals**:
+- Slide-up sheet on mobile (full-width, rounded top corners 24px, `bg-elev` background)
+- Centered modal on desktop (max-width 560px, rounded 16px, backdrop blur)
+
+**Forms**:
+- Inputs: `bg-elev-2` background, no border, `border-radius: 10px`, `padding: 14px 16px`, focus ring 2px team color
+- Labels above inputs, 11px, letter-spacing 1px, weight 700, uppercase, `text-faint`
+
+### Mobile-specific
+
+- Touch targets ≥ 44px
+- Bottom tab bar always visible
+- Modals slide up from bottom
+- Generous padding (16-20px) inside cards
+- Avoid hover-only interactions
+- High contrast — coaches use this in bright outdoor sun
+
+### RTL handling
+
+- Use Tailwind logical properties: `ms-` (margin-inline-start) instead of `ml-`, `pe-` instead of `pr-`
+- Text alignment: `text-start` / `text-end`, never `text-left` / `text-right`
+- Icons that imply direction (back arrow, forward chevron) flip in RTL
+- Numbers stay LTR even in Hebrew context (jersey numbers, times, scores)
+- Set `<html dir="rtl" lang="he">` dynamically based on user's preferred language
+
+## Database schema
+
+Generate `setup.sql` with this schema. User runs it in Supabase SQL Editor before first use.
+
+```sql
+create extension if not exists "uuid-ossp";
+
+-- ============================================================================
+-- TEAMS
+-- ============================================================================
+create table public.teams (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  sport text,
+  age_group text,
+  season text,
+  primary_color text default '#FF6B35',     -- ignition orange default
+  logo_url text,
+  invite_code text unique default substring(uuid_generate_v4()::text from 1 for 8),
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+-- ============================================================================
+-- PROFILES
+-- ============================================================================
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  full_name text,
+  phone text,
+  avatar_url text,
+  preferred_language text default 'en' check (preferred_language in ('en', 'he')),
+  push_subscription jsonb,
+  created_at timestamptz default now()
+);
+
+-- ============================================================================
+-- TEAM_MEMBERS — junction with role
+-- ============================================================================
+create table public.team_members (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('coach', 'assistant_coach', 'player', 'parent')),
+  jersey_number int,
+  position text,
+  notes text,
+  status text default 'active' check (status in ('active', 'inactive', 'pending')),
+  joined_at timestamptz default now(),
+  unique(team_id, user_id)
+);
+
+-- ============================================================================
+-- EVENTS — trainings, games, meetings
+-- ============================================================================
+create table public.events (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  type text not null check (type in ('training', 'game', 'meeting', 'tournament', 'other')),
+  description text,
+  starts_at timestamptz not null,
+  ends_at timestamptz,
+  location_name text,
+  location_address text,
+  location_lat numeric,
+  location_lng numeric,
+  arrival_time timestamptz,
+  uniform_color text,
+  uniform_notes text,
+  what_to_bring text,
+  opponent text,
+  is_home boolean,
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index events_team_starts_idx on events(team_id, starts_at);
+
+-- ============================================================================
+-- ATTENDANCE
+-- ============================================================================
+create table public.attendance (
+  id uuid primary key default uuid_generate_v4(),
+  event_id uuid not null references events(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text default 'pending' check (status in ('pending', 'confirmed', 'declined', 'maybe', 'attended', 'no_show')),
+  reason text,
+  responded_at timestamptz,
+  unique(event_id, user_id)
+);
+
+-- ============================================================================
+-- MESSAGES (group + direct)
+-- ============================================================================
+create table public.conversations (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  type text not null check (type in ('group', 'direct')),
+  title text,
+  created_at timestamptz default now()
+);
+
+create table public.conversation_members (
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  last_read_at timestamptz default now(),
+  primary key (conversation_id, user_id)
+);
+
+create table public.messages (
+  id uuid primary key default uuid_generate_v4(),
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  body text,
+  attachment_url text,
+  attachment_type text check (attachment_type in ('image', 'video', 'pdf', 'audio')),
+  created_at timestamptz default now()
+);
+
+create index messages_conversation_idx on messages(conversation_id, created_at desc);
+
+-- ============================================================================
+-- ANNOUNCEMENTS
+-- ============================================================================
+create table public.announcements (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  author_id uuid references auth.users(id),
+  title text not null,
+  body text,
+  pinned boolean default false,
+  created_at timestamptz default now()
+);
+
+create table public.announcement_reads (
+  announcement_id uuid not null references announcements(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  read_at timestamptz default now(),
+  primary key (announcement_id, user_id)
+);
+
+-- ============================================================================
+-- TRAINING_PROGRAMS
+-- ============================================================================
+create table public.training_programs (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  description text,
+  category text,
+  file_url text,
+  file_type text check (file_type in ('pdf', 'video', 'image', 'link')),
+  duration_minutes int,
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+-- ============================================================================
+-- TASKS
+-- ============================================================================
+create table public.tasks (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  description text,
+  training_program_id uuid references training_programs(id) on delete set null,
+  due_at timestamptz,
+  requires_proof boolean default false,
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+create table public.task_assignments (
+  id uuid primary key default uuid_generate_v4(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text default 'assigned' check (status in ('assigned', 'in_progress', 'completed', 'skipped')),
+  proof_url text,
+  notes text,
+  completed_at timestamptz,
+  unique(task_id, user_id)
+);
+
+create index task_assignments_user_idx on task_assignments(user_id, status);
+
+-- ============================================================================
+-- TEAM_FILES
+-- ============================================================================
+create table public.team_files (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  name text not null,
+  url text not null,
+  type text check (type in ('photo', 'video', 'pdf', 'document', 'other')),
+  size_bytes bigint,
+  uploaded_by uuid references auth.users(id),
+  album text,
+  created_at timestamptz default now()
+);
+
+-- ============================================================================
+-- AUTO-CREATE PROFILE on signup
+-- ============================================================================
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, full_name)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', ''));
+  return new;
+end; $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- ============================================================================
+-- ROW LEVEL SECURITY
+-- ============================================================================
+alter table teams enable row level security;
+alter table profiles enable row level security;
+alter table team_members enable row level security;
+alter table events enable row level security;
+alter table attendance enable row level security;
+alter table conversations enable row level security;
+alter table conversation_members enable row level security;
+alter table messages enable row level security;
+alter table announcements enable row level security;
+alter table announcement_reads enable row level security;
+alter table training_programs enable row level security;
+alter table tasks enable row level security;
+alter table task_assignments enable row level security;
+alter table team_files enable row level security;
+
+create or replace function public.is_team_member(team_uuid uuid)
+returns boolean language sql security definer stable as $$
+  select exists(
+    select 1 from team_members
+    where team_id = team_uuid and user_id = auth.uid() and status = 'active'
+  );
+$$;
+
+create or replace function public.is_team_coach(team_uuid uuid)
+returns boolean language sql security definer stable as $$
+  select exists(
+    select 1 from team_members
+    where team_id = team_uuid and user_id = auth.uid()
+      and role in ('coach', 'assistant_coach') and status = 'active'
+  );
+$$;
+
+create policy "view own and teammates profiles" on profiles for select
+  using (
+    id = auth.uid() or
+    exists(select 1 from team_members tm1
+           join team_members tm2 on tm1.team_id = tm2.team_id
+           where tm1.user_id = auth.uid() and tm2.user_id = profiles.id)
+  );
+create policy "update own profile" on profiles for update using (id = auth.uid());
+
+create policy "members view team" on teams for select using (is_team_member(id));
+create policy "coaches update team" on teams for update using (is_team_coach(id));
+create policy "anyone create team" on teams for insert with check (created_by = auth.uid());
+
+create policy "members view roster" on team_members for select using (is_team_member(team_id));
+create policy "coaches manage roster" on team_members for all using (is_team_coach(team_id));
+create policy "users join team" on team_members for insert with check (user_id = auth.uid());
+
+create policy "members view events" on events for select using (is_team_member(team_id));
+create policy "coaches manage events" on events for all using (is_team_coach(team_id));
+
+create policy "view own attendance" on attendance for select
+  using (user_id = auth.uid() or
+         exists(select 1 from events e where e.id = attendance.event_id and is_team_coach(e.team_id)));
+create policy "users update own attendance" on attendance for all using (user_id = auth.uid());
+create policy "coaches manage attendance" on attendance for all
+  using (exists(select 1 from events e where e.id = attendance.event_id and is_team_coach(e.team_id)));
+
+create policy "members view conversations" on conversations for select
+  using (exists(select 1 from conversation_members cm where cm.conversation_id = id and cm.user_id = auth.uid()));
+create policy "coaches create conversations" on conversations for insert with check (is_team_coach(team_id));
+create policy "members view conv members" on conversation_members for select
+  using (exists(select 1 from conversation_members cm where cm.conversation_id = conversation_members.conversation_id and cm.user_id = auth.uid()));
+create policy "coaches manage conv members" on conversation_members for all
+  using (exists(select 1 from conversations c where c.id = conversation_id and is_team_coach(c.team_id)));
+create policy "members view messages" on messages for select
+  using (exists(select 1 from conversation_members cm where cm.conversation_id = messages.conversation_id and cm.user_id = auth.uid()));
+create policy "members send messages" on messages for insert
+  with check (sender_id = auth.uid() and
+              exists(select 1 from conversation_members cm where cm.conversation_id = messages.conversation_id and cm.user_id = auth.uid()));
+
+create policy "members view announcements" on announcements for select using (is_team_member(team_id));
+create policy "coaches manage announcements" on announcements for all using (is_team_coach(team_id));
+create policy "users mark read" on announcement_reads for all using (user_id = auth.uid());
+
+create policy "members view programs" on training_programs for select using (is_team_member(team_id));
+create policy "coaches manage programs" on training_programs for all using (is_team_coach(team_id));
+
+create policy "members view team tasks" on tasks for select using (is_team_member(team_id));
+create policy "coaches manage tasks" on tasks for all using (is_team_coach(team_id));
+
+create policy "view own assignments" on task_assignments for select
+  using (user_id = auth.uid() or
+         exists(select 1 from tasks t where t.id = task_id and is_team_coach(t.team_id)));
+create policy "users update own assignment status" on task_assignments for update using (user_id = auth.uid());
+create policy "coaches manage assignments" on task_assignments for all
+  using (exists(select 1 from tasks t where t.id = task_id and is_team_coach(t.team_id)));
+
+create policy "members view files" on team_files for select using (is_team_member(team_id));
+create policy "members upload files" on team_files for insert
+  with check (uploaded_by = auth.uid() and is_team_member(team_id));
+create policy "uploader or coach delete" on team_files for delete
+  using (uploaded_by = auth.uid() or is_team_coach(team_id));
+
+-- ============================================================================
+-- STORAGE BUCKETS
+-- ============================================================================
+insert into storage.buckets (id, name, public) values
+  ('avatars', 'avatars', true),
+  ('team-logos', 'team-logos', true),
+  ('team-files', 'team-files', false),
+  ('message-attachments', 'message-attachments', false),
+  ('task-proofs', 'task-proofs', false),
+  ('training-programs', 'training-programs', false)
+on conflict (id) do nothing;
+
+create policy "authenticated upload" on storage.objects for insert to authenticated with check (true);
+create policy "authenticated read" on storage.objects for select to authenticated using (true);
+create policy "users delete own uploads" on storage.objects for delete to authenticated using (owner = auth.uid());
+```
+
+## Internationalization
+
+- next-intl with locales `en` and `he`
+- Translation files: `/messages/en.json`, `/messages/he.json`
+- HTML `<html dir>` and `<html lang>` set dynamically based on locale
+- All UI text from translation files — no hardcoded strings
+- Default to browser language detection, override via `profiles.preferred_language`
+- Date/time uses `date-fns` with `he` locale for Hebrew (DD/MM/YYYY format)
+
+### Sample translation entries
+
+```json
+// en.json
+{
+  "app": { "name": "Huddle", "tagline": "The whole team. One huddle." },
+  "tabs": { "home": "HOME", "schedule": "SCHED", "chat": "CHAT", "squad": "SQUAD", "more": "MORE" },
+  "home": {
+    "next_training": "NEXT TRAINING",
+    "next_game": "NEXT GAME",
+    "stats_in": "{n} IN",
+    "stats_out": "{n} OUT",
+    "stats_pending": "{n} ?",
+    "quick_actions": "QUICK ACTIONS",
+    "squad_label": "SQUAD · {count}",
+    "view_all": "VIEW ALL",
+    "activity": "ACTIVITY"
+  },
+  "events": {
+    "create": "Schedule event",
+    "uniform": "Uniform",
+    "what_to_bring": "What to bring",
+    "arrival": "Arrival time",
+    "rsvp_in": "I'm in",
+    "rsvp_out": "Can't make it",
+    "rsvp_maybe": "Maybe"
+  }
+}
+
+// he.json
+{
+  "app": { "name": "Huddle", "tagline": "כל הקבוצה. במקום אחד." },
+  "tabs": { "home": "בית", "schedule": "לוח", "chat": "צ'אט", "squad": "סגל", "more": "עוד" },
+  "home": {
+    "next_training": "האימון הבא",
+    "next_game": "המשחק הבא",
+    "stats_in": "{n} מגיעים",
+    "stats_out": "{n} לא",
+    "stats_pending": "{n} ?",
+    "quick_actions": "פעולות מהירות",
+    "squad_label": "סגל · {count}",
+    "view_all": "הצג הכל",
+    "activity": "פעילות"
+  },
+  "events": {
+    "create": "תזמן אירוע",
+    "uniform": "מדים",
+    "what_to_bring": "מה להביא",
+    "arrival": "שעת הגעה",
+    "rsvp_in": "אני בפנים",
+    "rsvp_out": "לא אגיע",
+    "rsvp_maybe": "אולי"
+  }
+}
+```
+
+## App structure
+
+### Public routes
+- `/` — Landing: bold hero with "HUDDLE" wordmark, tagline, "Sign in" / "Sign up" / "Join with code" CTAs
+- `/auth/signin` — Email + password + Google OAuth
+- `/auth/signup` — Email + password + name
+- `/auth/forgot-password`
+- `/join/[code]` — Player joins via invite code
+
+### Authenticated routes
+- `/onboarding` — First-run: choose role (coach creates team OR player joins via code)
+- `/teams` — List user's teams
+- `/team/[id]` — Team home (different view per role)
+- `/team/[id]/schedule` — Calendar of events
+- `/team/[id]/event/[eventId]` — Event detail
+- `/team/[id]/messages` — Group chat + DMs
+- `/team/[id]/announcements` — Announcements feed
+- `/team/[id]/squad` — Player roster (was "roster" — use "squad" everywhere)
+- `/team/[id]/training` — Training programs library
+- `/team/[id]/tasks` — Tasks
+- `/team/[id]/files` — Photo & file gallery
+- `/team/[id]/settings` — Coach: edit team info, manage invites, change team color
+- `/profile` — User profile, language, notifications
+
+## COACH VIEW — Home tab
+
+The home screen must look like the mockup design — sport-team aesthetic, not generic SaaS.
+
+### Header (top of screen)
+- Status bar (system) — leave native
+- Greeting row:
+  - Left: "HUDDLE" wordmark in font-display, color `var(--team-color)`, 28px, weight 900
+  - Below wordmark: "COACH MODE" in 10px, letter-spacing 2px, color text-faint
+  - Right: 36x36px circular avatar with initials, gradient bg using team color
+
+### Hero card — Next event
+- Full-width card, margin 0 16px
+- Background: linear-gradient(135deg, team-color 0%, team-color-dark 100%)
+- Border-radius 16px, padding 16px
+- Decorative shapes: two circles, position absolute, top-right (100x100, white 8% opacity) and bottom-left (60x60, white 5% opacity), to create the "scoreboard" feel
+- Content (relative position):
+  - Label: "NEXT TRAINING" or "NEXT GAME" — 9px, weight 700, letter-spacing 2px, color rgba(255,255,255,0.85), uppercase
+  - Title: day + time — "TUE · 17:00" — font-display, 22px, weight 900, color white, line-height 1.1
+  - Detail: location + uniform — "Field 3 · White uniform" — 11px, color rgba(255,255,255,0.9)
+  - Stat badges row: three pills showing IN / OUT / PENDING counts
+    - Confirmed pill: white background, color team-color-dark, "12 IN" text — 10px weight 600
+    - Declined pill: black 25% bg, white text, "3 OUT"
+    - Pending pill: black 25% bg, white text, "5 ?"
+
+### Quick actions strip
+- 4 columns equal width, 8px gap
+- Each cell:
+  - bg-elev background, border 1px bg-elev-2, border-radius 12px, padding 10px 4px, text-align center
+  - Icon: 22x22px solid colored square, border-radius 6px, white "+" or "!" or "✓" or "↑" centered, weight 700
+  - Label below: 8px, weight 600, letter-spacing 0.5px, color rgba(255,255,255,0.7), uppercase
+- Four actions: EVENT (ignition), ALERT (kit_blue), TASK (kit_green), UPLOAD (trophy)
+
+### Squad scroll
+- Section label "SQUAD · {count}" left + "VIEW ALL ›" right (color team-color, weight 600)
+- Horizontally scrolling row of player tiles
+- Each tile is a 40x40px rounded square with:
+  - Linear-gradient background using a color drawn from a 4-color palette so different players have different tile colors (ignition, kit_blue, trophy, kit_green dark variants)
+  - Jersey number centered, font-display, weight 900, white
+  - Status dot top-right (green/red/yellow), 10x10, 2px navy border
+  - Player first name below tile, 8px, weight 600
+- Last item: dashed-border "+" tile to add player
+
+### Activity feed
+- Section label "ACTIVITY"
+- List of recent activity rows:
+  - bg-elev background, border-radius 12px, padding 10px
+  - 3px left border in status color (green for confirmed, red for declined, blue for messages)
+  - 6x6px status dot circle on left
+  - Activity text: "Yossi confirmed Tue training" — 11px, white, weight 500
+  - Timestamp below: "2 min ago" — 9px, color text-faint
+
+### Bottom tab bar
+- 5 tabs: HOME, SCHED, CHAT, SQUAD, MORE
+- Style as specified in the design system above
+- Active tab uses `var(--team-color)`
+
+## COACH VIEW — Schedule tab
+
+- Month/week toggle pill at top
+- Calendar grid (clean, dark, days are 32x32 squares)
+- Days with events: small dot underneath in event-type color (training=ignition, game=kit_red, meeting=kit_blue)
+- Tap date → list of events that day below
+- Floating "+" button bottom-right (56x56, team-color background, white +, font-display)
+- Tap "+" → opens slide-up sheet for event creation
+
+### Event creation sheet
+- Bottom sheet on mobile, modal on desktop
+- Type selector: 5 segmented buttons (Training / Game / Meeting / Tournament / Other)
+- Title input (auto-fills based on type, e.g., "Training" or "Game vs ___")
+- Date + time pickers (split start time + end time)
+- Location: text input + "Pick on map" link
+- **Arrival time** with label and time picker (defaults to 30 min before start)
+- **Uniform** section: color picker (predefined chips) + free text notes
+- **What to bring** checklist or comma-separated text
+- For games: opponent text input + Home/Away toggle
+- Description textarea
+- "Schedule event" button at bottom (full-width, team-color)
+
+## COACH VIEW — Chat tab
+
+- Top: "GROUP CHAT" pinned card showing last message preview + unread badge
+- Below: list of DM conversations, sorted by last message time
+- Each conversation row: player tile (jersey number) + name + last message preview + time + unread dot
+- Tap → opens chat view with full message history
+- Compose bar at bottom: input + paperclip (attach) + send button
+
+## COACH VIEW — Squad tab
+
+- Grid of player cards (2 columns on mobile, 3 on tablet)
+- Each card:
+  - bg-elev background, padding 12px, border-radius 12px
+  - Jersey tile (60x60, large) at top
+  - Name centered below
+  - Position pill (small)
+  - Stats row: attendance % + tasks completed %
+- "+" floating button to add player
+- Tap card → player detail page with attendance history, task history, edit options
+
+## COACH VIEW — More tab
+
+- List of cards: Announcements / Tasks / Training programs / Files & photos / Team settings / Profile / Language / Sign out
+- Each card has icon + label + chevron right
+
+## PLAYER VIEW — Home tab
+
+Same structural layout, different content:
+
+- Header: "HUDDLE" wordmark + "PLAYER" subtitle
+- Hero card: NEXT TRAINING / NEXT GAME with full details (uniform, arrival, what to bring) and **RSVP buttons** prominently displayed
+  - 3 buttons: "I'M IN" (kit_green) / "MAYBE" (trophy) / "CAN'T MAKE IT" (kit_red)
+  - Once RSVP'd, buttons collapse to current status badge with "Change" link
+- Quick actions: View tasks (count badge), Open chat, View files, Open profile
+- "MY TASKS" section: list of pending tasks with due dates and "Mark done" buttons
+- Latest pinned announcement card
+
+## PLAYER VIEW — Other tabs
+
+- **Schedule**: list of upcoming events, each with RSVP status badge
+- **Tasks**: pending/completed toggle, each task tappable to mark complete (with proof upload if required)
+- **Chat**: same as coach
+- **More**: Training programs (read-only), Files & photos, Profile, Language, Sign out
+
+## PWA features
+
+Generate `manifest.json`:
+```json
+{
+  "name": "Huddle",
+  "short_name": "Huddle",
+  "description": "The whole team. One huddle.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0e1a",
+  "theme_color": "#FF6B35",
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
+```
+
+Service worker caches static assets and last-loaded data for offline read. Show "OFFLINE — last synced [time]" banner when disconnected.
+
+Push notifications trigger on: new event, new message, new announcement, new task, event reminder (24h before).
+
+## API routes
+
+- `POST /api/teams` — create team (becomes coach)
+- `POST /api/teams/[id]/join` — join via invite code
+- `POST /api/events` — create event + push to team
+- `POST /api/events/[id]/attendance` — RSVP
+- `POST /api/messages` — send message + push
+- `POST /api/announcements` — create + push
+- `POST /api/tasks` — create + assign + push
+- `POST /api/tasks/[id]/complete` — mark complete (with proof)
+- `POST /api/upload` — upload to Supabase Storage
+- `POST /api/push/subscribe` — save user's push subscription
+- `POST /api/push/send` — internal helper
+
+## Onboarding flows
+
+### New coach
+1. Sign up → land on `/onboarding`
+2. "Coach or player?" → Coach
+3. Create team form: name, sport, age group, **primary color picker** (8 preset chips: ignition orange default, kit_red, kit_blue, kit_green, trophy gold, kit_purple, plus custom hex), logo upload
+4. After save: app re-themes to chosen color, lands on team home with empty state
+5. Empty state CTAs: "Add your first player" (opens invite code share sheet) and "Schedule first training"
+6. Show invite code prominently with "Copy link" / "Share via WhatsApp" buttons
+
+### New player
+- Via `/join/[code]` → sign up if needed → auto-join → fill jersey number + position → team home with player view
+
+## Critical rules
+
+1. **Sport-team aesthetic, not corporate**: dark navy bg, bold condensed display fonts, jersey number tiles, scoreboard-style hero card, energetic accent colors
+2. **Per-team color theming**: every accent surface uses `var(--team-color)` set dynamically from `teams.primary_color`
+3. **Bilingual with full RTL**: Hebrew flips correctly throughout, including icons that imply direction
+4. **Role-based UI**: same routes, different layouts for coach vs player
+5. **Realtime messages**: Supabase Realtime subscription on messages table
+6. **Push notifications**: working web push end-to-end
+7. **File uploads**: photos, videos, PDFs into Supabase Storage with proper RLS
+8. **Offline read**: cached events/tasks/messages visible offline
+9. **Invite via code**: 8-character codes, deep-linkable, shareable via WhatsApp
+
+## Acceptance criteria
+
+App works when:
+1. Coach signs up, creates team with custom color, gets invite code
+2. App is themed in coach's chosen team color (visible across all accents)
+3. Coach adds an event with all fields (uniform, arrival time, what to bring) — players get push
+4. Player signs up via invite link, joins team
+5. Player sees event with RSVP buttons, taps "I'M IN" — coach sees status update in real-time
+6. Coach sees scoreboard stats "X IN · Y OUT · Z ?" updating live
+7. Coach sends announcement — players get push, see it on home
+8. Coach uploads training PDF, creates task linked to it, assigns to all players
+9. Player marks task complete with photo proof — coach sees completion
+10. Group chat works real-time
+11. Player switches language to Hebrew — full UI mirrors RTL correctly, fonts swap to Heebo
+12. App installs to home screen, opens fullscreen, works offline (read-only) for cached data
+13. Two teams created with different colors — each coach sees their app in their team's color, no leakage
+14. RLS prevents cross-team data access (test: create 2 teams, verify isolation)
+
+## Build sequence
+
+1. Scaffold Next.js + Tailwind + Supabase client + next-intl + next-pwa
+2. Set up design system: Tailwind config with full color palette, Bebas Neue + Heebo fonts via Google Fonts, CSS variable for team-color
+3. Generate `setup.sql` and explain user must run it
+4. Build auth pages with bold sport aesthetic (HUDDLE wordmark, dark bg, gradient CTA)
+5. Build onboarding (coach color picker is critical here — must theme app immediately)
+6. Build team home (coach view) — focus on getting the hero card, quick actions, jersey squad scroll exactly right
+7. Build event creation sheet with all fields
+8. Build attendance / RSVP flow with scoreboard stats
+9. Build player view of team home (RSVP buttons prominent)
+10. Build messaging with Supabase Realtime
+11. Build announcements
+12. Build tasks + assignment + completion with proof upload
+13. Build training programs + file gallery
+14. Implement push notifications
+15. Implement offline cache + offline banner
+16. Polish bilingual + RTL across all screens (test Hebrew end-to-end)
+17. Generate README + setup docs
+
+## What NOT to build
+
+- Payment / paid plans (later phase — billing addendum)
+- Video calling
+- Live game scoring
+- Statistics dashboards beyond simple attendance %
+- Social features (likes, comments)
+- AI-generated training plans
+
+Build it now. Start with step 1 in sequence. After each major step, summarize what works and what's pending. Do NOT skip the design system step (step 2) — getting the palette, fonts, and per-team theming right is foundational; everything else builds on it.
