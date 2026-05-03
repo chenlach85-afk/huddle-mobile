@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import TeamsPage from "@/pages/teams";
 import TeamDetailPage from "@/pages/team-detail";
+import MemberView from "@/pages/member-view";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -19,14 +20,22 @@ const queryClient = new QueryClient({
 
 function Router() {
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/teams" component={TeamsPage} />
-        <Route path="/teams/:teamId" component={TeamDetailPage} />
-        <Route component={NotFound} />
-      </Switch>
-    </AppLayout>
+    <Switch>
+      {/* Member view — standalone, no coach sidebar */}
+      <Route path="/member/:joinCode" component={MemberView} />
+
+      {/* Coach views — wrapped in sidebar layout */}
+      <Route>
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/teams" component={TeamsPage} />
+            <Route path="/teams/:teamId" component={TeamDetailPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Route>
+    </Switch>
   );
 }
 

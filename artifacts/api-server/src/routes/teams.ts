@@ -58,7 +58,19 @@ router.get("/teams/:teamId", async (req, res): Promise<void> => {
     return;
   }
   const [team] = await db
-    .select()
+    .select({
+      id: teamsTable.id,
+      name: teamsTable.name,
+      sport: teamsTable.sport,
+      season: teamsTable.season,
+      description: teamsTable.description,
+      coachName: teamsTable.coachName,
+      avatarColor: teamsTable.avatarColor,
+      playerCount: teamsTable.playerCount,
+      joinCode: teamsTable.joinCode,
+      createdAt: teamsTable.createdAt,
+      updatedAt: teamsTable.updatedAt,
+    })
     .from(teamsTable)
     .where(eq(teamsTable.id, params.data.teamId));
   if (!team) {

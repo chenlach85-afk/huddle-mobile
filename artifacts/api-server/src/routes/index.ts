@@ -6,6 +6,7 @@ import eventsRouter from "./events";
 import tasksRouter from "./tasks";
 import messagesRouter from "./messages";
 import dashboardRouter from "./dashboard";
+import memberRouter from "./member";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(eventsRouter);
 router.use(tasksRouter);
 router.use(messagesRouter);
 router.use(dashboardRouter);
+router.use(memberRouter);
 
 export default router;
