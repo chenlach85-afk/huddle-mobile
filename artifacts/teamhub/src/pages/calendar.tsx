@@ -1,9 +1,24 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ChevronLeft, ChevronRight, Calendar as CalIcon, MapPin,
-  X, AlertCircle,
+  X, AlertCircle, Plus,
 } from "lucide-react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -11,6 +26,7 @@ import {
 } from "date-fns";
 import { useListTeams } from "@workspace/api-client-react";
 import { useI18n } from "@/lib/i18n";
+import { useToast } from "@/hooks/use-toast";
 
 type CalendarEvent = {
   id: number;
@@ -25,12 +41,26 @@ type CalendarEvent = {
   teamColor: string;
 };
 
+const EVENT_TYPES = ["practice", "game", "meeting", "other"] as const;
+
 export default function CalendarPage() {
   const { t, isRTL, formatTime, formatDateTime, formatMonthYear, language } = useI18n();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
+
+  const [newTitle, setNewTitle] = useState("");
+  const [newType, setNewType] = useState<string>("practice");
+  const [newTeamId, setNewTeamId] = useState<string>("");
+  const [newStartsAt, setNewStartsAt] = useState("");
+  const [newEndsAt, setNewEndsAt] = useState("");
+  const [newLocation, setNewLocation] = useState("");
+  const [newNotes, setNewNotes] = useState("");
 
   const { data: teams = [] } = useListTeams();
 
@@ -60,7 +90,6 @@ export default function CalendarPage() {
   }
 
   const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
-
   const monthLabel = formatMonthYear(currentMonth).toUpperCase();
 
   const eventTypeLabel = (type: string) => {
@@ -74,6 +103,47 @@ export default function CalendarPage() {
     other: "rgba(255,255,255,0.4)",
   };
 
+  function openAddEvent(day?: Date) {
+    const d = day ?? selectedDay ?? new Date();
+    const dateStr = format(d, "yyyy-MM-dd");
+    setNewStartsAt(`${dateStr}T10:00`);
+    setNewEndsAt(`${dateStr}T11:00`);
+    setNewTitle("");
+    setNewType("practice");
+    setNewTeamId(teams[0]?.id?.toString() ?? "");
+    setNewLocation("");
+    setNewNotes("");
+    setAddOpen(true);
+  }
+
+  async function handleAddEvent() {
+    if (!newTitle.trim() || !newTeamId || !newStartsAt) return;
+    setAddSaving(true);
+    try {
+      const res = await fetch(`/api/teams/${newTeamId}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          type: newType,
+          startsAt: new Date(newStartsAt).toISOString(),
+          endsAt: newEndsAt ? new Date(newEndsAt).toISOString() : null,
+          location: newLocation || null,
+          notes: newNotes || null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      setAddOpen(false);
+      toast({ title: t.calendar.eventAdded });
+    } catch {
+      toast({ title: t.calendar.failedAddEvent, variant: "destructive" });
+    } finally {
+      setAddSaving(false);
+    }
+  }
+
   if (error) {
     return (
       <div className="p-8 flex flex-col items-center justify-center h-[50vh] text-white/40">
@@ -86,6 +156,95 @@ export default function CalendarPage() {
   return (
     <div className="p-5 md:p-8 max-w-6xl mx-auto space-y-5">
 
+      {/* Add Event Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-md border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-white tracking-wide">{t.calendar.addEvent.toUpperCase()}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="stat-label text-white/50 block mb-1.5">Title</label>
+              <Input
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
+                placeholder="Event title"
+              />
+            </div>
+            <div dir="ltr">
+              <label className="stat-label text-white/50 block mb-1.5">{t.calendar.selectTeam}</label>
+              <Select value={newTeamId} onValueChange={setNewTeamId}>
+                <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
+                  <SelectValue placeholder={t.calendar.selectTeam} />
+                </SelectTrigger>
+                <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                  {teams.map(team => (
+                    <SelectItem key={team.id} value={String(team.id)} className="text-white">
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div dir="ltr">
+              <label className="stat-label text-white/50 block mb-1.5">Type</label>
+              <Select value={newType} onValueChange={setNewType}>
+                <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                  {EVENT_TYPES.map(et => (
+                    <SelectItem key={et} value={et} className="text-white">{eventTypeLabel(et)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div dir="ltr">
+              <label className="stat-label text-white/50 block mb-1.5">Starts</label>
+              <Input
+                type="datetime-local"
+                value={newStartsAt}
+                onChange={e => setNewStartsAt(e.target.value)}
+                className="bg-white/6 border-white/10 text-white rounded-xl"
+              />
+            </div>
+            <div dir="ltr">
+              <label className="stat-label text-white/50 block mb-1.5">Ends (optional)</label>
+              <Input
+                type="datetime-local"
+                value={newEndsAt}
+                onChange={e => setNewEndsAt(e.target.value)}
+                className="bg-white/6 border-white/10 text-white rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="stat-label text-white/50 block mb-1.5">Location (optional)</label>
+              <Input
+                value={newLocation}
+                onChange={e => setNewLocation(e.target.value)}
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="stat-label text-white/50 block mb-1.5">Notes (optional)</label>
+              <Input
+                value={newNotes}
+                onChange={e => setNewNotes(e.target.value)}
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
+              />
+            </div>
+            <Button
+              onClick={handleAddEvent}
+              disabled={addSaving || !newTitle.trim() || !newTeamId || !newStartsAt}
+              className="w-full bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl h-11"
+            >
+              {addSaving ? "Saving..." : t.calendar.addEvent}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -93,8 +252,16 @@ export default function CalendarPage() {
           <h1 className="font-display text-4xl text-white">{t.calendar.title.toUpperCase()}</h1>
         </div>
 
-        {/* Team filter */}
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            onClick={() => openAddEvent()}
+            className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl shadow-lg shadow-primary/20"
+          >
+            <Plus className="h-4 w-4 me-2" />
+            {t.calendar.addEvent}
+          </Button>
+
+          {/* Team filter */}
           <button
             onClick={() => setSelectedTeamId(null)}
             className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
@@ -173,13 +340,19 @@ export default function CalendarPage() {
                   <div
                     key={idx}
                     onClick={() => setSelectedDay(isSelected ? null : day)}
-                    className="min-h-[80px] p-1.5 cursor-pointer transition-all border-t border-r border-white/4"
+                    className="min-h-[80px] p-1.5 cursor-pointer transition-all border-t border-r border-white/4 group"
                     style={{
                       background: isSelected ? "rgba(255,107,53,0.08)" : "transparent",
                     }}
                   >
-                    {/* Day number — always LTR */}
-                    <div className="flex items-center justify-end mb-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <button
+                        className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10"
+                        onClick={e => { e.stopPropagation(); openAddEvent(day); }}
+                        title={t.calendar.addEvent}
+                      >
+                        <Plus className="h-2.5 w-2.5" />
+                      </button>
                       <span
                         className="ltr-num w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold transition-all"
                         style={{
@@ -238,12 +411,21 @@ export default function CalendarPage() {
                       : format(selectedDay, "dd/MM")}
                   </p>
                 </div>
-                <button
-                  onClick={() => { setSelectedDay(null); setSelectedEvent(null); }}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white hover:bg-white/8"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => openAddEvent(selectedDay)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-primary hover:bg-primary/10 transition-colors"
+                    title={t.calendar.addEvent}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => { setSelectedDay(null); setSelectedEvent(null); }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white/30 hover:text-white hover:bg-white/8"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
 
               {selectedDayEvents.length === 0 ? (

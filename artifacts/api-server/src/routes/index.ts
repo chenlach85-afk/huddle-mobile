@@ -11,6 +11,8 @@ import calendarRouter from "./calendar";
 import authRouter from "./auth";
 import notificationsRouter from "./notifications";
 import filesRouter from "./files";
+import albumsRouter from "./albums";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -26,5 +28,7 @@ router.use(messagesRouter);
 router.use(dashboardRouter);
 router.use(memberRouter);
 router.use(calendarRouter);
+router.use(albumsRouter);
+router.use(adminRouter);
 
 export default router;

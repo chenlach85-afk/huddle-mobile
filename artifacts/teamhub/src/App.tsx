@@ -15,6 +15,7 @@ import TeamDetailPage from "@/pages/team-detail";
 import CalendarPage from "@/pages/calendar";
 import MemberView from "@/pages/member-view";
 import SettingsPage from "@/pages/settings";
+import AdminPage from "@/pages/admin";
 import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -183,6 +184,9 @@ function AppRouter() {
           </Route>
           <Route path="/settings">
             <ProtectedRoute><SettingsPage /></ProtectedRoute>
+          </Route>
+          <Route path="/admin">
+            <ProtectedRoute><AdminPage /></ProtectedRoute>
           </Route>
           <Route component={NotFound} />
         </Switch>

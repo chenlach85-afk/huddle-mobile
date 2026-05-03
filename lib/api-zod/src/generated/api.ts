@@ -25,6 +25,8 @@ export const ListTeamsResponseItem = zod.object({
   description: zod.string().nullish(),
   coachName: zod.string(),
   avatarColor: zod.string(),
+  imageUrl: zod.string().nullish(),
+  location: zod.string().nullish(),
   playerCount: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -41,6 +43,8 @@ export const CreateTeamBody = zod.object({
   description: zod.string().nullish(),
   coachName: zod.string(),
   avatarColor: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
+  location: zod.string().nullish(),
 });
 
 /**
@@ -58,6 +62,8 @@ export const GetTeamResponse = zod.object({
   description: zod.string().nullish(),
   coachName: zod.string(),
   avatarColor: zod.string(),
+  imageUrl: zod.string().nullish(),
+  location: zod.string().nullish(),
   playerCount: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -77,6 +83,8 @@ export const UpdateTeamBody = zod.object({
   description: zod.string().nullish(),
   coachName: zod.string().optional(),
   avatarColor: zod.string().optional(),
+  imageUrl: zod.string().nullish(),
+  location: zod.string().nullish(),
 });
 
 export const UpdateTeamResponse = zod.object({
@@ -87,6 +95,8 @@ export const UpdateTeamResponse = zod.object({
   description: zod.string().nullish(),
   coachName: zod.string(),
   avatarColor: zod.string(),
+  imageUrl: zod.string().nullish(),
+  location: zod.string().nullish(),
   playerCount: zod.number(),
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
@@ -454,6 +464,184 @@ export const CreateMessageBody = zod.object({
  */
 export const DeleteMessageParams = zod.object({
   messageId: zod.coerce.number(),
+});
+
+/**
+ * @summary List albums for a team
+ */
+export const ListAlbumsParams = zod.object({
+  teamId: zod.coerce.number(),
+});
+
+export const ListAlbumsResponseItem = zod.object({
+  id: zod.number(),
+  teamId: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  coverUrl: zod.string().nullish(),
+  fileCount: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListAlbumsResponse = zod.array(ListAlbumsResponseItem);
+
+/**
+ * @summary Create a new album
+ */
+export const CreateAlbumParams = zod.object({
+  teamId: zod.coerce.number(),
+});
+
+export const CreateAlbumBody = zod.object({
+  name: zod.string(),
+  description: zod.string().nullish(),
+  coverUrl: zod.string().nullish(),
+});
+
+/**
+ * @summary Get album with its files
+ */
+export const GetAlbumParams = zod.object({
+  albumId: zod.coerce.number(),
+});
+
+export const GetAlbumResponse = zod.object({
+  id: zod.number(),
+  teamId: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  coverUrl: zod.string().nullish(),
+  fileCount: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update an album
+ */
+export const UpdateAlbumParams = zod.object({
+  albumId: zod.coerce.number(),
+});
+
+export const UpdateAlbumBody = zod.object({
+  name: zod.string().optional(),
+  description: zod.string().nullish(),
+  coverUrl: zod.string().nullish(),
+});
+
+export const UpdateAlbumResponse = zod.object({
+  id: zod.number(),
+  teamId: zod.number(),
+  name: zod.string(),
+  description: zod.string().nullish(),
+  coverUrl: zod.string().nullish(),
+  fileCount: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete an album
+ */
+export const DeleteAlbumParams = zod.object({
+  albumId: zod.coerce.number(),
+});
+
+/**
+ * @summary List files in an album
+ */
+export const ListAlbumFilesParams = zod.object({
+  albumId: zod.coerce.number(),
+});
+
+export const ListAlbumFilesResponseItem = zod.object({
+  id: zod.number(),
+  albumId: zod.number().nullish(),
+  filename: zod.string(),
+  originalName: zod.string(),
+  mimeType: zod.string(),
+  url: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListAlbumFilesResponse = zod.array(ListAlbumFilesResponseItem);
+
+/**
+ * @summary List documents for a team
+ */
+export const ListTeamDocsParams = zod.object({
+  teamId: zod.coerce.number(),
+});
+
+export const ListTeamDocsResponseItem = zod.object({
+  id: zod.number(),
+  filename: zod.string(),
+  originalName: zod.string(),
+  mimeType: zod.string(),
+  size: zod.number(),
+  url: zod.string(),
+  createdAt: zod.coerce.date(),
+});
+export const ListTeamDocsResponse = zod.array(ListTeamDocsResponseItem);
+
+/**
+ * @summary List all users (admin only)
+ */
+export const ListAdminUsersResponseItem = zod.object({
+  id: zod.number(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  name: zod.string(),
+  role: zod.enum(["coach", "player", "admin"]),
+  createdAt: zod.coerce.date(),
+});
+export const ListAdminUsersResponse = zod.array(ListAdminUsersResponseItem);
+
+/**
+ * @summary Update a user's role (admin only)
+ */
+export const UpdateAdminUserParams = zod.object({
+  userId: zod.coerce.number(),
+});
+
+export const UpdateAdminUserBody = zod.object({
+  role: zod.enum(["coach", "player", "admin"]).optional(),
+});
+
+export const UpdateAdminUserResponse = zod.object({
+  id: zod.number(),
+  clerkId: zod.string(),
+  email: zod.string(),
+  name: zod.string(),
+  role: zod.enum(["coach", "player", "admin"]),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Remove a user (admin only)
+ */
+export const DeleteAdminUserParams = zod.object({
+  userId: zod.coerce.number(),
+});
+
+/**
+ * @summary Get system KPIs (admin only)
+ */
+export const GetAdminKpisResponse = zod.object({
+  totalUsers: zod.number(),
+  totalTeams: zod.number(),
+  totalEvents: zod.number(),
+  totalTasks: zod.number(),
+  totalMessages: zod.number(),
+  recentUsers: zod.array(
+    zod.object({
+      id: zod.number(),
+      clerkId: zod.string(),
+      email: zod.string(),
+      name: zod.string(),
+      role: zod.enum(["coach", "player", "admin"]),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
 });
 
 /**

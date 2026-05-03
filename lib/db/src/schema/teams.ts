@@ -11,6 +11,8 @@ export const teamsTable = pgTable("teams", {
   description: text("description"),
   coachName: text("coach_name").notNull(),
   avatarColor: text("avatar_color").notNull().default("#3b82f6"),
+  imageUrl: text("image_url"),
+  location: text("location"),
   playerCount: integer("player_count").notNull().default(0),
   joinCode: text("join_code").notNull().default(sql`gen_random_uuid()`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

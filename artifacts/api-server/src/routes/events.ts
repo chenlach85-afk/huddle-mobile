@@ -75,8 +75,8 @@ router.post("/teams/:teamId/events", async (req, res): Promise<void> => {
       title: d.title,
       type: d.type ?? "practice",
       location: d.location ?? null,
-      startsAt: d.startsAt,
-      endsAt: d.endsAt ?? null,
+      startsAt: new Date(d.startsAt as unknown as string),
+      endsAt: d.endsAt ? new Date(d.endsAt as unknown as string) : null,
       notes: d.notes ?? null,
     })
     .returning();

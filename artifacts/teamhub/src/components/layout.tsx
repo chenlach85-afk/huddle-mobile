@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, Calendar, Menu, Zap, Settings } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Menu, Zap, Settings, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -16,6 +16,7 @@ function NavItems({ onClose }: { onClose?: () => void }) {
     { href: "/teams", label: t.nav.squads, icon: Users, exact: false },
     { href: "/calendar", label: t.nav.calendar, icon: Calendar, exact: false },
     { href: "/settings", label: t.nav.settings, icon: Settings, exact: false },
+    { href: "/admin", label: t.nav.admin, icon: ShieldCheck, exact: false },
   ];
 
   return (

@@ -23,6 +23,10 @@ export interface Team {
   description?: string | null;
   coachName: string;
   avatarColor: string;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  location?: string | null;
   playerCount: number;
   createdAt: string;
   updatedAt: string;
@@ -37,6 +41,10 @@ export interface CreateTeamBody {
   description?: string | null;
   coachName: string;
   avatarColor?: string;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  location?: string | null;
 }
 
 export interface UpdateTeamBody {
@@ -48,6 +56,10 @@ export interface UpdateTeamBody {
   description?: string | null;
   coachName?: string;
   avatarColor?: string;
+  /** @nullable */
+  imageUrl?: string | null;
+  /** @nullable */
+  location?: string | null;
 }
 
 export type PlayerStatus = (typeof PlayerStatus)[keyof typeof PlayerStatus];
@@ -432,4 +444,93 @@ export interface ActivityItem {
   occurredAt: string;
   /** @nullable */
   entityId?: number | null;
+}
+
+export interface Album {
+  id: number;
+  teamId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  coverUrl?: string | null;
+  fileCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAlbumBody {
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  coverUrl?: string | null;
+}
+
+export interface UpdateAlbumBody {
+  name?: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  coverUrl?: string | null;
+}
+
+export interface AlbumFile {
+  id: number;
+  /** @nullable */
+  albumId?: number | null;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  url: string;
+  createdAt: string;
+}
+
+export interface TeamDoc {
+  id: number;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
+export type AdminUserRole = (typeof AdminUserRole)[keyof typeof AdminUserRole];
+
+export const AdminUserRole = {
+  coach: "coach",
+  player: "player",
+  admin: "admin",
+} as const;
+
+export interface AdminUser {
+  id: number;
+  clerkId: string;
+  email: string;
+  name: string;
+  role: AdminUserRole;
+  createdAt: string;
+}
+
+export type UpdateAdminUserBodyRole =
+  (typeof UpdateAdminUserBodyRole)[keyof typeof UpdateAdminUserBodyRole];
+
+export const UpdateAdminUserBodyRole = {
+  coach: "coach",
+  player: "player",
+  admin: "admin",
+} as const;
+
+export interface UpdateAdminUserBody {
+  role?: UpdateAdminUserBodyRole;
+}
+
+export interface AdminKpis {
+  totalUsers: number;
+  totalTeams: number;
+  totalEvents: number;
+  totalTasks: number;
+  totalMessages: number;
+  recentUsers: AdminUser[];
 }

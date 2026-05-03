@@ -21,7 +21,7 @@ router.get("/notifications", requireAuth, async (req: AuthedRequest, res: Respon
 
 router.patch("/notifications/:id/read", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
   const userId = req.userId!;
-  const notifId = parseInt(req.params.id);
+  const notifId = parseInt(req.params.id as string);
 
   await db
     .update(notificationsTable)

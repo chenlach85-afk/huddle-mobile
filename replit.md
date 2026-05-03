@@ -26,7 +26,7 @@ Clerk Auth (Replit-managed). Provisioned via `setupClerkWhitelabelAuth()`.
 PostgreSQL via `DATABASE_URL` env var. Schema push: `pnpm --filter @workspace/db run push`
 
 Tables:
-- `teams` — id, name, sport, season, description, coach_name, avatar_color, player_count, join_code, timestamps
+- `teams` — id, name, sport, season, description, coach_name, avatar_color, image_url, location, player_count, join_code, timestamps
 - `players` — id, team_id (FK→teams), name, number, position, email, phone, date_of_birth, notes, status
 - `events` — id, team_id (FK→teams), title, type, location, starts_at, ends_at, notes, timestamps
 - `attendance` — id, event_id (FK→events), player_id (FK→players), status, notes, updated_at

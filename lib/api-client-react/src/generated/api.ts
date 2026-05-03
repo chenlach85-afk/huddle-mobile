@@ -18,8 +18,13 @@ import type {
 
 import type {
   ActivityItem,
+  AdminKpis,
+  AdminUser,
+  Album,
+  AlbumFile,
   Attendance,
   CalendarEvent,
+  CreateAlbumBody,
   CreateEventBody,
   CreateMessageBody,
   CreatePlayerBody,
@@ -33,6 +38,9 @@ import type {
   Player,
   Task,
   Team,
+  TeamDoc,
+  UpdateAdminUserBody,
+  UpdateAlbumBody,
   UpdateEventBody,
   UpdatePlayerBody,
   UpdateTaskBody,
@@ -2157,6 +2165,931 @@ export const useDeleteMessage = <
 > => {
   return useMutation(getDeleteMessageMutationOptions(options));
 };
+
+/**
+ * @summary List albums for a team
+ */
+export const getListAlbumsUrl = (teamId: number) => {
+  return `/api/teams/${teamId}/albums`;
+};
+
+export const listAlbums = async (
+  teamId: number,
+  options?: RequestInit,
+): Promise<Album[]> => {
+  return customFetch<Album[]>(getListAlbumsUrl(teamId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAlbumsQueryKey = (teamId: number) => {
+  return [`/api/teams/${teamId}/albums`] as const;
+};
+
+export const getListAlbumsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAlbums>>,
+  TError = ErrorType<unknown>,
+>(
+  teamId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAlbums>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAlbumsQueryKey(teamId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAlbums>>> = ({
+    signal,
+  }) => listAlbums(teamId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!teamId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAlbums>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAlbumsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAlbums>>
+>;
+export type ListAlbumsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List albums for a team
+ */
+
+export function useListAlbums<
+  TData = Awaited<ReturnType<typeof listAlbums>>,
+  TError = ErrorType<unknown>,
+>(
+  teamId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAlbums>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAlbumsQueryOptions(teamId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new album
+ */
+export const getCreateAlbumUrl = (teamId: number) => {
+  return `/api/teams/${teamId}/albums`;
+};
+
+export const createAlbum = async (
+  teamId: number,
+  createAlbumBody: CreateAlbumBody,
+  options?: RequestInit,
+): Promise<Album> => {
+  return customFetch<Album>(getCreateAlbumUrl(teamId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createAlbumBody),
+  });
+};
+
+export const getCreateAlbumMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAlbum>>,
+    TError,
+    { teamId: number; data: BodyType<CreateAlbumBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAlbum>>,
+  TError,
+  { teamId: number; data: BodyType<CreateAlbumBody> },
+  TContext
+> => {
+  const mutationKey = ["createAlbum"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAlbum>>,
+    { teamId: number; data: BodyType<CreateAlbumBody> }
+  > = (props) => {
+    const { teamId, data } = props ?? {};
+
+    return createAlbum(teamId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAlbumMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAlbum>>
+>;
+export type CreateAlbumMutationBody = BodyType<CreateAlbumBody>;
+export type CreateAlbumMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a new album
+ */
+export const useCreateAlbum = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAlbum>>,
+    TError,
+    { teamId: number; data: BodyType<CreateAlbumBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAlbum>>,
+  TError,
+  { teamId: number; data: BodyType<CreateAlbumBody> },
+  TContext
+> => {
+  return useMutation(getCreateAlbumMutationOptions(options));
+};
+
+/**
+ * @summary Get album with its files
+ */
+export const getGetAlbumUrl = (albumId: number) => {
+  return `/api/albums/${albumId}`;
+};
+
+export const getAlbum = async (
+  albumId: number,
+  options?: RequestInit,
+): Promise<Album> => {
+  return customFetch<Album>(getGetAlbumUrl(albumId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAlbumQueryKey = (albumId: number) => {
+  return [`/api/albums/${albumId}`] as const;
+};
+
+export const getGetAlbumQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAlbum>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  albumId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAlbum>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAlbumQueryKey(albumId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAlbum>>> = ({
+    signal,
+  }) => getAlbum(albumId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!albumId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getAlbum>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetAlbumQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAlbum>>
+>;
+export type GetAlbumQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get album with its files
+ */
+
+export function useGetAlbum<
+  TData = Awaited<ReturnType<typeof getAlbum>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  albumId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAlbum>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAlbumQueryOptions(albumId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update an album
+ */
+export const getUpdateAlbumUrl = (albumId: number) => {
+  return `/api/albums/${albumId}`;
+};
+
+export const updateAlbum = async (
+  albumId: number,
+  updateAlbumBody: UpdateAlbumBody,
+  options?: RequestInit,
+): Promise<Album> => {
+  return customFetch<Album>(getUpdateAlbumUrl(albumId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateAlbumBody),
+  });
+};
+
+export const getUpdateAlbumMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAlbum>>,
+    TError,
+    { albumId: number; data: BodyType<UpdateAlbumBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAlbum>>,
+  TError,
+  { albumId: number; data: BodyType<UpdateAlbumBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAlbum"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAlbum>>,
+    { albumId: number; data: BodyType<UpdateAlbumBody> }
+  > = (props) => {
+    const { albumId, data } = props ?? {};
+
+    return updateAlbum(albumId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAlbumMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAlbum>>
+>;
+export type UpdateAlbumMutationBody = BodyType<UpdateAlbumBody>;
+export type UpdateAlbumMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update an album
+ */
+export const useUpdateAlbum = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAlbum>>,
+    TError,
+    { albumId: number; data: BodyType<UpdateAlbumBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAlbum>>,
+  TError,
+  { albumId: number; data: BodyType<UpdateAlbumBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAlbumMutationOptions(options));
+};
+
+/**
+ * @summary Delete an album
+ */
+export const getDeleteAlbumUrl = (albumId: number) => {
+  return `/api/albums/${albumId}`;
+};
+
+export const deleteAlbum = async (
+  albumId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteAlbumUrl(albumId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAlbumMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAlbum>>,
+    TError,
+    { albumId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAlbum>>,
+  TError,
+  { albumId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteAlbum"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAlbum>>,
+    { albumId: number }
+  > = (props) => {
+    const { albumId } = props ?? {};
+
+    return deleteAlbum(albumId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAlbumMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAlbum>>
+>;
+
+export type DeleteAlbumMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete an album
+ */
+export const useDeleteAlbum = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAlbum>>,
+    TError,
+    { albumId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAlbum>>,
+  TError,
+  { albumId: number },
+  TContext
+> => {
+  return useMutation(getDeleteAlbumMutationOptions(options));
+};
+
+/**
+ * @summary List files in an album
+ */
+export const getListAlbumFilesUrl = (albumId: number) => {
+  return `/api/albums/${albumId}/files`;
+};
+
+export const listAlbumFiles = async (
+  albumId: number,
+  options?: RequestInit,
+): Promise<AlbumFile[]> => {
+  return customFetch<AlbumFile[]>(getListAlbumFilesUrl(albumId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAlbumFilesQueryKey = (albumId: number) => {
+  return [`/api/albums/${albumId}/files`] as const;
+};
+
+export const getListAlbumFilesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAlbumFiles>>,
+  TError = ErrorType<unknown>,
+>(
+  albumId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAlbumFiles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAlbumFilesQueryKey(albumId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAlbumFiles>>> = ({
+    signal,
+  }) => listAlbumFiles(albumId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!albumId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAlbumFiles>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAlbumFilesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAlbumFiles>>
+>;
+export type ListAlbumFilesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List files in an album
+ */
+
+export function useListAlbumFiles<
+  TData = Awaited<ReturnType<typeof listAlbumFiles>>,
+  TError = ErrorType<unknown>,
+>(
+  albumId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAlbumFiles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAlbumFilesQueryOptions(albumId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List documents for a team
+ */
+export const getListTeamDocsUrl = (teamId: number) => {
+  return `/api/teams/${teamId}/docs`;
+};
+
+export const listTeamDocs = async (
+  teamId: number,
+  options?: RequestInit,
+): Promise<TeamDoc[]> => {
+  return customFetch<TeamDoc[]>(getListTeamDocsUrl(teamId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTeamDocsQueryKey = (teamId: number) => {
+  return [`/api/teams/${teamId}/docs`] as const;
+};
+
+export const getListTeamDocsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTeamDocs>>,
+  TError = ErrorType<unknown>,
+>(
+  teamId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTeamDocs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTeamDocsQueryKey(teamId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTeamDocs>>> = ({
+    signal,
+  }) => listTeamDocs(teamId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!teamId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTeamDocs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTeamDocsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTeamDocs>>
+>;
+export type ListTeamDocsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List documents for a team
+ */
+
+export function useListTeamDocs<
+  TData = Awaited<ReturnType<typeof listTeamDocs>>,
+  TError = ErrorType<unknown>,
+>(
+  teamId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTeamDocs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTeamDocsQueryOptions(teamId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List all users (admin only)
+ */
+export const getListAdminUsersUrl = () => {
+  return `/api/admin/users`;
+};
+
+export const listAdminUsers = async (
+  options?: RequestInit,
+): Promise<AdminUser[]> => {
+  return customFetch<AdminUser[]>(getListAdminUsersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAdminUsersQueryKey = () => {
+  return [`/api/admin/users`] as const;
+};
+
+export const getListAdminUsersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAdminUsers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminUsers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListAdminUsersQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminUsers>>> = ({
+    signal,
+  }) => listAdminUsers({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminUsers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAdminUsersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAdminUsers>>
+>;
+export type ListAdminUsersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all users (admin only)
+ */
+
+export function useListAdminUsers<
+  TData = Awaited<ReturnType<typeof listAdminUsers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAdminUsers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAdminUsersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a user's role (admin only)
+ */
+export const getUpdateAdminUserUrl = (userId: number) => {
+  return `/api/admin/users/${userId}`;
+};
+
+export const updateAdminUser = async (
+  userId: number,
+  updateAdminUserBody: UpdateAdminUserBody,
+  options?: RequestInit,
+): Promise<AdminUser> => {
+  return customFetch<AdminUser>(getUpdateAdminUserUrl(userId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateAdminUserBody),
+  });
+};
+
+export const getUpdateAdminUserMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminUser>>,
+    TError,
+    { userId: number; data: BodyType<UpdateAdminUserBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAdminUser>>,
+  TError,
+  { userId: number; data: BodyType<UpdateAdminUserBody> },
+  TContext
+> => {
+  const mutationKey = ["updateAdminUser"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAdminUser>>,
+    { userId: number; data: BodyType<UpdateAdminUserBody> }
+  > = (props) => {
+    const { userId, data } = props ?? {};
+
+    return updateAdminUser(userId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAdminUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAdminUser>>
+>;
+export type UpdateAdminUserMutationBody = BodyType<UpdateAdminUserBody>;
+export type UpdateAdminUserMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a user's role (admin only)
+ */
+export const useUpdateAdminUser = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAdminUser>>,
+    TError,
+    { userId: number; data: BodyType<UpdateAdminUserBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAdminUser>>,
+  TError,
+  { userId: number; data: BodyType<UpdateAdminUserBody> },
+  TContext
+> => {
+  return useMutation(getUpdateAdminUserMutationOptions(options));
+};
+
+/**
+ * @summary Remove a user (admin only)
+ */
+export const getDeleteAdminUserUrl = (userId: number) => {
+  return `/api/admin/users/${userId}`;
+};
+
+export const deleteAdminUser = async (
+  userId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteAdminUserUrl(userId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteAdminUserMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAdminUser>>,
+    TError,
+    { userId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteAdminUser>>,
+  TError,
+  { userId: number },
+  TContext
+> => {
+  const mutationKey = ["deleteAdminUser"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteAdminUser>>,
+    { userId: number }
+  > = (props) => {
+    const { userId } = props ?? {};
+
+    return deleteAdminUser(userId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteAdminUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteAdminUser>>
+>;
+
+export type DeleteAdminUserMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a user (admin only)
+ */
+export const useDeleteAdminUser = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteAdminUser>>,
+    TError,
+    { userId: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteAdminUser>>,
+  TError,
+  { userId: number },
+  TContext
+> => {
+  return useMutation(getDeleteAdminUserMutationOptions(options));
+};
+
+/**
+ * @summary Get system KPIs (admin only)
+ */
+export const getGetAdminKpisUrl = () => {
+  return `/api/admin/kpis`;
+};
+
+export const getAdminKpis = async (
+  options?: RequestInit,
+): Promise<AdminKpis> => {
+  return customFetch<AdminKpis>(getGetAdminKpisUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAdminKpisQueryKey = () => {
+  return [`/api/admin/kpis`] as const;
+};
+
+export const getGetAdminKpisQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAdminKpis>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminKpis>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAdminKpisQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminKpis>>> = ({
+    signal,
+  }) => getAdminKpis({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminKpis>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAdminKpisQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAdminKpis>>
+>;
+export type GetAdminKpisQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get system KPIs (admin only)
+ */
+
+export function useGetAdminKpis<
+  TData = Awaited<ReturnType<typeof getAdminKpis>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAdminKpis>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAdminKpisQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get all events across all teams for calendar view

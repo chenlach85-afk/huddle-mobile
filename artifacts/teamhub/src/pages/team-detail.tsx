@@ -4,10 +4,36 @@ import {
   useGetTeamActivity,
   getGetTeamQueryKey,
   getGetTeamActivityQueryKey,
+  useUpdateTeam,
+  getListTeamsQueryKey,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -15,17 +41,47 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ArrowLeft, Users, Calendar, CheckSquare, MessageSquare,
-  AlertCircle, Activity, Link2, Check, Zap,
+  AlertCircle, Activity, Link2, Check, Zap, MapPin, Pencil,
+  ImageIcon, FileText,
 } from "lucide-react";
 import PlayersTab from "@/components/team/players-tab";
 import EventsTab from "@/components/team/events-tab";
 import TasksTab from "@/components/team/tasks-tab";
 import MessagesTab from "@/components/team/messages-tab";
+import AlbumsTab from "@/components/team/albums-tab";
+import DocsTab from "@/components/team/docs-tab";
 import { formatDistanceToNow } from "date-fns";
 import { he, es, enUS } from "date-fns/locale";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
+
+const SPORTS = ["Soccer", "Basketball", "Baseball", "Softball", "Football", "Volleyball", "Tennis", "Swimming", "Track", "Other"];
+const TEAM_COLORS = [
+  { label: "Ignition", value: "#FF6B35" },
+  { label: "Blue", value: "#4A90E2" },
+  { label: "Green", value: "#2ECC71" },
+  { label: "Purple", value: "#9B59B6" },
+  { label: "Gold", value: "#F7B538" },
+  { label: "Red", value: "#E74C3C" },
+  { label: "Teal", value: "#1ABC9C" },
+  { label: "Pink", value: "#E91E8C" },
+];
+
+const editSchema = z.object({
+  name: z.string().min(1),
+  sport: z.string().min(1),
+  season: z.string().optional(),
+  description: z.string().optional(),
+  coachName: z.string().min(1),
+  avatarColor: z.string().default("#FF6B35"),
+  imageUrl: z.string().optional(),
+  location: z.string().optional(),
+});
+type EditForm = z.infer<typeof editSchema>;
 
 const ACTIVITY_COLORS: Record<string, string> = {
   event_created: "#f7b538",
@@ -43,8 +99,11 @@ export default function TeamDetailPage() {
   const { toast } = useToast();
   const { t, language } = useI18n();
   const td = t.teamDetail;
+  const sq = t.squads;
   const [copied, setCopied] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const id = Number(teamId);
+  const queryClient = useQueryClient();
 
   const { data: team, isLoading: teamLoading } = useGetTeam(id, {
     query: { enabled: !!id, queryKey: getGetTeamQueryKey(id) },
@@ -53,8 +112,66 @@ export default function TeamDetailPage() {
     query: { enabled: !!id, queryKey: getGetTeamActivityQueryKey(id) },
   });
 
-  const teamColor = team?.avatarColor ?? "#FF6B35";
+  const updateTeam = useUpdateTeam();
+
+  const teamColor = (team as any)?.avatarColor ?? "#FF6B35";
   const dateLocale = DATE_LOCALES[language] ?? enUS;
+
+  const editForm = useForm<EditForm>({
+    resolver: zodResolver(editSchema),
+    defaultValues: {
+      name: "",
+      sport: "",
+      season: "",
+      description: "",
+      coachName: "",
+      avatarColor: "#FF6B35",
+      imageUrl: "",
+      location: "",
+    },
+  });
+
+  function openEditDialog() {
+    if (!team) return;
+    editForm.reset({
+      name: team.name,
+      sport: (team as any).sport ?? "",
+      season: (team as any).season ?? "",
+      description: (team as any).description ?? "",
+      coachName: (team as any).coachName ?? "",
+      avatarColor: teamColor,
+      imageUrl: (team as any).imageUrl ?? "",
+      location: (team as any).location ?? "",
+    });
+    setEditOpen(true);
+  }
+
+  function onEditSubmit(values: EditForm) {
+    updateTeam.mutate(
+      {
+        teamId: id,
+        data: {
+          name: values.name,
+          sport: values.sport,
+          season: values.season || null,
+          description: values.description || null,
+          coachName: values.coachName,
+          avatarColor: values.avatarColor,
+          imageUrl: values.imageUrl || null,
+          location: values.location || null,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTeamQueryKey(id) });
+          queryClient.invalidateQueries({ queryKey: getListTeamsQueryKey() });
+          setEditOpen(false);
+          toast({ title: sq.squadUpdated });
+        },
+        onError: () => toast({ title: sq.failedUpdate, variant: "destructive" }),
+      }
+    );
+  }
 
   function copyMemberLink() {
     if (!team || !(team as any).joinCode) return;
@@ -96,10 +213,107 @@ export default function TeamDetailPage() {
     { value: "events", label: td.tabLineup, icon: Calendar },
     { value: "tasks", label: td.tabTasks, icon: CheckSquare },
     { value: "messages", label: td.tabHuddle, icon: MessageSquare },
+    { value: "albums", label: td.tabAlbums, icon: ImageIcon },
+    { value: "docs", label: td.tabDocs, icon: FileText },
   ];
+
+  const teamImage = (team as any).imageUrl as string | null | undefined;
+  const teamLocation = (team as any).location as string | null | undefined;
 
   return (
     <div className="p-5 md:p-8 max-w-6xl mx-auto space-y-5">
+
+      {/* Edit Team Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-white tracking-wide">{sq.editSquad.toUpperCase()}</DialogTitle>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField control={editForm.control} name="name" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.squadName}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="sport" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.sport}</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
+                        <SelectValue placeholder={sq.selectSport} />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                      {SPORTS.map(s => <SelectItem key={s} value={s} className="text-white">{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="coachName" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.coachName}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="season" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.seasonOptional}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="location" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.locationOptional}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="imageUrl" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.teamImageOptional}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" placeholder="https://..." {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="avatarColor" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.squadColor}</FormLabel>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {TEAM_COLORS.map(c => (
+                      <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => field.onChange(c.value)}
+                        className={`w-8 h-8 rounded-lg border-2 transition-all ${field.value === c.value ? "border-white scale-110 shadow-lg" : "border-transparent opacity-70 hover:opacity-100"}`}
+                        style={{ backgroundColor: c.value }}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={editForm.control} name="description" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="stat-label text-white/50">{sq.descriptionOptional}</FormLabel>
+                  <FormControl><Textarea className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl h-11" disabled={updateTeam.isPending}>
+                {updateTeam.isPending ? sq.saving : sq.saveChanges}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <div className="hero-card p-5 flex items-center gap-4" style={{
         background: `linear-gradient(135deg, ${teamColor}cc 0%, ${teamColor}55 100%)`,
@@ -117,10 +331,14 @@ export default function TeamDetailPage() {
         </Button>
 
         <div
-          className="jersey-tile text-2xl shadow-lg shrink-0"
-          style={{ background: `linear-gradient(135deg, white 0%, rgba(255,255,255,0.7) 100%)`, color: teamColor }}
+          className="jersey-tile text-2xl shadow-lg shrink-0 overflow-hidden"
+          style={{ background: teamImage ? "transparent" : `linear-gradient(135deg, white 0%, rgba(255,255,255,0.7) 100%)`, color: teamColor }}
         >
-          {team.name.charAt(0).toUpperCase()}
+          {teamImage ? (
+            <img src={teamImage} alt={team.name} className="w-full h-full object-cover" />
+          ) : (
+            team.name.charAt(0).toUpperCase()
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -128,39 +346,57 @@ export default function TeamDetailPage() {
             {team.name.toUpperCase()}
           </h1>
           <p className="text-white/60 text-sm font-medium mt-1">
-            {team.sport} · {td.coachLabel} {team.coachName}{team.season ? ` · ${team.season}` : ""}
+            {(team as any).sport} · {td.coachLabel} {(team as any).coachName}{(team as any).season ? ` · ${(team as any).season}` : ""}
           </p>
+          {teamLocation && (
+            <div className="flex items-center gap-1 mt-1">
+              <MapPin className="h-3 w-3 text-white/40" />
+              <p className="text-xs text-white/40">{teamLocation}</p>
+            </div>
+          )}
         </div>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="sm"
-              onClick={copyMemberLink}
-              className="shrink-0 font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
-              style={{ background: "rgba(255,255,255,0.12)" }}
-              data-testid="button-share-member-link"
-            >
-              {copied ? (
-                <><Check className="h-4 w-4 me-1.5 text-green-400" />{td.copied}</>
-              ) : (
-                <><Link2 className="h-4 w-4 me-1.5" />{td.shareLink}</>
-              )}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs">{td.copyLinkTooltip}</p>
-          </TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            onClick={openEditDialog}
+            className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
+            style={{ background: "rgba(255,255,255,0.12)" }}
+            data-testid="button-edit-team"
+          >
+            <Pencil className="h-3.5 w-3.5 me-1.5" />
+            {td.editTeam}
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                onClick={copyMemberLink}
+                className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
+                style={{ background: "rgba(255,255,255,0.12)" }}
+                data-testid="button-share-member-link"
+              >
+                {copied ? (
+                  <><Check className="h-4 w-4 me-1.5 text-green-400" />{td.copied}</>
+                ) : (
+                  <><Link2 className="h-4 w-4 me-1.5" />{td.shareLink}</>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-xs">{td.copyLinkTooltip}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <Tabs defaultValue="players" className="space-y-4">
-        <TabsList className="border border-white/8 p-1 rounded-xl h-auto gap-0.5" style={{ background: "rgba(22,27,46,0.9)" }}>
+        <TabsList className="border border-white/8 p-1 rounded-xl h-auto gap-0.5 flex-wrap" style={{ background: "rgba(22,27,46,0.9)" }}>
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.value}
               value={tab.value}
-              className="rounded-lg px-4 py-2 text-white/50 font-semibold text-sm data-[state=active]:text-white data-[state=active]:shadow-none transition-all"
+              className="rounded-lg px-3 py-2 text-white/50 font-semibold text-sm data-[state=active]:text-white data-[state=active]:shadow-none transition-all"
               data-testid={`tab-${tab.value}`}
             >
               <tab.icon className="h-3.5 w-3.5 me-1.5" />
@@ -175,6 +411,8 @@ export default function TeamDetailPage() {
             <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="albums" className="mt-0"><AlbumsTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="docs" className="mt-0"><DocsTab teamId={id} teamColor={teamColor} /></TabsContent>
           </div>
 
           <div className="lg:col-span-1 space-y-4">

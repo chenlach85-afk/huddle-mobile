@@ -22,6 +22,10 @@ tags:
     description: Team messaging
   - name: dashboard
     description: Dashboard and summaries
+  - name: albums
+    description: Team photo albums
+  - name: admin
+    description: Admin management
 
 paths:
   /healthz:
@@ -620,6 +624,221 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ─── ALBUMS ───────────────────────────────────────────────────────────────
+  /teams/{teamId}/albums:
+    get:
+      operationId: listAlbums
+      tags: [albums]
+      summary: List albums for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Album"
+    post:
+      operationId: createAlbum
+      tags: [albums]
+      summary: Create a new album
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlbumBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Album"
+
+  /albums/{albumId}:
+    get:
+      operationId: getAlbum
+      tags: [albums]
+      summary: Get album with its files
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Album"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAlbum
+      tags: [albums]
+      summary: Update an album
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlbumBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Album"
+    delete:
+      operationId: deleteAlbum
+      tags: [albums]
+      summary: Delete an album
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /albums/{albumId}/files:
+    get:
+      operationId: listAlbumFiles
+      tags: [albums]
+      summary: List files in an album
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlbumFile"
+
+  /teams/{teamId}/docs:
+    get:
+      operationId: listTeamDocs
+      tags: [teams]
+      summary: List documents for a team
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TeamDoc"
+
+  # ─── ADMIN ────────────────────────────────────────────────────────────────
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List all users (admin only)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+
+  /admin/users/{userId}:
+    patch:
+      operationId: updateAdminUser
+      tags: [admin]
+      summary: Update a user's role (admin only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminUserBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+    delete:
+      operationId: deleteAdminUser
+      tags: [admin]
+      summary: Remove a user (admin only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/kpis:
+    get:
+      operationId: getAdminKpis
+      tags: [admin]
+      summary: Get system KPIs (admin only)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKpis"
+
   # ─── CALENDAR ─────────────────────────────────────────────────────────────
   /calendar:
     get:
@@ -707,6 +926,10 @@ components:
           type: string
         avatarColor:
           type: string
+        imageUrl:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
         playerCount:
           type: integer
         createdAt:
@@ -740,6 +963,10 @@ components:
           type: string
         avatarColor:
           type: string
+        imageUrl:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
       required:
         - name
         - sport
@@ -760,6 +987,10 @@ components:
           type: string
         avatarColor:
           type: string
+        imageUrl:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
 
     # ── Players ──
     Player:
@@ -1195,3 +1426,166 @@ components:
         - type
         - description
         - occurredAt
+
+    # ── Albums ──
+    Album:
+      type: object
+      properties:
+        id:
+          type: integer
+        teamId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        coverUrl:
+          type: ["string", "null"]
+        fileCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - teamId
+        - name
+        - fileCount
+        - createdAt
+        - updatedAt
+
+    CreateAlbumBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        coverUrl:
+          type: ["string", "null"]
+      required:
+        - name
+
+    UpdateAlbumBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        coverUrl:
+          type: ["string", "null"]
+
+    AlbumFile:
+      type: object
+      properties:
+        id:
+          type: integer
+        albumId:
+          type: ["integer", "null"]
+        filename:
+          type: string
+        originalName:
+          type: string
+        mimeType:
+          type: string
+        url:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - filename
+        - originalName
+        - mimeType
+        - url
+        - createdAt
+
+    TeamDoc:
+      type: object
+      properties:
+        id:
+          type: integer
+        filename:
+          type: string
+        originalName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+        url:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - filename
+        - originalName
+        - mimeType
+        - size
+        - url
+        - createdAt
+
+    # ── Admin ──
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        clerkId:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [coach, player, admin]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - clerkId
+        - email
+        - name
+        - role
+        - createdAt
+
+    UpdateAdminUserBody:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [coach, player, admin]
+
+    AdminKpis:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalTeams:
+          type: integer
+        totalEvents:
+          type: integer
+        totalTasks:
+          type: integer
+        totalMessages:
+          type: integer
+        recentUsers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUser"
+      required:
+        - totalUsers
+        - totalTeams
+        - totalEvents
+        - totalTasks
+        - totalMessages
+        - recentUsers

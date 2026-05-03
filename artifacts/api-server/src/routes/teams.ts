@@ -21,6 +21,8 @@ router.get("/teams", async (_req, res): Promise<void> => {
       description: teamsTable.description,
       coachName: teamsTable.coachName,
       avatarColor: teamsTable.avatarColor,
+      imageUrl: teamsTable.imageUrl,
+      location: teamsTable.location,
       playerCount: teamsTable.playerCount,
       createdAt: teamsTable.createdAt,
       updatedAt: teamsTable.updatedAt,
@@ -46,6 +48,8 @@ router.post("/teams", async (req, res): Promise<void> => {
       description: data.description ?? null,
       coachName: data.coachName,
       avatarColor: data.avatarColor ?? "#3b82f6",
+      imageUrl: data.imageUrl ?? null,
+      location: data.location ?? null,
     })
     .returning();
   res.status(201).json(team);
@@ -66,6 +70,8 @@ router.get("/teams/:teamId", async (req, res): Promise<void> => {
       description: teamsTable.description,
       coachName: teamsTable.coachName,
       avatarColor: teamsTable.avatarColor,
+      imageUrl: teamsTable.imageUrl,
+      location: teamsTable.location,
       playerCount: teamsTable.playerCount,
       joinCode: teamsTable.joinCode,
       createdAt: teamsTable.createdAt,
@@ -99,6 +105,8 @@ router.patch("/teams/:teamId", async (req, res): Promise<void> => {
   if ("description" in d) updates.description = d.description;
   if (d.coachName !== undefined) updates.coachName = d.coachName;
   if (d.avatarColor !== undefined) updates.avatarColor = d.avatarColor;
+  if ("imageUrl" in d) updates.imageUrl = d.imageUrl;
+  if ("location" in d) updates.location = d.location;
 
   if (Object.keys(updates).length === 0) {
     const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, params.data.teamId));
