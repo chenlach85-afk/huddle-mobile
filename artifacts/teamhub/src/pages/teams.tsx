@@ -38,6 +38,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Users, ChevronRight, Trash2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 
 const SPORTS = ["Soccer", "Basketball", "Baseball", "Softball", "Football", "Volleyball", "Tennis", "Swimming", "Track", "Other"];
 
@@ -53,11 +54,11 @@ const TEAM_COLORS = [
 ];
 
 const createTeamSchema = z.object({
-  name: z.string().min(1, "Squad name is required"),
-  sport: z.string().min(1, "Sport is required"),
+  name: z.string().min(1),
+  sport: z.string().min(1),
   season: z.string().optional(),
   description: z.string().optional(),
-  coachName: z.string().min(1, "Coach name is required"),
+  coachName: z.string().min(1),
   avatarColor: z.string().default("#FF6B35"),
 });
 type CreateTeamForm = z.infer<typeof createTeamSchema>;
@@ -67,6 +68,8 @@ export default function TeamsPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
+  const sq = t.squads;
 
   const { data: teams = [], isLoading, error } = useListTeams();
   const createTeam = useCreateTeam();
@@ -85,22 +88,22 @@ export default function TeamsPage() {
           queryClient.invalidateQueries({ queryKey: getListTeamsQueryKey() });
           setOpen(false);
           form.reset();
-          toast({ title: "Squad created" });
+          toast({ title: sq.squadCreated });
         },
-        onError: () => toast({ title: "Failed to create squad", variant: "destructive" }),
+        onError: () => toast({ title: sq.failedCreate, variant: "destructive" }),
       }
     );
   }
 
   function handleDelete(e: React.MouseEvent, teamId: number) {
     e.stopPropagation();
-    if (!confirm("Delete this squad and all its data?")) return;
+    if (!confirm(sq.confirmDelete)) return;
     deleteTeam.mutate({ teamId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListTeamsQueryKey() });
-        toast({ title: "Squad deleted" });
+        toast({ title: sq.squadDeleted });
       },
-      onError: () => toast({ title: "Failed to delete squad", variant: "destructive" }),
+      onError: () => toast({ title: sq.failedDelete, variant: "destructive" }),
     });
   }
 
@@ -108,7 +111,7 @@ export default function TeamsPage() {
     return (
       <div className="p-8 flex flex-col items-center justify-center h-[50vh] text-white/40">
         <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-        <p>Failed to load squads.</p>
+        <p>{sq.failedLoad}</p>
       </div>
     );
   }
@@ -117,38 +120,38 @@ export default function TeamsPage() {
     <div className="p-5 md:p-8 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="section-label mb-1">COACH PANEL</p>
-          <h1 className="font-display text-4xl text-white tracking-wide">YOUR SQUADS</h1>
+          <p className="section-label mb-1">{sq.coachPanel.toUpperCase()}</p>
+          <h1 className="font-display text-4xl text-white tracking-wide">{sq.yourSquads.toUpperCase()}</h1>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl shadow-lg shadow-primary/20" data-testid="button-create-team">
-              <Plus className="h-4 w-4 mr-2" />
-              New Squad
+              <Plus className="h-4 w-4 me-2" />
+              {sq.newSquad}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
             <DialogHeader>
-              <DialogTitle className="font-display text-2xl text-white tracking-wide">CREATE SQUAD</DialogTitle>
+              <DialogTitle className="font-display text-2xl text-white tracking-wide">{sq.createSquad.toUpperCase()}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField control={form.control} name="name" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Squad Name</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{sq.squadName}</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. Lightning FC" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-team-name" {...field} />
+                      <Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-team-name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="sport" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Sport</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{sq.sport}</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-sport">
-                          <SelectValue placeholder="Select sport" />
+                          <SelectValue placeholder={sq.selectSport} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
@@ -160,25 +163,25 @@ export default function TeamsPage() {
                 )} />
                 <FormField control={form.control} name="coachName" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Coach Name</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{sq.coachName}</FormLabel>
                     <FormControl>
-                      <Input placeholder="Your name" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-coach-name" {...field} />
+                      <Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-coach-name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="season" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Season (optional)</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{sq.seasonOptional}</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. Spring 2025" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-season" {...field} />
+                      <Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-season" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="avatarColor" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Squad Color</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{sq.squadColor}</FormLabel>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {TEAM_COLORS.map(c => (
                         <button
@@ -197,15 +200,15 @@ export default function TeamsPage() {
                 )} />
                 <FormField control={form.control} name="description" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Description (optional)</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{sq.descriptionOptional}</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Brief team description..." className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-description" {...field} />
+                      <Textarea className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-description" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <Button type="submit" className="w-full bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl h-11" disabled={createTeam.isPending} data-testid="button-submit-team">
-                  {createTeam.isPending ? "Creating..." : "Create Squad"}
+                  {createTeam.isPending ? sq.creating : sq.createSquad}
                 </Button>
               </form>
             </Form>
@@ -220,11 +223,11 @@ export default function TeamsPage() {
       ) : teams.length === 0 ? (
         <div className="rounded-2xl border border-white/6 p-12 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
           <Users className="h-12 w-12 mx-auto text-white/20 mb-4" />
-          <h3 className="font-display text-2xl text-white tracking-wide mb-2">NO SQUADS YET</h3>
-          <p className="text-white/40 text-sm mb-5">Create your first squad to get started</p>
+          <h3 className="font-display text-2xl text-white tracking-wide mb-2">{sq.noSquadsYet.toUpperCase()}</h3>
+          <p className="text-white/40 text-sm mb-5">{sq.createFirstDesc}</p>
           <Button onClick={() => setOpen(true)} className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl" data-testid="button-create-first-team">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Squad
+            <Plus className="h-4 w-4 me-2" />
+            {sq.createSquad}
           </Button>
         </div>
       ) : (
@@ -237,7 +240,6 @@ export default function TeamsPage() {
               onClick={() => setLocation(`/teams/${team.id}`)}
               data-testid={`card-team-${team.id}`}
             >
-              {/* Jersey tile */}
               <div
                 className="jersey-tile text-xl shadow-lg"
                 style={{ background: `linear-gradient(135deg, ${team.avatarColor}, ${team.avatarColor}99)` }}
@@ -256,7 +258,7 @@ export default function TeamsPage() {
                   </span>
                 </div>
                 <p className="text-xs text-white/40 mt-0.5 font-medium">
-                  {team.coachName}{team.season ? ` · ${team.season}` : ""} · {team.playerCount} athletes
+                  {team.coachName}{team.season ? ` · ${team.season}` : ""} · <span className="ltr-num">{team.playerCount}</span> {sq.athletes}
                 </p>
               </div>
 
@@ -270,7 +272,7 @@ export default function TeamsPage() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
-                <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-primary transition-colors" />
+                <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-primary transition-colors flip-rtl" />
               </div>
             </div>
           ))}

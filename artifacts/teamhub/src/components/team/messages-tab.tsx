@@ -16,15 +16,21 @@ import {
 import { Trash2, MessageSquare, Pin, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
+import { he, es, enUS, type Locale } from "date-fns/locale";
+import { useI18n } from "@/lib/i18n";
 
-const ROLE_CONFIG: Record<string, { color: string; label: string }> = {
-  coach: { color: "#FF6B35", label: "COACH" },
-  player: { color: "#4a90e2", label: "PLAYER" },
-  admin: { color: "#9b59b6", label: "ADMIN" },
+const ROLE_COLORS: Record<string, string> = {
+  coach: "#FF6B35",
+  player: "#4a90e2",
+  admin: "#9b59b6",
 };
 
+const DATE_LOCALES = { he, es, en: enUS };
+
 export default function MessagesTab({ teamId, teamColor }: { teamId: number; teamColor: string }) {
-  const [senderName, setSenderName] = useState("Coach");
+  const { t, language } = useI18n();
+  const msg = t.messages;
+  const [senderName, setSenderName] = useState(msg.roleCoach);
   const [senderRole, setSenderRole] = useState<"coach" | "player" | "admin">("coach");
   const [content, setContent] = useState("");
   const { toast } = useToast();
@@ -42,30 +48,37 @@ export default function MessagesTab({ teamId, teamColor }: { teamId: number; tea
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(teamId) });
         setContent("");
-        toast({ title: "Message sent" });
+        toast({ title: msg.messageSent });
       },
-      onError: () => toast({ title: "Failed to send", variant: "destructive" }),
+      onError: () => toast({ title: msg.failedSend, variant: "destructive" }),
     });
   }
 
   function handleDelete(messageId: number) {
-    if (!confirm("Delete this message?")) return;
+    if (!confirm(msg.confirmDelete)) return;
     deleteMessage.mutate({ messageId }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(teamId) }); toast({ title: "Message deleted" }); },
-      onError: () => toast({ title: "Failed to delete message", variant: "destructive" }),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListMessagesQueryKey(teamId) }); toast({ title: msg.messageDeleted }); },
+      onError: () => toast({ title: msg.failedDelete, variant: "destructive" }),
     });
   }
+
+  const roleLabel = (role: string) => {
+    if (role === "coach") return msg.roleLabelCoach;
+    if (role === "player") return msg.roleLabelPlayer;
+    return msg.roleLabelAdmin;
+  };
+
+  const dateLocale = DATE_LOCALES[language] ?? enUS;
 
   const pinned = messages.filter(m => m.pinned);
   const regular = messages.filter(m => !m.pinned);
 
   return (
     <div className="space-y-3">
-      {/* Composer */}
       <div className="rounded-2xl border p-4 space-y-3" style={{ background: `${teamColor}0a`, borderColor: `${teamColor}25` }}>
         <div className="grid grid-cols-2 gap-2">
           <Input
-            placeholder="Your name"
+            placeholder={msg.yourName}
             value={senderName}
             onChange={e => setSenderName(e.target.value)}
             className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm h-9"
@@ -76,14 +89,14 @@ export default function MessagesTab({ teamId, teamColor }: { teamId: number; tea
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
-              <SelectItem value="coach" className="text-white">Coach</SelectItem>
-              <SelectItem value="player" className="text-white">Player</SelectItem>
-              <SelectItem value="admin" className="text-white">Admin</SelectItem>
+              <SelectItem value="coach" className="text-white">{msg.roleCoach}</SelectItem>
+              <SelectItem value="player" className="text-white">{msg.rolePlayer}</SelectItem>
+              <SelectItem value="admin" className="text-white">{msg.roleAdmin}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <Textarea
-          placeholder="Send a message to the team..."
+          placeholder={msg.messagePlaceholder}
           value={content}
           onChange={e => setContent(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSend(); }}
@@ -98,8 +111,8 @@ export default function MessagesTab({ teamId, teamColor }: { teamId: number; tea
           style={{ background: teamColor, color: "white" }}
           data-testid="button-send-message"
         >
-          <Send className="h-4 w-4 mr-2" />
-          {createMessage.isPending ? "Sending..." : "Send Message"}
+          <Send className="h-4 w-4 me-2" />
+          {createMessage.isPending ? msg.sending : msg.sendMessage}
         </Button>
       </div>
 
@@ -108,24 +121,25 @@ export default function MessagesTab({ teamId, teamColor }: { teamId: number; tea
       ) : messages.length === 0 ? (
         <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
           <MessageSquare className="h-10 w-10 mx-auto text-white/15 mb-3" />
-          <p className="font-display text-xl text-white/30 tracking-wide">HUDDLE IS QUIET</p>
-          <p className="text-xs text-white/25 mt-1">Send the first message above</p>
+          <p className="font-display text-xl text-white/30 tracking-wide">{msg.huddleIsQuiet.toUpperCase()}</p>
+          <p className="text-xs text-white/25 mt-1">{msg.sendFirst}</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {/* Pinned */}
           {pinned.length > 0 && (
             <>
               <p className="section-label flex items-center gap-1.5 px-1">
                 <Pin className="h-2.5 w-2.5" />
-                Pinned
+                {msg.pinned}
               </p>
-              {pinned.map(msg => <MessageBubble key={msg.id} msg={msg} onDelete={handleDelete} teamColor={teamColor} />)}
-              {regular.length > 0 && <p className="section-label px-1 pt-1">All Messages</p>}
+              {pinned.map(m => (
+                <MessageBubble key={m.id} msg={m} onDelete={handleDelete} teamColor={teamColor} roleLabel={roleLabel} dateLocale={dateLocale} />
+              ))}
+              {regular.length > 0 && <p className="section-label px-1 pt-1">{msg.allMessages}</p>}
             </>
           )}
-          {[...regular].reverse().map(msg => (
-            <MessageBubble key={msg.id} msg={msg} onDelete={handleDelete} teamColor={teamColor} />
+          {[...regular].reverse().map(m => (
+            <MessageBubble key={m.id} msg={m} onDelete={handleDelete} teamColor={teamColor} roleLabel={roleLabel} dateLocale={dateLocale} />
           ))}
         </div>
       )}
@@ -137,12 +151,16 @@ function MessageBubble({
   msg,
   onDelete,
   teamColor,
+  roleLabel,
+  dateLocale,
 }: {
   msg: { id: number; senderName: string; senderRole: string; content: string; pinned: boolean; createdAt: string | Date };
   onDelete: (id: number) => void;
   teamColor: string;
+  roleLabel: (role: string) => string;
+  dateLocale: Locale;
 }) {
-  const roleCfg = ROLE_CONFIG[msg.senderRole] ?? { color: "#fff", label: msg.senderRole.toUpperCase() };
+  const color = ROLE_COLORS[msg.senderRole] ?? "#fff";
 
   return (
     <div
@@ -150,24 +168,21 @@ function MessageBubble({
       style={{
         background: msg.pinned ? `${teamColor}0d` : "rgba(22,27,46,0.8)",
         borderColor: msg.pinned ? `${teamColor}25` : "rgba(255,255,255,0.06)",
-        borderLeft: `3px solid ${roleCfg.color}50`,
+        borderLeft: `3px solid ${color}50`,
       }}
       data-testid={`card-message-${msg.id}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span
-            className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-            style={{ background: `${roleCfg.color}20`, color: roleCfg.color }}
-          >
-            {roleCfg.label}
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${color}20`, color }}>
+            {roleLabel(msg.senderRole)}
           </span>
           <span className="font-semibold text-sm text-white">{msg.senderName}</span>
           {msg.pinned && <Pin className="h-3 w-3" style={{ color: teamColor }} />}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[10px] text-white/25">
-            {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+          <span className="text-[10px] text-white/25 ltr-num">
+            {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: dateLocale })}
           </span>
           <Button
             variant="ghost"

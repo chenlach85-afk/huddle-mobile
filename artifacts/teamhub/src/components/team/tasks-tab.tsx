@@ -26,21 +26,22 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, CheckSquare, Trash2, Pencil, Circle, CheckCircle2, Clock3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 
-const PRIORITY_CONFIG: Record<string, { color: string; label: string }> = {
-  low: { color: "#2ecc71", label: "LOW" },
-  medium: { color: "#f7b538", label: "MED" },
-  high: { color: "#e74c3c", label: "HIGH" },
+const PRIORITY_COLORS: Record<string, string> = {
+  low: "#2ecc71",
+  medium: "#f7b538",
+  high: "#e74c3c",
 };
 
-const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
-  pending: { icon: <Circle className="h-4 w-4" />, color: "rgba(255,255,255,0.3)" },
-  in_progress: { icon: <Clock3 className="h-4 w-4" />, color: "#4a90e2" },
-  done: { icon: <CheckCircle2 className="h-4 w-4" />, color: "#2ecc71" },
+const STATUS_COLORS: Record<string, string> = {
+  pending: "rgba(255,255,255,0.3)",
+  in_progress: "#4a90e2",
+  done: "#2ecc71",
 };
 
 const taskSchema = z.object({
-  title: z.string().min(1, "Title is required"),
+  title: z.string().min(1),
   description: z.string().optional(),
   assignedToPlayerId: z.string().optional(),
   dueDate: z.string().optional(),
@@ -55,6 +56,8 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "in_progress" | "done">("all");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
+  const tk = t.tasks;
 
   const { data: tasks = [], isLoading } = useListTasks(teamId, {
     query: { enabled: !!teamId, queryKey: getListTasksQueryKey(teamId) },
@@ -70,9 +73,9 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
   });
 
   function openCreate() { form.reset(); setEditingId(null); setOpen(true); }
-  function openEdit(t: typeof tasks[0]) {
-    form.reset({ title: t.title, description: t.description || "", assignedToPlayerId: t.assignedToPlayerId?.toString() || "", dueDate: t.dueDate || "", status: t.status, priority: t.priority });
-    setEditingId(t.id);
+  function openEdit(task: typeof tasks[0]) {
+    form.reset({ title: task.title, description: task.description || "", assignedToPlayerId: task.assignedToPlayerId?.toString() || "", dueDate: task.dueDate || "", status: task.status, priority: task.priority });
+    setEditingId(task.id);
     setOpen(true);
   }
 
@@ -84,13 +87,13 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
     };
     if (editingId) {
       updateTask.mutate({ taskId: editingId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }); setOpen(false); toast({ title: "Task updated" }); },
-        onError: () => toast({ title: "Failed to update task", variant: "destructive" }),
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }); setOpen(false); toast({ title: tk.taskUpdated }); },
+        onError: () => toast({ title: tk.failedUpdate, variant: "destructive" }),
       });
     } else {
       createTask.mutate({ teamId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }); setOpen(false); toast({ title: "Task created" }); },
-        onError: () => toast({ title: "Failed to create task", variant: "destructive" }),
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }); setOpen(false); toast({ title: tk.taskCreated }); },
+        onError: () => toast({ title: tk.failedCreate, variant: "destructive" }),
       });
     }
   }
@@ -99,56 +102,71 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
     const next: Record<string, "pending" | "in_progress" | "done"> = { pending: "in_progress", in_progress: "done", done: "pending" };
     updateTask.mutate({ taskId, data: { status: next[current] } }, {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }),
-      onError: () => toast({ title: "Failed to update task", variant: "destructive" }),
+      onError: () => toast({ title: tk.failedUpdate, variant: "destructive" }),
     });
   }
 
   function handleDelete(taskId: number) {
-    if (!confirm("Delete this task?")) return;
+    if (!confirm(tk.confirmDelete)) return;
     deleteTask.mutate({ taskId }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }); toast({ title: "Task deleted" }); },
-      onError: () => toast({ title: "Failed to delete task", variant: "destructive" }),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(teamId) }); toast({ title: tk.taskDeleted }); },
+      onError: () => toast({ title: tk.failedDelete, variant: "destructive" }),
     });
   }
 
-  const filtered = statusFilter === "all" ? tasks : tasks.filter(t => t.status === statusFilter);
+  const filterLabel = (s: string) => {
+    if (s === "all") return tk.all;
+    if (s === "pending") return tk.pending;
+    if (s === "in_progress") return tk.inProgress;
+    return tk.done;
+  };
 
+  const priorityShort = (p: string) => {
+    if (p === "low") return tk.priorityLowShort;
+    if (p === "medium") return tk.priorityMedShort;
+    return tk.priorityHighShort;
+  };
+
+  const statusIcon = (s: string) => {
+    if (s === "in_progress") return <Clock3 className="h-4 w-4" />;
+    if (s === "done") return <CheckCircle2 className="h-4 w-4" />;
+    return <Circle className="h-4 w-4" />;
+  };
+
+  const filtered = statusFilter === "all" ? tasks : tasks.filter(t => t.status === statusFilter);
   const pending = tasks.filter(t => t.status === "pending").length;
   const inProgress = tasks.filter(t => t.status === "in_progress").length;
   const done = tasks.filter(t => t.status === "done").length;
-
   const isPending = createTask.isPending || updateTask.isPending;
 
   return (
     <div className="space-y-3">
-      {/* Scoreboard */}
       <div className="rounded-2xl border border-white/6 p-4" style={{ background: "rgba(22,27,46,0.8)" }}>
         <div className="flex items-center gap-5">
           <div className="text-center">
-            <div className="font-display text-3xl leading-none text-[#e74c3c]">{pending}</div>
-            <div className="stat-label mt-1">PENDING</div>
+            <div className="font-display text-3xl leading-none text-[#e74c3c] ltr-num">{pending}</div>
+            <div className="stat-label mt-1">{tk.pending.toUpperCase()}</div>
           </div>
           <div className="w-px h-8 bg-white/10" />
           <div className="text-center">
-            <div className="font-display text-3xl leading-none text-[#4a90e2]">{inProgress}</div>
-            <div className="stat-label mt-1">IN PROGRESS</div>
+            <div className="font-display text-3xl leading-none text-[#4a90e2] ltr-num">{inProgress}</div>
+            <div className="stat-label mt-1">{tk.inProgress.toUpperCase()}</div>
           </div>
           <div className="w-px h-8 bg-white/10" />
           <div className="text-center">
-            <div className="font-display text-3xl leading-none text-[#2ecc71]">{done}</div>
-            <div className="stat-label mt-1">DONE</div>
+            <div className="font-display text-3xl leading-none text-[#2ecc71] ltr-num">{done}</div>
+            <div className="stat-label mt-1">{tk.done.toUpperCase()}</div>
           </div>
-          <div className="ml-auto">
+          <div className="ms-auto">
             <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-task">
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Add Task
+              <Plus className="h-3.5 w-3.5 me-1.5" />
+              {tk.addTask}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 flex-wrap">
         {(["all", "pending", "in_progress", "done"] as const).map(s => (
           <button
             key={s}
@@ -161,7 +179,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
             }}
             data-testid={`filter-${s}`}
           >
-            {s === "all" ? "All" : s === "in_progress" ? "In Progress" : s.charAt(0).toUpperCase() + s.slice(1)}
+            {filterLabel(s)}
           </button>
         ))}
       </div>
@@ -171,32 +189,28 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
       ) : filtered.length === 0 ? (
         <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
           <CheckSquare className="h-10 w-10 mx-auto text-white/15 mb-3" />
-          <p className="font-display text-xl text-white/30 tracking-wide">NO TASKS</p>
-          {statusFilter === "all" && <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold mt-4">Add Task</Button>}
+          <p className="font-display text-xl text-white/30 tracking-wide">{tk.noTasks.toUpperCase()}</p>
+          {statusFilter === "all" && <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold mt-4">{tk.addTask}</Button>}
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map(task => {
-            const statusCfg = STATUS_CONFIG[task.status];
-            const priorityCfg = PRIORITY_CONFIG[task.priority];
+            const statusColor = STATUS_COLORS[task.status];
+            const priorityColor = PRIORITY_COLORS[task.priority];
             return (
               <div
                 key={task.id}
                 className={`rounded-2xl border border-white/6 p-4 flex items-start gap-3 group hover:bg-white/3 transition-all ${task.status === "done" ? "opacity-50" : ""}`}
-                style={{
-                  background: "rgba(22,27,46,0.8)",
-                  borderLeft: `3px solid ${statusCfg.color}`,
-                }}
+                style={{ background: "rgba(22,27,46,0.8)", borderLeft: `3px solid ${statusColor}` }}
                 data-testid={`card-task-${task.id}`}
               >
                 <button
                   onClick={() => cycleStatus(task.id, task.status)}
                   className="mt-0.5 hover:scale-110 transition-transform shrink-0"
-                  style={{ color: statusCfg.color }}
-                  title="Click to advance status"
+                  style={{ color: statusColor }}
                   data-testid={`button-cycle-status-${task.id}`}
                 >
-                  {statusCfg.icon}
+                  {statusIcon(task.status)}
                 </button>
 
                 <div className="flex-1 min-w-0">
@@ -204,14 +218,14 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
                     <span className={`font-semibold text-sm text-white ${task.status === "done" ? "line-through" : ""}`} data-testid={`text-task-title-${task.id}`}>
                       {task.title}
                     </span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${priorityCfg.color}20`, color: priorityCfg.color }}>
-                      {priorityCfg.label}
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${priorityColor}20`, color: priorityColor }}>
+                      {priorityShort(task.priority)}
                     </span>
                   </div>
                   {task.assignedToPlayerName && (
-                    <p className="text-xs text-white/35 mt-0.5">Assigned to {task.assignedToPlayerName}</p>
+                    <p className="text-xs text-white/35 mt-0.5">{tk.assignedTo} {task.assignedToPlayerName}</p>
                   )}
-                  {task.dueDate && <p className="text-xs text-white/30">Due {task.dueDate}</p>}
+                  {task.dueDate && <p className="text-xs text-white/30">{tk.due} <span className="ltr-num">{task.dueDate}</span></p>}
                   {task.description && <p className="text-xs text-white/30 mt-0.5">{task.description}</p>}
                 </div>
 
@@ -232,27 +246,29 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl text-white tracking-wide">{editingId ? "EDIT TASK" : "ADD TASK"}</DialogTitle>
+            <DialogTitle className="font-display text-2xl text-white tracking-wide">
+              {editingId ? tk.editTask.toUpperCase() : tk.addTask.toUpperCase()}
+            </DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="title" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Title</FormLabel>
-                  <FormControl><Input placeholder="Task title" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-task-title" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{tk.title}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-task-title" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="priority" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Priority</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{tk.priority}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
-                        <SelectItem value="low" className="text-white">Low</SelectItem>
-                        <SelectItem value="medium" className="text-white">Medium</SelectItem>
-                        <SelectItem value="high" className="text-white">High</SelectItem>
+                        <SelectItem value="low" className="text-white">{tk.priorityLow}</SelectItem>
+                        <SelectItem value="medium" className="text-white">{tk.priorityMedium}</SelectItem>
+                        <SelectItem value="high" className="text-white">{tk.priorityHigh}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -260,13 +276,13 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
                 )} />
                 <FormField control={form.control} name="status" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Status</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{tk.statusLabel}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-status"><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
-                        <SelectItem value="pending" className="text-white">Pending</SelectItem>
-                        <SelectItem value="in_progress" className="text-white">In Progress</SelectItem>
-                        <SelectItem value="done" className="text-white">Done</SelectItem>
+                        <SelectItem value="pending" className="text-white">{tk.pending}</SelectItem>
+                        <SelectItem value="in_progress" className="text-white">{tk.inProgress}</SelectItem>
+                        <SelectItem value="done" className="text-white">{tk.done}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -276,11 +292,11 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
               {players.length > 0 && (
                 <FormField control={form.control} name="assignedToPlayerId" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Assign to</FormLabel>
+                    <FormLabel className="stat-label text-white/50">{tk.assignTo}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-assigned-player"><SelectValue placeholder="Unassigned" /></SelectTrigger></FormControl>
+                      <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-assigned-player"><SelectValue placeholder={tk.unassigned} /></SelectTrigger></FormControl>
                       <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
-                        <SelectItem value="" className="text-white">Unassigned</SelectItem>
+                        <SelectItem value="" className="text-white">{tk.unassigned}</SelectItem>
                         {players.map(p => <SelectItem key={p.id} value={p.id.toString()} className="text-white">{p.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
@@ -290,20 +306,20 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
               )}
               <FormField control={form.control} name="dueDate" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Due Date</FormLabel>
-                  <FormControl><Input type="date" className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="input-due-date" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{tk.dueDate}</FormLabel>
+                  <FormControl><Input type="date" className="bg-white/6 border-white/10 text-white rounded-xl ltr-num" data-testid="input-due-date" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="description" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Description</FormLabel>
-                  <FormControl><Textarea placeholder="Task details..." className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-task-description" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{tk.description}</FormLabel>
+                  <FormControl><Textarea className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-task-description" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <Button type="submit" className="w-full font-semibold rounded-xl h-11" style={{ background: teamColor, color: "white" }} disabled={isPending} data-testid="button-submit-task">
-                {isPending ? "Saving..." : editingId ? "Update Task" : "Create Task"}
+                {isPending ? t.common.saving : editingId ? tk.updateTask : tk.createTask}
               </Button>
             </form>
           </Form>

@@ -15,15 +15,17 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ArrowLeft, Users, Calendar, CheckSquare, MessageSquare,
-  Clock, AlertCircle, Activity, Link2, Check, Zap,
+  AlertCircle, Activity, Link2, Check, Zap,
 } from "lucide-react";
 import PlayersTab from "@/components/team/players-tab";
 import EventsTab from "@/components/team/events-tab";
 import TasksTab from "@/components/team/tasks-tab";
 import MessagesTab from "@/components/team/messages-tab";
 import { formatDistanceToNow } from "date-fns";
+import { he, es, enUS } from "date-fns/locale";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 
 const ACTIVITY_COLORS: Record<string, string> = {
   event_created: "#f7b538",
@@ -33,10 +35,14 @@ const ACTIVITY_COLORS: Record<string, string> = {
   message_sent: "#9b59b6",
 };
 
+const DATE_LOCALES = { he, es, en: enUS };
+
 export default function TeamDetailPage() {
   const { teamId } = useParams<{ teamId: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { t, language } = useI18n();
+  const td = t.teamDetail;
   const [copied, setCopied] = useState(false);
   const id = Number(teamId);
 
@@ -48,6 +54,7 @@ export default function TeamDetailPage() {
   });
 
   const teamColor = team?.avatarColor ?? "#FF6B35";
+  const dateLocale = DATE_LOCALES[language] ?? enUS;
 
   function copyMemberLink() {
     if (!team || !(team as any).joinCode) return;
@@ -56,7 +63,7 @@ export default function TeamDetailPage() {
     const url = `${base}/member/${joinCode}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
-      toast({ title: "Member link copied", description: "Share with your players" });
+      toast({ title: td.memberLinkCopied, description: td.shareWithPlayers });
       setTimeout(() => setCopied(false), 2000);
     });
   }
@@ -75,19 +82,25 @@ export default function TeamDetailPage() {
     return (
       <div className="p-8 flex flex-col items-center justify-center h-[50vh] text-white/40">
         <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-        <p>Squad not found.</p>
+        <p>{td.squadNotFound}</p>
         <Button variant="ghost" className="mt-4 text-white/50 hover:text-white" onClick={() => setLocation("/teams")}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Squads
+          <ArrowLeft className="h-4 w-4 me-2 flip-rtl" />
+          {td.backToSquads}
         </Button>
       </div>
     );
   }
 
+  const tabs = [
+    { value: "players", label: td.tabSquad, icon: Users },
+    { value: "events", label: td.tabLineup, icon: Calendar },
+    { value: "tasks", label: td.tabTasks, icon: CheckSquare },
+    { value: "messages", label: td.tabHuddle, icon: MessageSquare },
+  ];
+
   return (
     <div className="p-5 md:p-8 max-w-6xl mx-auto space-y-5">
 
-      {/* Team hero banner */}
       <div className="hero-card p-5 flex items-center gap-4" style={{
         background: `linear-gradient(135deg, ${teamColor}cc 0%, ${teamColor}55 100%)`,
         borderColor: `${teamColor}33`,
@@ -100,7 +113,7 @@ export default function TeamDetailPage() {
           className="text-white/70 hover:text-white hover:bg-white/10 shrink-0"
           data-testid="button-back"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-5 w-5 flip-rtl" />
         </Button>
 
         <div
@@ -115,7 +128,7 @@ export default function TeamDetailPage() {
             {team.name.toUpperCase()}
           </h1>
           <p className="text-white/60 text-sm font-medium mt-1">
-            {team.sport} · Coach {team.coachName}{team.season ? ` · ${team.season}` : ""}
+            {team.sport} · {td.coachLabel} {team.coachName}{team.season ? ` · ${team.season}` : ""}
           </p>
         </div>
 
@@ -129,35 +142,29 @@ export default function TeamDetailPage() {
               data-testid="button-share-member-link"
             >
               {copied ? (
-                <><Check className="h-4 w-4 mr-1.5 text-green-400" />Copied</>
+                <><Check className="h-4 w-4 me-1.5 text-green-400" />{td.copied}</>
               ) : (
-                <><Link2 className="h-4 w-4 mr-1.5" />Share Link</>
+                <><Link2 className="h-4 w-4 me-1.5" />{td.shareLink}</>
               )}
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p className="text-xs">Copy member view link for players</p>
+            <p className="text-xs">{td.copyLinkTooltip}</p>
           </TooltipContent>
         </Tooltip>
       </div>
 
       <Tabs defaultValue="players" className="space-y-4">
         <TabsList className="border border-white/8 p-1 rounded-xl h-auto gap-0.5" style={{ background: "rgba(22,27,46,0.9)" }}>
-          {[
-            { value: "players", label: "Squad", icon: Users },
-            { value: "events", label: "Lineup", icon: Calendar },
-            { value: "tasks", label: "Tasks", icon: CheckSquare },
-            { value: "messages", label: "Huddle", icon: MessageSquare },
-          ].map(t => (
+          {tabs.map(tab => (
             <TabsTrigger
-              key={t.value}
-              value={t.value}
+              key={tab.value}
+              value={tab.value}
               className="rounded-lg px-4 py-2 text-white/50 font-semibold text-sm data-[state=active]:text-white data-[state=active]:shadow-none transition-all"
-              style={{ ["--tw-data-active-bg" as string]: `${teamColor}33` }}
-              data-testid={`tab-${t.value === "players" ? "players" : t.value === "events" ? "events" : t.value}`}
+              data-testid={`tab-${tab.value}`}
             >
-              <t.icon className="h-3.5 w-3.5 mr-1.5" />
-              {t.label}
+              <tab.icon className="h-3.5 w-3.5 me-1.5" />
+              {tab.label}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -171,15 +178,12 @@ export default function TeamDetailPage() {
           </div>
 
           <div className="lg:col-span-1 space-y-4">
-            {/* Member link card */}
             <div className="rounded-2xl p-4 border" style={{ background: `${teamColor}10`, borderColor: `${teamColor}30` }}>
               <div className="flex items-center gap-2 mb-2">
                 <Zap className="h-3.5 w-3.5" style={{ color: teamColor }} />
-                <p className="text-xs font-bold tracking-widest uppercase" style={{ color: teamColor }}>Member Access</p>
+                <p className="text-xs font-bold tracking-widest uppercase" style={{ color: teamColor }}>{td.memberAccess}</p>
               </div>
-              <p className="text-xs text-white/40 mb-3 leading-relaxed">
-                Share the link with players. They see schedule, tasks, messages, and roster only.
-              </p>
+              <p className="text-xs text-white/40 mb-3 leading-relaxed">{td.memberAccessDesc}</p>
               <Button
                 size="sm"
                 onClick={copyMemberLink}
@@ -188,29 +192,28 @@ export default function TeamDetailPage() {
                 data-testid="button-copy-member-link-card"
               >
                 {copied ? (
-                  <><Check className="h-3.5 w-3.5 mr-1.5 text-green-400" />Copied!</>
+                  <><Check className="h-3.5 w-3.5 me-1.5 text-green-400" />{td.copied}!</>
                 ) : (
-                  <><Link2 className="h-3.5 w-3.5 mr-1.5" />Copy Member Link</>
+                  <><Link2 className="h-3.5 w-3.5 me-1.5" />{td.copyMemberLink}</>
                 )}
               </Button>
             </div>
 
-            {/* Activity feed */}
             <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
               <div className="px-4 py-3 border-b border-white/6 flex items-center gap-2">
                 <Activity className="h-3.5 w-3.5 text-white/40" />
-                <p className="section-label">Recent Activity</p>
+                <p className="section-label">{td.recentActivity}</p>
               </div>
               <div className="p-3 space-y-2">
                 {activity.length === 0 ? (
-                  <p className="text-xs text-white/25 text-center py-4">No recent activity</p>
+                  <p className="text-xs text-white/25 text-center py-4">{td.noRecentActivity}</p>
                 ) : (
                   activity.slice(0, 8).map(item => (
-                    <div key={item.id} className="flex gap-2.5 py-1.5 border-l-2 pl-2.5" style={{ borderColor: ACTIVITY_COLORS[item.type] ?? "#4a90e2" }} data-testid={`activity-item-${item.id}`}>
+                    <div key={item.id} className="flex gap-2.5 py-1.5 border-s-2 ps-2.5" style={{ borderColor: ACTIVITY_COLORS[item.type] ?? "#4a90e2" }} data-testid={`activity-item-${item.id}`}>
                       <div>
                         <p className="text-xs text-white/70 leading-tight">{item.description}</p>
-                        <p className="text-[10px] text-white/30 mt-0.5">
-                          {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true })}
+                        <p className="text-[10px] text-white/30 mt-0.5 ltr-num">
+                          {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true, locale: dateLocale })}
                         </p>
                       </div>
                     </div>

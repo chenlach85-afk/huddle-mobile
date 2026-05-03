@@ -25,15 +25,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Users, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  active: { label: "Active", color: "#2ecc71" },
-  inactive: { label: "Inactive", color: "rgba(255,255,255,0.3)" },
-  injured: { label: "Injured", color: "#e74c3c" },
+const STATUS_COLORS: Record<string, string> = {
+  active: "#2ecc71",
+  inactive: "rgba(255,255,255,0.3)",
+  injured: "#e74c3c",
 };
 
 const playerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().min(1),
   number: z.string().optional(),
   position: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
@@ -48,6 +49,8 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
   const [editingId, setEditingId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
+  const p = t.players;
 
   const { data: players = [], isLoading } = useListPlayers(teamId, {
     query: { enabled: !!teamId, queryKey: getListPlayersQueryKey(teamId) },
@@ -62,9 +65,9 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
   });
 
   function openCreate() { form.reset(); setEditingId(null); setOpen(true); }
-  function openEdit(p: typeof players[0]) {
-    form.reset({ name: p.name, number: p.number?.toString() || "", position: p.position || "", email: p.email || "", phone: p.phone || "", status: p.status, notes: p.notes || "" });
-    setEditingId(p.id);
+  function openEdit(player: typeof players[0]) {
+    form.reset({ name: player.name, number: player.number?.toString() || "", position: player.position || "", email: player.email || "", phone: player.phone || "", status: player.status, notes: player.notes || "" });
+    setEditingId(player.id);
     setOpen(true);
   }
 
@@ -80,34 +83,40 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
     };
     if (editingId) {
       updatePlayer.mutate({ playerId: editingId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); setOpen(false); toast({ title: "Player updated" }); },
-        onError: () => toast({ title: "Failed to update player", variant: "destructive" }),
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); setOpen(false); toast({ title: p.playerUpdated }); },
+        onError: () => toast({ title: p.failedUpdate, variant: "destructive" }),
       });
     } else {
       createPlayer.mutate({ teamId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); setOpen(false); toast({ title: "Player added to squad" }); },
-        onError: () => toast({ title: "Failed to add player", variant: "destructive" }),
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); setOpen(false); toast({ title: p.playerAdded }); },
+        onError: () => toast({ title: p.failedAdd, variant: "destructive" }),
       });
     }
   }
 
   function handleDelete(playerId: number) {
-    if (!confirm("Remove player from squad?")) return;
+    if (!confirm(p.confirmRemove)) return;
     deletePlayer.mutate({ playerId }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); toast({ title: "Player removed" }); },
-      onError: () => toast({ title: "Failed to remove player", variant: "destructive" }),
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); toast({ title: p.playerRemoved }); },
+      onError: () => toast({ title: p.failedRemove, variant: "destructive" }),
     });
   }
+
+  const statusLabel = (s: string) => {
+    if (s === "active") return p.statusActive;
+    if (s === "inactive") return p.statusInactive;
+    return p.statusInjured;
+  };
 
   const isPending = createPlayer.isPending || updatePlayer.isPending;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="section-label">{players.length} ATHLETES ON SQUAD</p>
+        <p className="section-label"><span className="ltr-num">{players.length}</span> {p.athletesOnSquad}</p>
         <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-player">
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
-          Add Athlete
+          <Plus className="h-3.5 w-3.5 me-1.5" />
+          {p.addAthlete}
         </Button>
       </div>
 
@@ -116,24 +125,19 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
       ) : players.length === 0 ? (
         <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
           <Users className="h-10 w-10 mx-auto text-white/15 mb-3" />
-          <p className="font-display text-xl text-white/30 tracking-wide">EMPTY SQUAD</p>
-          <p className="text-xs text-white/25 mt-1 mb-4">Add athletes to get started</p>
-          <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold">Add Athlete</Button>
+          <p className="font-display text-xl text-white/30 tracking-wide">{p.emptySquad.toUpperCase()}</p>
+          <p className="text-xs text-white/25 mt-1 mb-4">{p.addToGetStarted}</p>
+          <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold">{p.addAthlete}</Button>
         </div>
       ) : (
         <div className="space-y-2">
           {players.map(player => {
-            const statusCfg = STATUS_CONFIG[player.status];
+            const color = STATUS_COLORS[player.status];
             return (
               <div key={player.id} className="rounded-2xl border border-white/6 p-4 flex items-center gap-4 group hover:bg-white/3 transition-all" style={{ background: "rgba(22,27,46,0.8)" }} data-testid={`card-player-${player.id}`}>
-                {/* Jersey tile */}
-                <div
-                  className="jersey-tile text-lg relative"
-                  style={{ background: `linear-gradient(135deg, ${teamColor}, ${teamColor}88)` }}
-                >
-                  {player.number ?? player.name.charAt(0).toUpperCase()}
-                  {/* Status dot */}
-                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#161b2e]" style={{ background: statusCfg.color }} />
+                <div className="jersey-tile text-lg relative" style={{ background: `linear-gradient(135deg, ${teamColor}, ${teamColor}88)` }}>
+                  <span className="ltr-num">{player.number ?? player.name.charAt(0).toUpperCase()}</span>
+                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#161b2e]" style={{ background: color }} />
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -142,7 +146,7 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
                     {player.position && <span className="text-xs text-white/40">{player.position}</span>}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: statusCfg.color }}>{statusCfg.label}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color }}>{statusLabel(player.status)}</span>
                     {(player.email || player.phone) && (
                       <span className="text-[10px] text-white/25">{player.email || player.phone}</span>
                     )}
@@ -166,36 +170,38 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl text-white tracking-wide">{editingId ? "EDIT ATHLETE" : "ADD ATHLETE"}</DialogTitle>
+            <DialogTitle className="font-display text-2xl text-white tracking-wide">
+              {editingId ? p.editAthlete.toUpperCase() : p.addAthlete.toUpperCase()}
+            </DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Full Name</FormLabel>
-                  <FormControl><Input placeholder="Player name" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-name" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{p.fullName}</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-name" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="number" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Jersey #</FormLabel>
-                    <FormControl><Input type="number" placeholder="00" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl font-display text-xl" data-testid="input-jersey-number" {...field} /></FormControl>
+                    <FormLabel className="stat-label text-white/50">{p.jerseyNumber}</FormLabel>
+                    <FormControl><Input type="number" placeholder="00" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl font-display text-xl ltr-num" data-testid="input-jersey-number" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="position" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="stat-label text-white/50">Position</FormLabel>
-                    <FormControl><Input placeholder="e.g. Forward" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-position" {...field} /></FormControl>
+                    <FormLabel className="stat-label text-white/50">{p.position}</FormLabel>
+                    <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-position" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
               </div>
               <FormField control={form.control} name="status" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Status</FormLabel>
+                  <FormLabel className="stat-label text-white/50">{p.statusLabel}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-player-status">
@@ -203,9 +209,9 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
-                      <SelectItem value="active" className="text-white">Active</SelectItem>
-                      <SelectItem value="inactive" className="text-white">Inactive</SelectItem>
-                      <SelectItem value="injured" className="text-white">Injured</SelectItem>
+                      <SelectItem value="active" className="text-white">{p.statusActive}</SelectItem>
+                      <SelectItem value="inactive" className="text-white">{p.statusInactive}</SelectItem>
+                      <SelectItem value="injured" className="text-white">{p.statusInjured}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -213,27 +219,27 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
               )} />
               <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Email (optional)</FormLabel>
-                  <FormControl><Input type="email" placeholder="player@example.com" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-email" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{p.email} ({t.common.optional})</FormLabel>
+                  <FormControl><Input type="email" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-email" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="phone" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Phone (optional)</FormLabel>
-                  <FormControl><Input placeholder="(555) 000-0000" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-phone" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{p.phone} ({t.common.optional})</FormLabel>
+                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-phone" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="notes" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="stat-label text-white/50">Notes (optional)</FormLabel>
-                  <FormControl><Textarea placeholder="Any notes..." className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-notes" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">{p.notes} ({t.common.optional})</FormLabel>
+                  <FormControl><Textarea className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-notes" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <Button type="submit" className="w-full font-semibold rounded-xl h-11" style={{ background: teamColor, color: "white" }} disabled={isPending} data-testid="button-submit-player">
-                {isPending ? "Saving..." : editingId ? "Update Athlete" : "Add to Squad"}
+                {isPending ? t.common.saving : editingId ? p.updateAthlete : p.addToSquad}
               </Button>
             </form>
           </Form>
