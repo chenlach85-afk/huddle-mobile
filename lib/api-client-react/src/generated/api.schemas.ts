@@ -387,6 +387,32 @@ export interface DashboardSummary {
   teamBreakdown: TeamStat[];
 }
 
+export type CalendarEventType =
+  (typeof CalendarEventType)[keyof typeof CalendarEventType];
+
+export const CalendarEventType = {
+  practice: "practice",
+  game: "game",
+  meeting: "meeting",
+  other: "other",
+} as const;
+
+export interface CalendarEvent {
+  id: number;
+  title: string;
+  type: CalendarEventType;
+  /** @nullable */
+  location?: string | null;
+  startsAt: string;
+  /** @nullable */
+  endsAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  teamId: number;
+  teamName: string;
+  teamColor: string;
+}
+
 export type ActivityItemType =
   (typeof ActivityItemType)[keyof typeof ActivityItemType];
 

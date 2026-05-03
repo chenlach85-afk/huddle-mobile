@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
 import TeamsPage from "@/pages/teams";
 import TeamDetailPage from "@/pages/team-detail";
+import CalendarPage from "@/pages/calendar";
 import MemberView from "@/pages/member-view";
 import NotFound from "@/pages/not-found";
 
@@ -31,6 +32,7 @@ function Router() {
             <Route path="/" component={Dashboard} />
             <Route path="/teams" component={TeamsPage} />
             <Route path="/teams/:teamId" component={TeamDetailPage} />
+            <Route path="/calendar" component={CalendarPage} />
             <Route component={NotFound} />
           </Switch>
         </AppLayout>

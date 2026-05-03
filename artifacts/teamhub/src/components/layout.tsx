@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, Menu, Zap } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Menu, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -7,6 +7,7 @@ import { useState } from "react";
 const NAV_ITEMS = [
   { href: "/", label: "Huddle", icon: LayoutDashboard, exact: true },
   { href: "/teams", label: "Squads", icon: Users, exact: false },
+  { href: "/calendar", label: "Calendar", icon: Calendar, exact: false },
 ];
 
 function NavLinks({ onClose }: { onClose?: () => void }) {

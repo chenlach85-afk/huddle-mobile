@@ -620,6 +620,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ─── CALENDAR ─────────────────────────────────────────────────────────────
+  /calendar:
+    get:
+      operationId: getCalendar
+      tags: [dashboard]
+      summary: Get all events across all teams for calendar view
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarEvent"
+
   # ─── DASHBOARD ────────────────────────────────────────────────────────────
   /dashboard/summary:
     get:
@@ -1123,6 +1139,41 @@ components:
         - playerCount
         - upcomingEvents
         - pendingTasks
+
+    CalendarEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        type:
+          type: string
+          enum: [practice, game, meeting, other]
+        location:
+          type: ["string", "null"]
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: ["string", "null"]
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        teamId:
+          type: integer
+        teamName:
+          type: string
+        teamColor:
+          type: string
+      required:
+        - id
+        - title
+        - type
+        - startsAt
+        - teamId
+        - teamName
+        - teamColor
 
     ActivityItem:
       type: object

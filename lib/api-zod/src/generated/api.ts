@@ -457,6 +457,23 @@ export const DeleteMessageParams = zod.object({
 });
 
 /**
+ * @summary Get all events across all teams for calendar view
+ */
+export const GetCalendarResponseItem = zod.object({
+  id: zod.number(),
+  title: zod.string(),
+  type: zod.enum(["practice", "game", "meeting", "other"]),
+  location: zod.string().nullish(),
+  startsAt: zod.coerce.date(),
+  endsAt: zod.coerce.date().nullish(),
+  notes: zod.string().nullish(),
+  teamId: zod.number(),
+  teamName: zod.string(),
+  teamColor: zod.string(),
+});
+export const GetCalendarResponse = zod.array(GetCalendarResponseItem);
+
+/**
  * @summary Get overview stats across all teams
  */
 export const GetDashboardSummaryResponse = zod.object({
