@@ -1,0 +1,420 @@
+Add subscription billing to the existing TeamHub app. Use Stripe for payments. Do NOT break any existing features. Add new tables, routes, and pages alongside the current code.
+Pricing tiers
+TierMonthlyYearly (save 16%)LimitsSolo Coach$9$901 team, up to 25 playersPro Coach$19$1903 teams, up to 50 players eachClub$49$490Unlimited teams, unlimited players, multiple coach seats
+All plans get a 14-day free trial, no card required. Card requested at trial end.
+Required Replit Secrets to add
+STRIPE_SECRET_KEY                  (sk_test_... for testing, sk_live_... for prod)
+STRIPE_WEBHOOK_SECRET              (whsec_... — from webhook endpoint creation)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (pk_test_... or pk_live_...)
+ADMIN_USER_IDS                     (comma-separated list of user UUIDs that can access /admin)
+Database schema changes
+Generate setup-billing.sql for the user to run in Supabase SQL Editor:
+sql-- ============================================================================
+-- PLANS — your subscription products (seeded data)
+-- ============================================================================
+create table public.plans (
+  id text primary key,
+  name text not null,
+  description text,
+  price_monthly_cents int not null,
+  price_yearly_cents int not null,
+  stripe_price_id_monthly text,
+  stripe_price_id_yearly text,
+  max_teams int,                    -- null = unlimited
+  max_players_per_team int,         -- null = unlimited
+  max_coaches_per_team int default 1,
+  features jsonb default '[]',      -- list of feature strings for marketing page
+  display_order int default 0,
+  active boolean default true,
+  created_at timestamptz default now()
+);
+
+insert into plans (id, name, description, price_monthly_cents, price_yearly_cents, max_teams, max_players_per_team, max_coaches_per_team, features, display_order) values
+('solo',   'Solo Coach', 'For independent coaches managing a single team',   900,  9000,  1,    25,   1, '["1 team","Up to 25 players","All scheduling features","Push notifications","Group messaging","Training programs","Task tracking","File storage 1GB"]', 1),
+('pro',    'Pro Coach',  'For coaches managing multiple teams or age groups',1900, 19000, 3,    50,   2, '["Up to 3 teams","Up to 50 players per team","2 coach seats per team","All Solo features","Priority email support","File storage 5GB"]', 2),
+('club',   'Club',       'For sports clubs and academies with many teams',   4900, 49000, null, null, 5, '["Unlimited teams","Unlimited players","5 coach seats per team","All Pro features","Custom team branding","Bulk player import","File storage 50GB","Phone support"]', 3);
+
+-- ============================================================================
+-- SUBSCRIPTIONS — one per paying coach
+-- ============================================================================
+create table public.subscriptions (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  plan_id text not null references plans(id),
+  billing_period text default 'monthly' check (billing_period in ('monthly', 'yearly')),
+  stripe_customer_id text,
+  stripe_subscription_id text unique,
+  status text not null check (status in ('trialing', 'active', 'past_due', 'canceled', 'incomplete', 'incomplete_expired', 'unpaid', 'paused')),
+  trial_ends_at timestamptz,
+  current_period_start timestamptz,
+  current_period_end timestamptz,
+  cancel_at_period_end boolean default false,
+  canceled_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_id)  -- one active sub per user
+);
+
+create index subscriptions_status_idx on subscriptions(status);
+create index subscriptions_stripe_customer_idx on subscriptions(stripe_customer_id);
+
+-- ============================================================================
+-- COACH_INVITATIONS — admin-issued invites for comp accounts or beta testers
+-- ============================================================================
+create table public.coach_invitations (
+  id uuid primary key default uuid_generate_v4(),
+  email text not null,
+  invited_by uuid references auth.users(id),
+  plan_id text references plans(id),
+  trial_days int default 14,
+  comp boolean default false,         -- if true, free forever
+  comp_expires_at timestamptz,        -- null = forever, otherwise free until this date
+  token text unique not null default uuid_generate_v4()::text,
+  used boolean default false,
+  used_by uuid references auth.users(id),
+  used_at timestamptz,
+  expires_at timestamptz default now() + interval '30 days',
+  notes text,
+  created_at timestamptz default now()
+);
+
+create index coach_invitations_email_idx on coach_invitations(email);
+create index coach_invitations_token_idx on coach_invitations(token);
+
+-- ============================================================================
+-- BILLING_EVENTS — audit log of Stripe webhook events
+-- ============================================================================
+create table public.billing_events (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id),
+  stripe_event_id text unique,
+  event_type text not null,
+  amount_cents int,
+  currency text,
+  payload jsonb,
+  processed_at timestamptz default now()
+);
+
+-- ============================================================================
+-- USAGE_SNAPSHOTS — for tracking against plan limits and analytics
+-- ============================================================================
+create table public.usage_snapshots (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  team_count int,
+  total_player_count int,
+  storage_bytes bigint,
+  snapshot_at timestamptz default now()
+);
+
+create index usage_snapshots_user_idx on usage_snapshots(user_id, snapshot_at desc);
+
+-- ============================================================================
+-- HELPER FUNCTION: check if user has active subscription
+-- ============================================================================
+create or replace function public.has_active_subscription(check_user_id uuid)
+returns boolean language sql security definer stable as $$
+  select exists(
+    select 1 from subscriptions
+    where user_id = check_user_id
+      and status in ('trialing', 'active')
+      and (current_period_end is null or current_period_end > now())
+  );
+$$;
+
+create or replace function public.get_user_plan(check_user_id uuid)
+returns text language sql security definer stable as $$
+  select plan_id from subscriptions
+  where user_id = check_user_id
+    and status in ('trialing', 'active')
+  limit 1;
+$$;
+
+-- ============================================================================
+-- AUTO-CREATE TRIAL SUBSCRIPTION when user creates their first team
+-- ============================================================================
+create or replace function public.start_trial_on_team_create()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- Only create trial if user doesn't already have a subscription
+  if not exists(select 1 from subscriptions where user_id = new.created_by) then
+    insert into subscriptions (user_id, plan_id, status, trial_ends_at)
+    values (new.created_by, 'solo', 'trialing', now() + interval '14 days');
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists on_team_created_start_trial on teams;
+create trigger on_team_created_start_trial
+  after insert on teams
+  for each row execute procedure public.start_trial_on_team_create();
+
+-- ============================================================================
+-- RLS POLICIES
+-- ============================================================================
+alter table plans enable row level security;
+alter table subscriptions enable row level security;
+alter table coach_invitations enable row level security;
+alter table billing_events enable row level security;
+alter table usage_snapshots enable row level security;
+
+-- Plans: everyone can read active plans (for pricing page)
+create policy "anyone read active plans" on plans for select to anon, authenticated using (active = true);
+
+-- Subscriptions: own only (admins read all via service role)
+create policy "view own subscription" on subscriptions for select using (user_id = auth.uid());
+
+-- Coach invitations: only the invited user can read by token (handled in API)
+-- Admins manage all (via service role)
+
+-- Billing events: own only
+create policy "view own billing events" on billing_events for select using (user_id = auth.uid());
+
+-- Usage snapshots: own only
+create policy "view own usage" on usage_snapshots for select using (user_id = auth.uid());
+Stripe setup steps (document in setup-stripe.md)
+Generate setup-stripe.md walking the user through:
+
+Create Stripe account at stripe.com (free)
+In test mode (toggle in dashboard), create 6 Products:
+
+"Solo Coach Monthly" with recurring price $9/mo
+"Solo Coach Yearly" with recurring price $90/yr
+"Pro Coach Monthly" with recurring price $19/mo
+"Pro Coach Yearly" with recurring price $190/yr
+"Club Monthly" with recurring price $49/mo
+"Club Yearly" with recurring price $490/yr
+
+
+Copy each Price ID (starts with price_...) and update the plans table with update plans set stripe_price_id_monthly = '...', stripe_price_id_yearly = '...' where id = 'solo'; etc.
+Get API keys from Developers → API Keys:
+
+Publishable key → NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+Secret key → STRIPE_SECRET_KEY
+
+
+Set up webhook endpoint:
+
+Developers → Webhooks → Add endpoint
+URL: https://your-app.replit.app/api/stripe/webhook
+Events to listen: checkout.session.completed, customer.subscription.created, customer.subscription.updated, customer.subscription.deleted, invoice.payment_failed, invoice.payment_succeeded
+Copy the webhook signing secret → STRIPE_WEBHOOK_SECRET
+
+
+Test with a test card: 4242 4242 4242 4242, any future date, any CVC, any zip
+When ready for real money: switch to live mode, repeat the product creation, swap keys
+
+API routes to add
+POST /api/stripe/checkout
+Body: { plan_id, billing_period: 'monthly' | 'yearly' }
+
+Authenticated
+Get or create Stripe customer (link via subscriptions.stripe_customer_id)
+Create Checkout Session with the right Price ID
+Set success URL to /billing/success?session_id={CHECKOUT_SESSION_ID} and cancel URL to /pricing
+Set subscription_data.trial_period_days = 0 (we already give trial via the trial flow; Checkout is for paying users converting from trial)
+Return { url } for client redirect
+
+POST /api/stripe/portal
+
+Authenticated
+Create Stripe Customer Portal session for the user
+Return { url } — redirects to Stripe-hosted portal where user manages card, cancels, switches plans
+
+POST /api/stripe/webhook
+
+Verify signature with STRIPE_WEBHOOK_SECRET
+Handle these event types:
+
+checkout.session.completed → upsert subscription, set status active
+customer.subscription.updated → update period, status, cancel_at_period_end
+customer.subscription.deleted → mark canceled
+invoice.payment_failed → mark past_due, send email warning
+invoice.payment_succeeded → log billing event
+
+
+Always log to billing_events table for audit
+Return 200 OK quickly (Stripe retries on failure)
+
+GET /api/subscription/status
+
+Returns current user's subscription with computed fields:
+
+is_active boolean
+is_trialing boolean
+days_left_in_trial number
+current_plan plan object
+next_billing_amount and next_billing_date
+
+
+
+POST /api/admin/invite-coach
+
+Admin only (check ADMIN_USER_IDS)
+Body: { email, plan_id, trial_days, comp, comp_expires_at, notes }
+Create row in coach_invitations
+Send email with magic link /auth/invite/[token]
+
+POST /api/auth/redeem-invite
+
+Body: { token }
+Verify token valid, not used, not expired
+Mark invitation as used
+If comp = true: create subscription with status active, no Stripe customer, comp until comp_expires_at
+Otherwise: create subscription with extended trial via trial_days
+
+Pages to add
+/pricing (public)
+
+Three tier cards side by side
+Monthly/Yearly toggle (default monthly)
+Yearly shows "Save $X" badge
+Each card has feature list + "Start free trial" CTA
+"Start free trial" → if logged out, redirect to /auth/signup?plan=solo&period=monthly; if logged in, hits /api/stripe/checkout (only after trial)
+During trial, button says "Activate plan" instead
+
+/billing (authenticated, in coach More tab)
+
+Current plan card showing:
+
+Plan name + monthly/yearly + price
+Status badge (Trial / Active / Past Due / Canceled)
+If trialing: countdown "11 days left in your free trial"
+Next billing date and amount (or "Trial ends [date]")
+
+
+"Manage payment & cancel" button → /api/stripe/portal
+"Change plan" button → opens modal with the 3 tiers, current marked
+Usage section:
+
+"X / 25 players" progress bar (red if over limit)
+"Y / 1 teams" progress bar
+Storage usage
+
+
+Billing history table (from billing_events)
+
+/billing/success
+
+Lands here after successful Checkout
+Reads ?session_id=... to confirm
+Shows "Welcome to [plan name]! 🎉" + "Go to dashboard" button
+Triggers a refetch of subscription status
+
+/auth/invite/[token]
+
+Reads token from URL
+If user is logged out: show "You're invited! Create your account" → on signup, redeem token
+If logged in: show "Accept invitation?" → on confirm, redeem token
+
+Coach onboarding changes
+Update the existing /onboarding flow:
+
+After coach creates their first team, the trigger auto-creates a trialing subscription
+Show "🎉 Your 14-day free trial just started" banner on team home
+Day 11 of trial: show modal "Trial ends in 3 days. Add payment method to keep your team."
+Day 14 (trial end): subscription auto-transitions to active IF Stripe has card on file, else incomplete
+If incomplete for 7 days: lock coach out of write features (can read, can't create events/messages)
+If canceled: show "Reactivate" CTA, all team data preserved
+
+Plan limit enforcement
+In all coach actions (create event, add player, create team), check before allowing:
+typescriptasync function canPerformAction(userId: string, action: 'add_player' | 'create_team'): Promise<{allowed: boolean, reason?: string}> {
+  const sub = await getSubscription(userId);
+  if (!sub || sub.status === 'canceled') {
+    return { allowed: false, reason: 'No active subscription' };
+  }
+
+  const plan = await getPlan(sub.plan_id);
+
+  if (action === 'create_team' && plan.max_teams !== null) {
+    const teamCount = await countTeamsForUser(userId);
+    if (teamCount >= plan.max_teams) {
+      return { allowed: false, reason: `${plan.name} allows max ${plan.max_teams} team(s)` };
+    }
+  }
+
+  if (action === 'add_player' && plan.max_players_per_team !== null) {
+    // ... check current team's player count
+  }
+
+  return { allowed: true };
+}
+When blocked, show a modal: "You've reached the [Plan] limit. Upgrade to [Next Plan] to add more." with "Upgrade" CTA.
+Admin panel
+/admin (only for users in ADMIN_USER_IDS)
+Tabs:
+Dashboard:
+
+MRR (sum of active subscriptions × monthly equivalent)
+Total active subscriptions
+Trial → paid conversion rate (last 30 days)
+New signups this week
+Churn rate (last 30 days)
+Chart: subscription growth over time
+
+Coaches:
+
+Searchable table of all coaches
+Columns: email, plan, status, trial_ends/period_end, teams count, players count, MRR contribution
+Click row → coach detail with all teams, billing history, usage
+Actions: extend trial, comp account, refund (links to Stripe), cancel subscription, impersonate (for support)
+
+Invitations:
+
+List all coach invitations (used and unused)
+"Send invitation" button → modal with email, plan, trial days, comp toggle, notes
+"Revoke" button on unused invitations
+
+Billing events:
+
+Filtered audit log of all webhook events
+Useful for debugging "why didn't this work?"
+
+Plans:
+
+Edit plan details, prices, limits
+Note: Stripe price IDs must be updated separately on Stripe side; this just changes display text
+
+Email notifications (use Resend if RESEND_API_KEY set)
+Send these transactional emails:
+TriggerSubjectWhenTrial started"Welcome to TeamHub — 14 days free"On first team createTrial ending soon"Your trial ends in 3 days"Day 11 of trialTrial ended (no card)"Your trial ended — add payment to continue"Day 14 if incompleteSubscription activated"Payment received — you're on [Plan]"After successful CheckoutPayment failed"Payment failed — please update your card"On invoice.payment_failedSubscription canceled"Sorry to see you go — your team data is preserved"On cancelInvitation received"You've been invited to TeamHub"On admin invite
+Each email links back to the app with relevant action button.
+Critical rules
+
+Existing MVP must keep working unchanged. All current features (events, messages, tasks, etc.) work for free during the trial.
+No paywalls during trial. Coaches see all features.
+Hard limits only after trial expires. Soft warnings (banners) before.
+Player experience never changes. Players are always free; they don't see billing UI at all.
+Multi-coach support per team is gated by plan (max_coaches_per_team).
+Stripe is source of truth for status. Webhook is the only thing that flips status to active or canceled. Never trust the client.
+Comp accounts: subscriptions.stripe_subscription_id IS NULL AND status = 'active' means it's a comp — don't try to fetch from Stripe.
+Test mode vs live mode: Use STRIPE_SECRET_KEY value's prefix (sk_test_ vs sk_live_) to detect mode. Show "Test Mode" banner in admin if test.
+
+Build sequence
+
+Add the new tables (run setup-billing.sql in Supabase)
+Implement /api/subscription/status and the React hook to consume it
+Build /pricing page (purely static, no Stripe yet)
+Build trial start trigger + trial countdown banner
+Add Stripe SDK setup (server: stripe npm package; client: @stripe/stripe-js)
+Implement /api/stripe/checkout with test mode
+Build /billing page with current plan + Manage button
+Implement /api/stripe/portal
+Implement /api/stripe/webhook with all event handlers
+Add plan limit enforcement to event/team/player creation
+Build /admin panel with dashboard, coaches list, invitations
+Build coach invitation flow (/auth/invite/[token])
+Wire up Resend for transactional emails
+Test full flow: signup → trial → trial expire → checkout → renewal → cancel → reactivate
+
+What NOT to do
+
+Don't add billing to the player experience
+Don't break free trial (a hard ask for cards on day 1 will kill conversion)
+Don't put Stripe.js on every page (only checkout and billing pages)
+Don't store credit card numbers (Stripe handles this — never touch raw card data)
+Don't auto-charge after trial without warning emails on day 11
+Don't lock data when subscription expires (preserve everything; just disable write actions)
+
+Build it now. Start with step 1, deliver in sequence. Test mode first; flip to live mode only after manual verification.
