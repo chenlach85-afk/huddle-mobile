@@ -4,3 +4,7 @@ export * from "./events";
 export * from "./attendance";
 export * from "./tasks";
 export * from "./messages";
+export * from "./users";
+export * from "./notifications";
+export * from "./team_members";
+export * from "./files";

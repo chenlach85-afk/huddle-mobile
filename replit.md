@@ -12,17 +12,30 @@ A full-stack sports team management app for coaches, built with React+Vite and E
 - `lib/api-client-react` — Generated React Query hooks (`@workspace/api-client-react`)
 - `lib/api-zod` — Generated Zod validation schemas (`@workspace/api-zod`)
 
+## Authentication
+
+Clerk Auth (Replit-managed). Provisioned via `setupClerkWhitelabelAuth()`.
+- Secrets: `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`
+- Proxy middleware: `artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts`
+- Auth routes: `POST /api/auth/sync`, `GET /api/auth/me`, `PATCH /api/auth/me`
+- `requireAuth` middleware: `artifacts/api-server/src/middlewares/requireAuth.ts`
+- User sync on sign-in: `UserSync` component automatically creates the DB user record
+
 ## Database
 
-PostgreSQL via `DATABASE_URL` env var. Tables:
-- `teams` — id, name, sport, season, description, coach_name, avatar_color, player_count, timestamps
-- `players` — id, team_id (FK→teams), name, number, position, email, phone, date_of_birth, notes, status (active|inactive|injured), timestamps
-- `events` — id, team_id (FK→teams), title, type (practice|game|meeting|other), location, starts_at, ends_at, notes, timestamps
-- `attendance` — id, event_id (FK→events), player_id (FK→players), status (attending|not_attending|maybe|no_response), notes, updated_at
-- `tasks` — id, team_id (FK→teams), title, description, assigned_to_player_id (FK→players), due_date, status (pending|in_progress|done), priority (low|medium|high), timestamps
-- `messages` — id, team_id (FK→teams), sender_name, sender_role (coach|player|admin), content, pinned, created_at
+PostgreSQL via `DATABASE_URL` env var. Schema push: `pnpm --filter @workspace/db run push`
 
-Schema push: `pnpm --filter @workspace/db run push`
+Tables:
+- `teams` — id, name, sport, season, description, coach_name, avatar_color, player_count, join_code, timestamps
+- `players` — id, team_id (FK→teams), name, number, position, email, phone, date_of_birth, notes, status
+- `events` — id, team_id (FK→teams), title, type, location, starts_at, ends_at, notes, timestamps
+- `attendance` — id, event_id (FK→events), player_id (FK→players), status, notes, updated_at
+- `tasks` — id, team_id (FK→teams), title, description, assigned_to_player_id, due_date, status, priority, timestamps
+- `messages` — id, team_id (FK→teams), sender_name, sender_role, content, pinned, created_at
+- `users` — id, clerk_id (unique), email, name, role, language, notifications_enabled, email_notifications, push_notifications, calendar_reminder_minutes, timestamps
+- `notifications` — id, user_id (FK→users), type, title, body, read, related_id, related_type, created_at
+- `team_members` — id, team_id (FK→teams), user_id (FK→users), role, created_at
+- `files` — id, uploader_id, team_id, filename, original_name, mime_type, size, url, related_type, related_id, created_at
 
 ## API Routes
 
@@ -31,6 +44,14 @@ All under `/api/` base path:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | /api/healthz | Health check |
+| POST | /api/auth/sync | Create/get user record after Clerk sign-in |
+| GET | /api/auth/me | Get current user settings |
+| PATCH | /api/auth/me | Update user settings (language, notifications, etc.) |
+| GET | /api/notifications | List user notifications (auth required) |
+| PATCH | /api/notifications/:id/read | Mark notification read |
+| PATCH | /api/notifications/read-all | Mark all notifications read |
+| POST | /api/files/upload | Upload file as base64 (auth required) |
+| GET | /api/files | List files by team/related |
 | GET | /api/dashboard/summary | Aggregate stats |
 | GET | /api/teams/:teamId/activity | Recent activity feed |
 | GET/POST | /api/teams | List / create teams |
@@ -44,36 +65,53 @@ All under `/api/` base path:
 | PATCH/DELETE | /api/tasks/:taskId | Task CRUD |
 | GET/POST | /api/teams/:teamId/messages | List / post messages |
 | DELETE | /api/messages/:messageId | Delete message |
+| GET | /api/member/:joinCode | Public member view |
+| GET | /api/calendar | Calendar events with team info |
 
 ## Frontend Pages
 
-- `/` — Dashboard: stat cards (teams/players/events/tasks), team breakdown, quick actions
-- `/teams` — Team list with create-team dialog (color picker, sport selector)
-- `/teams/:teamId` — Team detail with 4 tabs:
-  - **Roster** — player cards with status (active/inactive/injured), add/edit/delete
-  - **Schedule** — event cards by date, click to expand attendance tracking panel, add/edit/delete
-  - **Tasks** — filterable by status, click status icon to cycle pending→in_progress→done, add/edit/delete
-  - **Messages** — message feed with pinned support, composer with sender name/role
+- `/` — Landing page (public) with sign-in/sign-up CTAs; authenticated users redirect to `/dashboard`
+- `/sign-in/*?` — Clerk sign-in (themed dark navy)
+- `/sign-up/*?` — Clerk sign-up (themed dark navy)
+- `/dashboard` — Scoreboard hero card + stats (auth required)
+- `/teams` — Team list with create-team dialog (auth required)
+- `/teams/:teamId` — Team detail with tabs: Roster, Schedule, Tasks, Messages (auth required)
+- `/calendar` — Month grid + upcoming sidebar + day detail panel (auth required)
+- `/settings` — Profile, language switcher, notification prefs, security/change password (auth required)
+- `/member/:joinCode` — Public read-only player view (no auth)
 
-## Codegen
+## i18n
 
-After modifying `lib/api-spec/src/openapi.yaml`:
-```
-pnpm --filter @workspace/api-spec run codegen
-```
-Then manually overwrite `lib/api-zod/src/index.ts` to only contain:
-```ts
-export * from "./generated/api";
-```
+Language switcher in Settings: English, Hebrew (RTL), Spanish.
+- Context: `artifacts/teamhub/src/lib/i18n.tsx` — `I18nProvider`, `useI18n()`, `Language` type
+- Stored in `localStorage` and synced to the DB user record
+- RTL support via `document.dir` and `flex-row-reverse` on layout
+
+## Notifications
+
+In-app notification bell (top-right) polling every 30s.
+- `useNotifications()`, `useMarkNotificationRead()`, `useMarkAllRead()` hooks
+- `createNotification()` helper in `artifacts/api-server/src/routes/notifications.ts`
+- Types: task, event, message, general
+
+## File Uploads
+
+Base64 upload endpoint. Client-side `FileUploader` component in `artifacts/teamhub/src/components/file-uploader.tsx`.
+- Max 10MB per file
+- Supports images, videos, documents
 
 ## Design
 
-- Font: Outfit (Google Fonts)
-- Primary color: orange (`--primary: 25 95% 53%`)
-- Background: near-white (`--background: 0 0% 98%`)
-- Sidebar: white card, 60px wide on desktop
-- All interactive elements have `data-testid` attributes
+Huddle aesthetic — dark navy stadium theme:
+- `background: hsl(226, 40%, 7%)` — deep navy
+- `primary: hsl(22, 100%, 60%)` — ignition orange
+- Font display: Bebas Neue + Oswald; body: Inter
+- CSS utilities: `.font-display`, `.jersey-tile`, `.hero-card`, `.stat-value`, `.stat-label`, `.section-label`
+- Per-team color theming via `avatarColor`
+- Tailwind v4 with `@tailwindcss/vite` plugin (`optimize: false` for Clerk compat)
 
-## Billing
+## Key Config
 
-Stripe integration was explicitly deferred by the user. Not implemented.
+- React override in `pnpm-workspace.yaml` forces single React 19.1.0 instance (needed for Clerk)
+- Clerk layer declared in `index.css` before tailwindcss import
+- `vite.config.ts` dedupe includes `@clerk/react`, `@clerk/shared`
