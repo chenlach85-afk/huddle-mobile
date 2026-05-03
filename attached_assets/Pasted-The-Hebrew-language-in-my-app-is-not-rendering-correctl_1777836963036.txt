@@ -1,0 +1,142 @@
+The Hebrew language in my app is not rendering correctly. Fix it. Don't change features, only fix the Hebrew display and language handling.
+Required changes
+1. Languages
+Support exactly three languages: Hebrew (he), English (en), Spanish (es). Hebrew is RTL; English and Spanish are LTR.
+2. Fonts
+Load Heebo from Google Fonts with weights 400, 500, 700, and 900. Add to the root layout's <head>:
+html<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;900&display=swap" rel="stylesheet">
+Set Heebo as the primary font for ALL Hebrew text including display/headlines. Do NOT use Bebas Neue, Impact, Oswald, or any other Latin-only display font when the active language is Hebrew — those fonts have no Hebrew glyphs and will render as broken boxes or fall back to ugly defaults.
+In your CSS / Tailwind config:
+css:root {
+  --font-body: 'Heebo', 'Inter', system-ui, sans-serif;
+  --font-display-en: 'Bebas Neue', 'Oswald', 'Impact', sans-serif;
+  --font-display-he: 'Heebo', sans-serif;
+}
+
+[lang="he"] body, [lang="he"] * {
+  font-family: var(--font-body);
+}
+
+[lang="he"] .display-text {
+  font-family: var(--font-display-he);
+  font-weight: 900;
+}
+The only place Bebas Neue stays in Hebrew is the literal "HUDDLE" wordmark logo (because it's English Latin letters by design).
+3. RTL handling
+When the active language is Hebrew, set <html dir="rtl" lang="he">. When it's English or Spanish, set <html dir="ltr" lang="en"> or <html dir="ltr" lang="es">.
+Use Tailwind's logical properties throughout (don't use ml-*, pr-*, text-left, text-right):
+
+ms-* instead of ml-*
+me-* instead of mr-*
+ps-* instead of pl-*
+pe-* instead of pr-*
+start-* / end-* for absolute positioning
+text-start / text-end
+
+For direction-implying icons (back arrows, chevrons, "next" arrows), add a flip-rtl utility:
+css[dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+Apply className="flip-rtl" to those specific icons.
+4. Hebrew typography rules
+These are non-negotiable:
+
+No letter-spacing on Hebrew text. Strip any tracking-* or letter-spacing from elements that render Hebrew. Wide tracking visually breaks Hebrew letters apart and looks broken.
+No uppercase styling on Hebrew. Remove uppercase / text-transform: uppercase from elements that render Hebrew (Hebrew has no uppercase form, and the CSS just makes it render slightly weird).
+Hebrew text reads visually larger than equivalent English at the same px size. Bump body text from 13-14px (English) up to 14-16px when in Hebrew.
+Numbers stay LTR even inside Hebrew text. Wrap any number that appears inside a Hebrew sentence with dir="ltr":
+
+jsx  <span dir="ltr" style={{ unicodeBidi: 'embed' }}>17:00</span>
+This applies to: jersey numbers, times, dates, scores, prices, phone numbers, percentages.
+If your section labels currently use this style for English:
+jsx<div className="text-[10px] tracking-[2px] font-bold uppercase">
+For Hebrew they should be:
+jsx<div className="text-[11px] font-bold">
+(no tracking, no uppercase, slightly larger size)
+5. Date and time
+Install date-fns if not already present, plus the he and es locales.
+jsimport { format } from 'date-fns';
+import { he, enUS, es } from 'date-fns/locale';
+
+const localeMap = { he, en: enUS, es };
+const locale = localeMap[currentLang] || enUS;
+Use these formats:
+
+Hebrew: dates as DD/MM/YYYY, times always 24h (e.g., "17:00", not "5:00 PM")
+English: M/D/YYYY, 12h or 24h based on user pref
+Spanish: DD/MM/YYYY (Spain/LatAm convention), 24h
+
+Hebrew day-of-week single letters (for compact day display): format(date, 'EEEEEE', { locale: he }) returns א׳ ב׳ ג׳ ד׳ ה׳ ו׳ ש׳.
+6. Translation files
+Make sure messages/he.json exists and is the source of truth — written natively in Hebrew, not machine-translated from English. If your current Hebrew translations sound stiff or literal, rewrite them in natural Israeli sports vocabulary:
+
+Squad/Roster → סגל (not "רשימת שחקנים")
+Schedule → לו"ז (not "לוח זמנים" everywhere — the short form is what coaches use)
+I'm in (RSVP confirm) → מגיע / מגיעה (not "מאשר הגעה")
+Can't make it → לא מגיע / לא מגיעה (not "מבטל")
+Maybe → אולי
+Field → מגרש
+Training → אימון
+Game → משחק
+Coach → מאמן / מאמנת (use proper gender)
+Player → שחקן / שחקנית
+Captain → קפטן
+Uniform → מדים or חולצה
+Home/Away → בית / חוץ
+
+Spanish (messages/es.json) — use neutral Latin American Spanish (works in both Spain and the Americas):
+
+Squad → Plantilla
+Schedule → Calendario
+Training → Entrenamiento
+Game → Partido
+Coach → Entrenador / Entrenadora
+Player → Jugador / Jugadora
+I'm in → Voy (or Asistiré if you prefer formal)
+Can't make it → No puedo
+Maybe → Tal vez
+Field → Campo (or Cancha in LatAm)
+Uniform → Uniforme
+Home → Local, Away → Visitante
+
+7. Language toggle
+In the user profile and at the bottom of the auth screens, show a 3-option toggle: עברית / English / Español. Save the choice to profiles.preferred_language (extend the check constraint to allow 'es' if it currently only allows 'he' and 'en').
+When changed, immediately re-render with the new locale + direction without requiring a page reload.
+8. PWA manifest
+Make sure manifest.json declares Hebrew as the default:
+json{
+  "lang": "he",
+  "dir": "rtl"
+}
+9. Default language detection
+When a brand-new user (no saved preference yet) opens the app:
+
+Check profiles.preferred_language if logged in
+Otherwise check browser navigator.language:
+
+he, he-IL → Hebrew
+es, es-* → Spanish
+anything else → English
+
+
+Default fallback: Hebrew (if you want Hebrew-first), or English (if you want broader appeal). Pick one and be consistent.
+
+10. Test cases — verify these work
+
+Hebrew text renders in Heebo, not in fallback fonts (no boxes, no Times New Roman)
+"HUDDLE" wordmark stays in Bebas Neue even on Hebrew screens
+Section labels in Hebrew have no letter-spacing and no uppercase
+Times display as "17:00" with the digits LTR even inside RTL Hebrew sentences
+Day "ג׳" appears for Tuesday in Hebrew, "Tue" in English, "mar" in Spanish
+Date "04/05/2026" in Hebrew/Spanish, "5/4/2026" in English
+Bottom navigation tabs reorder correctly when switching language (RTL puts them in mirror order, but the active highlight follows the right tab)
+Direction-implying icons (back arrow, ">" chevrons) flip when switching to Hebrew
+Numeric inputs (jersey number, phone) stay LTR
+Long Hebrew strings (e.g., "הפועל ירושלים נוער קטרגל") don't break card layouts — verify all event titles, team names, and announcement headlines wrap properly without overflow
+
+Make these fixes now. Don't add any new features. Don't redesign anything. Only fix the language and rendering issues described above.
+
+That's the prompt. A few notes for when you paste it:
+One important question first — does your current app already have Spanish, or is Spanish a new addition? If you only had Hebrew + English before and now you're adding Spanish, the agent will need to add the third language end-to-end (new translation file, new toggle option, new locale handling, possibly schema migration to allow 'es' in the check constraint). The prompt above handles both cases, but it's worth knowing because adding a third language is more work than fixing two existing ones.
+If something goes wrong — the most common Hebrew rendering bugs you might still see after this prompt:
+SymptomFix to ask agentHebrew text shows as boxes/squaresHeebo isn't loading. Check the Google Fonts link in <head>Hebrew text is in Times New Roman / serifFont fallback is kicking in. Force font-family: 'Heebo' on bodyLayout flips correctly but icons don'tThe flip-rtl class isn't applied — add it to icon componentsTimes like "17:00" appear as "00:71"Numbers aren't wrapped in dir="ltr"Section labels look weird in HebrewLetter-spacing or uppercase still applied — strip themSome Hebrew translations sound roboticOpen the he.json file directly and rewrite those keys yourself

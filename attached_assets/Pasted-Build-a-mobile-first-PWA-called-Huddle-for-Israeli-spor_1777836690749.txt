@@ -1,0 +1,807 @@
+Build a mobile-first PWA called **Huddle** for Israeli sports team management. **Hebrew is the default language; English is available as a toggle.** The Hebrew experience must feel native, not translated — copy should sound like an Israeli coach actually wrote it.
+
+Brand stays English: "HUDDLE". Hebrew tagline: "כל הקבוצה. במקום אחד."
+
+One app, two roles: **Coach** (מאמן) and **Player** (שחקן). Default language Hebrew with full RTL. English toggle in profile.
+
+## Critical Hebrew-first requirements
+
+These rules override anything else if there's a conflict:
+
+1. **Default language is Hebrew (`he`)** — every new user starts in Hebrew unless their browser is explicitly set to English. Stored in `profiles.preferred_language` (default `'he'`).
+2. **HTML root is `<html dir="rtl" lang="he">` by default.** RTL layout is primary, not LTR-flipped.
+3. **All copy is written natively in Hebrew first, then translated to English** — not the other way around. Use Israeli sports vocabulary, not literal translations.
+4. **Hebrew uses Heebo font everywhere**, including display text. Don't fall back to Bebas Neue for Hebrew (no Hebrew glyphs).
+5. **Date format: DD/MM/YYYY for Hebrew users**, time in 24h format. Use `date-fns/locale/he`.
+6. **Day abbreviations in Hebrew use single letters**: א׳ ב׳ ג׳ ד׳ ה׳ ו׳ ש׳.
+7. **Numbers stay LTR** in Hebrew text — wrap them with `dir="ltr"` when needed.
+8. **Test the Hebrew experience first.** When the agent says "done," Hebrew works end-to-end before English is even verified.
+
+## Israeli sports vocabulary (use these exact terms)
+
+| English | Hebrew | Notes |
+|---|---|---|
+| Coach | מאמן / מאמנת | Gender per coach |
+| Player | שחקן / שחקנית | |
+| Team | קבוצה | |
+| Squad / Roster | סגל | What coaches actually say |
+| Training | אימון | |
+| Game / Match | משחק | |
+| Tournament | טורניר | |
+| Field / Pitch | מגרש | |
+| Captain | קפטן | |
+| Position | תפקיד | |
+| Jersey number | מספר חולצה | |
+| Uniform | מדים / חולצה | |
+| Home (game) | בית | |
+| Away (game) | חוץ | |
+| Schedule | לו"ז | "Luz" — casual short form |
+| RSVP | אישור הגעה | |
+| I'm in | מגיע / מגיעה | |
+| Can't make it | לא מגיע / לא מגיעה | |
+| Maybe | אולי | |
+| Saturday night | מוצ"ש | (motzash) common training time |
+| Mid-week training | אימון אמצ"ש | |
+| Announcement | הודעה | |
+| Group chat | צ'אט קבוצתי | |
+| Task | משימה | |
+| Done | בוצע | |
+| Training program | תוכנית אימונים | |
+
+For app brand: **always "HUDDLE" in English Latin letters**, never transliterated.
+
+## Tech stack
+
+- Next.js 14 App Router + TypeScript + Tailwind
+- next-pwa (offline + installable + push)
+- Supabase (Postgres + Auth + Storage + Realtime)
+- next-intl (locales `he` default, `en` toggle)
+- Web Push + Resend (email fallback)
+- lucide-react, react-hook-form + zod
+- date-fns + date-fns/locale/he
+- Fonts: Heebo (primary, all sizes Hebrew + Latin), Bebas Neue (English-only display accent for the HUDDLE wordmark)
+
+## Required Replit Secrets
+
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+NEXT_PUBLIC_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+RESEND_API_KEY
+```
+
+## Design system — Hebrew-tuned
+
+### Color palette
+
+```js
+colors: {
+  bg: '#0a0e1a',
+  'bg-elev': '#161b2e',
+  'bg-elev-2': '#1f2742',
+  border: '#2a3354',
+  'border-soft': '#1a2138',
+  text: '#ffffff',
+  'text-dim': 'rgba(255,255,255,0.7)',
+  'text-faint': 'rgba(255,255,255,0.5)',
+  'text-ghost': 'rgba(255,255,255,0.3)',
+  ignition: { DEFAULT: '#FF6B35', dark: '#C73E1D', light: '#FF8C5C' },
+  trophy: '#F7B538', trophy_dark: '#C9931A',
+  kit_green: '#2ECC71', kit_green_dark: '#1E8449',
+  kit_red: '#E74C3C', kit_red_dark: '#C0392B',
+  kit_blue: '#4A90E2', kit_blue_dark: '#2C5C99',
+  kit_purple: '#9B59B6',
+}
+```
+
+**Per-team theming**: at boot, set `document.documentElement.style.setProperty('--team-color', team.primary_color)`. All accents use `var(--team-color)`. Default `#FF6B35`.
+
+### Typography
+
+```css
+--font-display-en: 'Bebas Neue', 'Oswald', 'Impact', sans-serif;
+--font-display-he: 'Heebo', sans-serif;
+--font-body: 'Heebo', 'Inter', system-ui, sans-serif;
+--font-numeric: 'Bebas Neue', 'Heebo', monospace;
+```
+
+**Hebrew rules**:
+- Display headlines in Hebrew use Heebo weight 900
+- The "HUDDLE" wordmark always uses Bebas Neue (it's a brand element)
+- Body text: always Heebo
+- Jersey numbers: Bebas Neue weight 900 (visual identity even in Hebrew)
+- Hebrew text reads slightly larger — use 14-16px body where English would be 13-15px
+- Letter-spacing: 0 or slightly negative for Hebrew, never wide tracking
+- Section labels:
+  - English: `text-[10px] tracking-[2px] font-bold uppercase`
+  - Hebrew: `text-[11px] font-bold` (no tracking, no uppercase — Hebrew has no caps)
+- Numbers in Hebrew context: wrap in `<span dir="ltr" style="unicode-bidi:embed">10</span>`
+
+### RTL handling
+
+- Tailwind logical properties: `ms-`, `me-`, `ps-`, `pe-`, `start-`, `end-`
+- Text alignment: `text-start` / `text-end`, never `text-left` / `text-right`
+- Direction-implying icons flip in RTL via:
+  ```css
+  [dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+  ```
+- Timeline strips read RTL in Hebrew (newest on right)
+- Swipe gestures reverse direction in RTL
+- Floating "+" button stays bottom-right regardless of language (mobile thumb ergonomics)
+
+## Database schema
+
+Generate `setup.sql` for the user to run in Supabase SQL Editor.
+
+```sql
+create extension if not exists "uuid-ossp";
+
+create table public.teams (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  sport text,
+  age_group text,
+  season text,
+  primary_color text default '#FF6B35',
+  logo_url text,
+  invite_code text unique default substring(uuid_generate_v4()::text from 1 for 8),
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text,
+  full_name text,
+  phone text,
+  avatar_url text,
+  preferred_language text default 'he' check (preferred_language in ('en', 'he')),
+  push_subscription jsonb,
+  created_at timestamptz default now()
+);
+
+create table public.team_members (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('coach', 'assistant_coach', 'player', 'parent')),
+  jersey_number int,
+  position text,
+  notes text,
+  status text default 'active' check (status in ('active', 'inactive', 'pending')),
+  joined_at timestamptz default now(),
+  unique(team_id, user_id)
+);
+
+create table public.events (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  type text not null check (type in ('training', 'game', 'meeting', 'tournament', 'other')),
+  description text,
+  starts_at timestamptz not null,
+  ends_at timestamptz,
+  location_name text,
+  location_address text,
+  location_lat numeric,
+  location_lng numeric,
+  arrival_time timestamptz,
+  uniform_color text,
+  uniform_notes text,
+  what_to_bring text,
+  opponent text,
+  is_home boolean,
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index events_team_starts_idx on events(team_id, starts_at);
+
+create table public.attendance (
+  id uuid primary key default uuid_generate_v4(),
+  event_id uuid not null references events(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text default 'pending' check (status in ('pending', 'confirmed', 'declined', 'maybe', 'attended', 'no_show')),
+  reason text,
+  responded_at timestamptz,
+  unique(event_id, user_id)
+);
+
+create table public.conversations (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  type text not null check (type in ('group', 'direct')),
+  title text,
+  created_at timestamptz default now()
+);
+
+create table public.conversation_members (
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  last_read_at timestamptz default now(),
+  primary key (conversation_id, user_id)
+);
+
+create table public.messages (
+  id uuid primary key default uuid_generate_v4(),
+  conversation_id uuid not null references conversations(id) on delete cascade,
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  body text,
+  attachment_url text,
+  attachment_type text check (attachment_type in ('image', 'video', 'pdf', 'audio')),
+  created_at timestamptz default now()
+);
+
+create index messages_conversation_idx on messages(conversation_id, created_at desc);
+
+create table public.announcements (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  author_id uuid references auth.users(id),
+  title text not null,
+  body text,
+  pinned boolean default false,
+  created_at timestamptz default now()
+);
+
+create table public.announcement_reads (
+  announcement_id uuid not null references announcements(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  read_at timestamptz default now(),
+  primary key (announcement_id, user_id)
+);
+
+create table public.training_programs (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  description text,
+  category text,
+  file_url text,
+  file_type text check (file_type in ('pdf', 'video', 'image', 'link')),
+  duration_minutes int,
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+create table public.tasks (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  title text not null,
+  description text,
+  training_program_id uuid references training_programs(id) on delete set null,
+  due_at timestamptz,
+  requires_proof boolean default false,
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+create table public.task_assignments (
+  id uuid primary key default uuid_generate_v4(),
+  task_id uuid not null references tasks(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text default 'assigned' check (status in ('assigned', 'in_progress', 'completed', 'skipped')),
+  proof_url text,
+  notes text,
+  completed_at timestamptz,
+  unique(task_id, user_id)
+);
+
+create index task_assignments_user_idx on task_assignments(user_id, status);
+
+create table public.team_files (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  name text not null,
+  url text not null,
+  type text check (type in ('photo', 'video', 'pdf', 'document', 'other')),
+  size_bytes bigint,
+  uploaded_by uuid references auth.users(id),
+  album text,
+  created_at timestamptz default now()
+);
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, email, full_name)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', ''));
+  return new;
+end; $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+alter table teams enable row level security;
+alter table profiles enable row level security;
+alter table team_members enable row level security;
+alter table events enable row level security;
+alter table attendance enable row level security;
+alter table conversations enable row level security;
+alter table conversation_members enable row level security;
+alter table messages enable row level security;
+alter table announcements enable row level security;
+alter table announcement_reads enable row level security;
+alter table training_programs enable row level security;
+alter table tasks enable row level security;
+alter table task_assignments enable row level security;
+alter table team_files enable row level security;
+
+create or replace function public.is_team_member(team_uuid uuid)
+returns boolean language sql security definer stable as $$
+  select exists(select 1 from team_members
+    where team_id = team_uuid and user_id = auth.uid() and status = 'active');
+$$;
+
+create or replace function public.is_team_coach(team_uuid uuid)
+returns boolean language sql security definer stable as $$
+  select exists(select 1 from team_members
+    where team_id = team_uuid and user_id = auth.uid()
+      and role in ('coach', 'assistant_coach') and status = 'active');
+$$;
+
+create policy "view own and teammates profiles" on profiles for select
+  using (id = auth.uid() or
+    exists(select 1 from team_members tm1 join team_members tm2 on tm1.team_id = tm2.team_id
+           where tm1.user_id = auth.uid() and tm2.user_id = profiles.id));
+create policy "update own profile" on profiles for update using (id = auth.uid());
+create policy "members view team" on teams for select using (is_team_member(id));
+create policy "coaches update team" on teams for update using (is_team_coach(id));
+create policy "anyone create team" on teams for insert with check (created_by = auth.uid());
+create policy "members view roster" on team_members for select using (is_team_member(team_id));
+create policy "coaches manage roster" on team_members for all using (is_team_coach(team_id));
+create policy "users join team" on team_members for insert with check (user_id = auth.uid());
+create policy "members view events" on events for select using (is_team_member(team_id));
+create policy "coaches manage events" on events for all using (is_team_coach(team_id));
+create policy "view own attendance" on attendance for select
+  using (user_id = auth.uid() or
+    exists(select 1 from events e where e.id = attendance.event_id and is_team_coach(e.team_id)));
+create policy "users update own attendance" on attendance for all using (user_id = auth.uid());
+create policy "coaches manage attendance" on attendance for all
+  using (exists(select 1 from events e where e.id = attendance.event_id and is_team_coach(e.team_id)));
+create policy "members view conversations" on conversations for select
+  using (exists(select 1 from conversation_members cm where cm.conversation_id = id and cm.user_id = auth.uid()));
+create policy "coaches create conversations" on conversations for insert with check (is_team_coach(team_id));
+create policy "members view conv members" on conversation_members for select
+  using (exists(select 1 from conversation_members cm where cm.conversation_id = conversation_members.conversation_id and cm.user_id = auth.uid()));
+create policy "coaches manage conv members" on conversation_members for all
+  using (exists(select 1 from conversations c where c.id = conversation_id and is_team_coach(c.team_id)));
+create policy "members view messages" on messages for select
+  using (exists(select 1 from conversation_members cm where cm.conversation_id = messages.conversation_id and cm.user_id = auth.uid()));
+create policy "members send messages" on messages for insert
+  with check (sender_id = auth.uid() and
+    exists(select 1 from conversation_members cm where cm.conversation_id = messages.conversation_id and cm.user_id = auth.uid()));
+create policy "members view announcements" on announcements for select using (is_team_member(team_id));
+create policy "coaches manage announcements" on announcements for all using (is_team_coach(team_id));
+create policy "users mark read" on announcement_reads for all using (user_id = auth.uid());
+create policy "members view programs" on training_programs for select using (is_team_member(team_id));
+create policy "coaches manage programs" on training_programs for all using (is_team_coach(team_id));
+create policy "members view team tasks" on tasks for select using (is_team_member(team_id));
+create policy "coaches manage tasks" on tasks for all using (is_team_coach(team_id));
+create policy "view own assignments" on task_assignments for select
+  using (user_id = auth.uid() or
+    exists(select 1 from tasks t where t.id = task_id and is_team_coach(t.team_id)));
+create policy "users update own assignment status" on task_assignments for update using (user_id = auth.uid());
+create policy "coaches manage assignments" on task_assignments for all
+  using (exists(select 1 from tasks t where t.id = task_id and is_team_coach(t.team_id)));
+create policy "members view files" on team_files for select using (is_team_member(team_id));
+create policy "members upload files" on team_files for insert
+  with check (uploaded_by = auth.uid() and is_team_member(team_id));
+create policy "uploader or coach delete" on team_files for delete
+  using (uploaded_by = auth.uid() or is_team_coach(team_id));
+
+insert into storage.buckets (id, name, public) values
+  ('avatars', 'avatars', true),
+  ('team-logos', 'team-logos', true),
+  ('team-files', 'team-files', false),
+  ('message-attachments', 'message-attachments', false),
+  ('task-proofs', 'task-proofs', false),
+  ('training-programs', 'training-programs', false)
+on conflict (id) do nothing;
+
+create policy "authenticated upload" on storage.objects for insert to authenticated with check (true);
+create policy "authenticated read" on storage.objects for select to authenticated using (true);
+create policy "users delete own uploads" on storage.objects for delete to authenticated using (owner = auth.uid());
+```
+
+## i18n implementation
+
+- next-intl with `[he, en]`, default `he`
+- `<html dir>` and `<html lang>` set per request
+- Detect priority: 1) profile preference, 2) browser, 3) default Hebrew
+- Toggle in profile + bottom of auth screens
+
+### Hebrew translations (`messages/he.json`) — write these first
+
+```json
+{
+  "app": { "name": "HUDDLE", "tagline": "כל הקבוצה. במקום אחד." },
+  "auth": {
+    "signin": "התחברות", "signup": "הרשמה", "signout": "התנתקות",
+    "email": "אימייל", "password": "סיסמה", "name": "שם מלא",
+    "forgot_password": "שכחת סיסמה?", "google_signin": "התחברות עם גוגל",
+    "join_with_code": "הצטרף עם קוד קבוצה",
+    "no_account": "אין לך חשבון?", "have_account": "יש לך כבר חשבון?",
+    "language": "שפה"
+  },
+  "onboarding": {
+    "welcome": "ברוך הבא ל-HUDDLE",
+    "tagline": "איפה אתה בקבוצה?",
+    "im_coach": "אני מאמן", "im_player": "אני שחקן",
+    "create_team": "צור קבוצה חדשה", "team_name": "שם הקבוצה",
+    "sport": "ענף ספורט", "age_group": "קטגוריית גיל", "season": "עונה",
+    "team_color": "צבע הקבוצה", "logo": "סמל הקבוצה",
+    "next": "המשך", "back": "חזור",
+    "share_invite": "שתף קוד הצטרפות",
+    "share_whatsapp": "שלח בוואטסאפ", "copy_link": "העתק קישור"
+  },
+  "tabs": {
+    "home": "בית", "schedule": "לו\"ז", "chat": "צ'אט",
+    "squad": "סגל", "more": "עוד", "tasks": "משימות"
+  },
+  "home_coach": {
+    "coach_mode": "מצב מאמן",
+    "next_training": "האימון הבא",
+    "next_game": "המשחק הבא",
+    "next_event": "האירוע הבא",
+    "stats_in": "{n} מגיעים",
+    "stats_out": "{n} לא",
+    "stats_pending": "{n} ממתינים",
+    "quick_actions": "פעולות מהירות",
+    "qa_event": "אירוע", "qa_alert": "התראה",
+    "qa_task": "משימה", "qa_upload": "העלאה",
+    "squad_label": "סגל · {count}",
+    "view_all": "הצג הכל",
+    "activity": "פעילות אחרונה",
+    "no_activity": "אין פעילות חדשה"
+  },
+  "home_player": {
+    "player_mode": "מצב שחקן",
+    "rsvp_in": "מגיע", "rsvp_out": "לא מגיע", "rsvp_maybe": "אולי",
+    "my_tasks": "המשימות שלי", "no_tasks": "אין משימות פתוחות",
+    "mark_done": "סמן כבוצע", "upload_proof": "העלה הוכחה",
+    "due": "עד {date}", "open_in_maps": "פתח במפות"
+  },
+  "events": {
+    "create_title": "אירוע חדש", "edit_title": "עריכת אירוע",
+    "type_label": "סוג אירוע",
+    "type_training": "אימון", "type_game": "משחק",
+    "type_meeting": "פגישה", "type_tournament": "טורניר", "type_other": "אחר",
+    "title": "כותרת",
+    "title_placeholder_training": "אימון",
+    "title_placeholder_game": "משחק נגד ___",
+    "date": "תאריך",
+    "start_time": "שעת התחלה", "end_time": "שעת סיום",
+    "location": "מיקום",
+    "location_placeholder": "מגרש 3, מתחם הספורט",
+    "arrival_time": "שעת הגעה",
+    "arrival_help": "מתי השחקנים צריכים להגיע (בדרך כלל 30 דקות לפני)",
+    "uniform": "מדים",
+    "uniform_color": "צבע חולצה",
+    "uniform_notes": "הערות נוספות",
+    "uniform_placeholder": "חולצה לבנה ביתית, גרביים שחורים",
+    "what_to_bring": "מה להביא",
+    "bring_placeholder": "בקבוק מים, מגיני שוק, נעלי קטרגל",
+    "opponent": "יריבה",
+    "home_away": "בית / חוץ",
+    "home": "בית", "away": "חוץ",
+    "description": "תיאור",
+    "create_button": "צור אירוע",
+    "save": "שמור", "cancel": "ביטול",
+    "delete": "מחק אירוע",
+    "delete_confirm": "למחוק את האירוע? פעולה זו לא ניתנת לביטול."
+  },
+  "squad": {
+    "title": "הסגל", "add_player": "הוסף שחקן", "search": "חיפוש שחקנים",
+    "jersey": "מספר חולצה", "position": "תפקיד", "phone": "טלפון",
+    "active": "פעיל", "inactive": "לא פעיל",
+    "remove_confirm": "להסיר את {name} מהקבוצה?",
+    "stats_attendance": "נוכחות {pct}%",
+    "stats_tasks": "משימות {pct}%"
+  },
+  "messages": {
+    "group_chat": "צ'אט קבוצתי", "type_message": "הקלד הודעה...",
+    "send": "שלח",
+    "attachment_image": "תמונה", "attachment_video": "וידאו", "attachment_pdf": "מסמך",
+    "no_messages": "אין הודעות עדיין"
+  },
+  "announcements": {
+    "title": "הודעות", "create": "הודעה חדשה",
+    "headline": "כותרת", "body": "תוכן ההודעה",
+    "pinned": "נעוץ", "publish": "פרסם",
+    "no_announcements": "אין הודעות חדשות"
+  },
+  "tasks": {
+    "title": "משימות", "create": "משימה חדשה",
+    "task_title": "כותרת", "description": "תיאור",
+    "due_date": "תאריך יעד",
+    "assign_to": "שייך ל",
+    "assign_all": "כל הקבוצה", "assign_select": "בחר שחקנים",
+    "requires_proof": "נדרשת הוכחה",
+    "requires_proof_help": "השחקן יצטרך להעלות תמונה או וידאו",
+    "linked_program": "תוכנית אימון מקושרת",
+    "create_button": "צור משימה",
+    "status_assigned": "ממתין", "status_in_progress": "בביצוע",
+    "status_completed": "בוצע", "status_skipped": "דולג",
+    "filter_pending": "ממתינות", "filter_completed": "בוצעו",
+    "completion_rate": "{done}/{total} בוצעו"
+  },
+  "training": {
+    "title": "תוכניות אימון", "upload": "העלאת תוכנית",
+    "category": "קטגוריה", "duration": "משך זמן (דקות)",
+    "category_warmup": "חימום", "category_drills": "תרגילים",
+    "category_fitness": "כושר", "category_tactics": "טקטיקה"
+  },
+  "files": {
+    "title": "קבצים ותמונות", "upload": "העלה",
+    "albums": "אלבומים", "all_files": "כל הקבצים",
+    "delete_confirm": "למחוק את הקובץ?"
+  },
+  "settings": {
+    "title": "הגדרות", "profile": "הפרופיל שלי",
+    "language": "שפה", "lang_he": "עברית", "lang_en": "English",
+    "notifications": "התראות",
+    "team_settings": "הגדרות הקבוצה",
+    "edit_team": "עריכת פרטי הקבוצה",
+    "manage_invite": "ניהול קוד הצטרפות",
+    "regenerate_code": "צור קוד חדש"
+  },
+  "common": {
+    "loading": "טוען...",
+    "error_generic": "משהו השתבש. נסה שוב.",
+    "offline_banner": "במצב לא מקוון · עודכן {time}",
+    "save": "שמור", "cancel": "ביטול", "delete": "מחק",
+    "edit": "עריכה", "back": "חזור", "next": "המשך", "done": "סיים",
+    "yes": "כן", "no": "לא",
+    "today": "היום", "tomorrow": "מחר", "yesterday": "אתמול",
+    "this_week": "השבוע", "next_week": "שבוע הבא",
+    "min_ago": "לפני {n} דקות", "hour_ago": "לפני {n} שעות",
+    "day_ago": "לפני {n} ימים"
+  },
+  "days_short": {
+    "sun": "א׳", "mon": "ב׳", "tue": "ג׳", "wed": "ד׳",
+    "thu": "ה׳", "fri": "ו׳", "sat": "ש׳"
+  },
+  "months": {
+    "1": "ינואר", "2": "פברואר", "3": "מרץ", "4": "אפריל",
+    "5": "מאי", "6": "יוני", "7": "יולי", "8": "אוגוסט",
+    "9": "ספטמבר", "10": "אוקטובר", "11": "נובמבר", "12": "דצמבר"
+  }
+}
+```
+
+### English translations (`messages/en.json`)
+
+Translate all the above to English. Keep section structure identical. Use natural English coach vocabulary — "Squad" not "Roster", "I'm in" not "Confirm attendance".
+
+## Date and time formatting
+
+```js
+import { format } from 'date-fns';
+import { he, enUS } from 'date-fns/locale';
+
+const locale = userLanguage === 'he' ? he : enUS;
+
+format(date, 'EEEE, d בMMMM', { locale })
+// Hebrew: "שלישי, 4 במאי"
+// English: "Tuesday, May 4"
+
+format(date, 'HH:mm')  // Always 24h: "17:00"
+
+format(date, 'dd/MM/yyyy', { locale: he })   // "04/05/2026"
+format(date, 'M/d/yyyy', { locale: enUS })   // "5/4/2026"
+```
+
+For event hero subtitle "ג׳ · 17:00":
+- Day letter: `format(date, 'EEEEEE', { locale: he })` → "ג׳"
+- Combined: `${day} · ${time}`
+
+## App structure
+
+### Public
+- `/` — Hebrew landing page
+- `/auth/signin`, `/auth/signup`, `/auth/forgot-password`
+- `/join/[code]`
+
+### Authenticated
+- `/onboarding`, `/teams`
+- `/team/[id]` (home)
+- `/team/[id]/schedule`, `/event/[eventId]`
+- `/team/[id]/messages`, `/announcements`, `/squad`
+- `/team/[id]/training`, `/tasks`, `/files`, `/settings`
+- `/profile`
+
+## COACH HOME — Hebrew layout
+
+### Header
+- "HUDDLE" wordmark in Bebas Neue 28px, color `var(--team-color)`, weight 900
+- Below: "מצב מאמן" in Heebo 11px, weight 700, no tracking, color text-faint
+- Far end (visually right in RTL): 36px circular avatar with initials gradient
+
+### Hero card (next event)
+- Full-width gradient card using team color, decorative circles
+- Label: "האימון הבא" / "המשחק הבא" — Heebo 11px weight 700, rgba(255,255,255,0.85)
+- Title: "ג׳ · 17:00" — Heebo 24px weight 900, white, line-height 1.1
+- Detail: "מגרש 3 · חולצה לבנה" — Heebo 13px, rgba(255,255,255,0.9)
+- Stat pills: "12 מגיעים" (white bg, team-color-dark text) / "3 לא" / "5 ?"
+
+### Quick actions row
+4 cells: אירוע (ignition) / התראה (kit_blue) / משימה (kit_green) / העלאה (trophy)
+
+### Squad scroll
+- Label: "סגל · {n}" + "הצג הכל ›" (team-color)
+- Jersey tiles, names below in Heebo 9px weight 600
+- "+" tile at end
+
+### Activity feed
+- Label "פעילות אחרונה"
+- Cards with 3px left border in status color
+- Text: "יוסי אישר הגעה לאימון של ג׳" — Heebo 12px weight 500
+- Timestamp: "לפני 2 דקות"
+
+### Bottom tabs
+Order in RTL: בית / לו"ז / צ'אט / סגל / עוד
+Active: solid square + colored label, weight 700.
+
+## COACH SCHEDULE
+
+- Month/week toggle pill
+- Calendar grid with day letters א׳ ב׳ ג׳ ד׳ ה׳ ו׳ ש׳
+- Event dots per day in event-type color
+- Floating "+" bottom-right (stays right regardless of RTL — mobile thumb)
+
+### Event creation sheet (Hebrew labels)
+- סוג אירוע (segmented: אימון / משחק / פגישה / טורניר / אחר)
+- כותרת (auto-fill based on type)
+- תאריך / שעת התחלה / שעת סיום
+- מיקום + "בחר על המפה"
+- שעת הגעה (defaults to 30 min before)
+- מדים: צבע + הערות
+- מה להביא
+- For games: יריבה + בית/חוץ
+- תיאור
+- "צור אירוע" button (full-width, team-color)
+
+## COACH SQUAD
+
+- Grid of player cards with large jersey tiles
+- "+" floating button → "הוסף שחקן" with options: שלח קוד הצטרפות / הוסף ידנית
+- Long-press → mark inactive
+
+## PLAYER HOME — Hebrew
+
+- Header: "HUDDLE" + "מצב שחקן"
+- Hero card with prominent RSVP buttons:
+  - "מגיע" (kit_green)
+  - "אולי" (trophy)
+  - "לא מגיע" (kit_red)
+- After RSVP: status badge + "שנה תשובה"
+- Below: uniform, arrival time, location with "פתח במפות"
+- "המשימות שלי" with "סמן כבוצע" buttons
+
+## Onboarding — Hebrew
+
+### Coach
+1. Sign up in Hebrew
+2. "ברוך הבא ל-HUDDLE — איפה אתה בקבוצה?" → "אני מאמן"
+3. Form: שם הקבוצה / ענף ספורט / קטגוריית גיל / עונה / **צבע הקבוצה** (8 chips + custom) / סמל הקבוצה
+4. App immediately re-themes to chosen color
+5. Empty home with CTAs: "הוסף שחקן ראשון" + "תזמן אימון ראשון"
+6. Invite code with "שתף בוואטסאפ" / "העתק קישור"
+
+### Player
+- Via `/join/[code]` → "הקבוצה הזמינה אותך להצטרף"
+- "הצטרף עכשיו" → sign up if needed → fill מספר חולצה + תפקיד → home
+
+## PWA manifest
+
+```json
+{
+  "name": "HUDDLE",
+  "short_name": "HUDDLE",
+  "description": "כל הקבוצה. במקום אחד.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0e1a",
+  "theme_color": "#FF6B35",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
+```
+
+## Push notifications — Hebrew copy
+
+```
+new_event: "אימון חדש: {title} · {day} ב-{time}"
+event_reminder_24h: "תזכורת: {event_type} מחר ב-{time}"
+new_message: "{sender}: {preview}"
+new_announcement: "הודעה חדשה: {title}"
+new_task: "משימה חדשה: {title}"
+task_overdue: "משימה באיחור: {title}"
+attendance_change: "{player} עדכן אישור הגעה"
+```
+
+## API routes
+
+- `POST /api/teams` — create team
+- `POST /api/teams/[id]/join` — join via code
+- `POST /api/events` — create event + push
+- `POST /api/events/[id]/attendance` — RSVP
+- `POST /api/messages` — send + push
+- `POST /api/announcements` — create + push
+- `POST /api/tasks` — create + assign + push
+- `POST /api/tasks/[id]/complete` — with proof
+- `POST /api/upload` — Supabase Storage
+- `POST /api/push/subscribe`, `/api/push/send`
+
+## Critical rules
+
+1. **Hebrew is the default and must work end-to-end before English**
+2. **Copy reads naturally** — no machine-translation feel
+3. **RTL layout is primary**, not LTR-flipped
+4. **Heebo font everywhere**, including display
+5. **Numbers stay LTR** in mixed text
+6. **Date format DD/MM/YYYY**, time 24h
+7. **Per-team color theming** via `var(--team-color)`
+8. **Sport-team aesthetic**: jersey tiles, scoreboard stats, gradient hero cards
+9. **Israeli vocabulary**: סגל, מגרש, מוצ"ש, etc.
+10. **Test in Hebrew first** for every acceptance criterion
+
+## Acceptance criteria — test in Hebrew first
+
+1. Coach signs up in Hebrew, creates team "הפועל ירושלים נוער" with custom color, gets invite code
+2. App displays in Hebrew with full RTL — every screen mirrors correctly
+3. Coach creates event titled "משחק נגד מכבי תל אביב" with all fields — players get push: "משחק חדש: משחק נגד מכבי תל אביב · ש׳ ב-19:30"
+4. Player joins via invite, completes onboarding in Hebrew, fills jersey number and position
+5. Player sees event with "מגיע / אולי / לא מגיע" buttons, taps "מגיע" — coach sees "12 מגיעים · 3 לא · 5 ממתינים" updating live
+6. Coach sends announcement "אימון מחר עבר למגרש 5" — players get push and see it on home
+7. Coach uploads training PDF "תוכנית חימום", creates task "צפו בתוכנית", assigns to all players
+8. Player marks task complete with photo proof — coach sees completion
+9. Group chat real-time in Hebrew (RTL bubbles, sender names)
+10. User toggles to English — UI flips to LTR with English copy, but data stays Hebrew (team name "הפועל ירושלים נוער" remains)
+11. Date "04/05/2026" in Hebrew, "5/4/2026" in English
+12. Day "ג׳" in Hebrew, "Tue" in English
+13. App installs on iPhone home screen, opens fullscreen with Hebrew RTL working
+14. Two teams with different colors — each coach sees their team's color, no leakage
+15. Heebo font renders cleanly at all sizes without jaggies
+
+## Build sequence
+
+1. Scaffold Next.js + Tailwind + Supabase + next-intl + next-pwa, with Hebrew default and RTL default
+2. Set up design system: full color palette, Heebo + Bebas Neue from Google Fonts (Heebo with weights 400/500/700/900), CSS var for team-color, RTL Tailwind config
+3. Generate `setup.sql` and `messages/he.json` + `messages/en.json` with all keys above
+4. Build auth pages in Hebrew (HUDDLE wordmark, dark bg, gradient CTAs, Hebrew form labels)
+5. Build language toggle (profile + bottom of auth screens)
+6. Build onboarding in Hebrew (coach color picker is critical here — test app re-themes)
+7. Build coach team home — Hebrew hero card, quick actions, jersey squad scroll. Test with real Hebrew text (long Hebrew strings can break layouts)
+8. Build event creation sheet with all Hebrew labels and validations
+9. Build attendance / RSVP with Hebrew status pills
+10. Build player view with prominent Hebrew RSVP buttons
+11. Build messaging with Supabase Realtime — RTL message bubbles
+12. Build announcements with pinned support
+13. Build tasks + assignment + completion with proof
+14. Build training programs + file gallery
+15. Implement push notifications with Hebrew copy
+16. Implement offline cache + Hebrew offline banner
+17. Verify English toggle works end-to-end
+18. Generate README in Hebrew + English
+
+## What NOT to build
+
+- Payment / paid plans (later via billing addendum)
+- Video calling
+- Live game scoring
+- AI-generated training plans
+- Statistics dashboards beyond simple attendance %
+
+Build it now. Start with step 1. Critical: do NOT skip step 2 (design system + Hebrew font setup). Hebrew rendering breaks if Heebo isn't loaded with all weights. After each major step, summarize what works in Hebrew and what's pending.

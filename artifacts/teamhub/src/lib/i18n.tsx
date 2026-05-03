@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { format as dateFnsFormat, parseISO } from "date-fns";
+import { he, enUS, es } from "date-fns/locale";
 
 export type Language = "en" | "he" | "es";
+
+const LOCALE_MAP = { he, en: enUS, es };
 
 const translations = {
   en: {
     nav: {
-      huddle: "Huddle",
+      huddle: "Dashboard",
       squads: "Squads",
       calendar: "Calendar",
       settings: "Settings",
@@ -29,6 +33,7 @@ const translations = {
       noData: "No data found",
       signOut: "Sign Out",
       coachMode: "Coach Mode",
+      allSquads: "All Squads",
     },
     auth: {
       signIn: "Sign In",
@@ -40,12 +45,24 @@ const translations = {
       noAccount: "Don't have an account?",
     },
     dashboard: {
-      title: "Huddle",
+      title: "Dashboard",
       subtitle: "Your coaching command center",
       totalTeams: "Total Teams",
       totalPlayers: "Total Players",
       upcomingEvents: "Upcoming Events",
       activeTasks: "Active Tasks",
+      squads: "Squads",
+      lineup: "Lineup",
+      openTasks: "Open Tasks",
+      athletes: "Athletes",
+      squadBreakdown: "Squad Breakdown",
+      allSquads: "All Squads",
+      createFirstSquad: "Create your first squad",
+      manageSquads: "Manage Squads",
+      manageSquadsDesc: "Rosters, schedules, tasks, messages",
+      games: "Games",
+      tasks: "Tasks",
+      noSquadsYet: "No squads yet",
     },
     teams: {
       title: "Squads",
@@ -64,10 +81,20 @@ const translations = {
     },
     calendar: {
       title: "Calendar",
+      schedule: "Schedule",
       today: "Today",
       upcoming: "Upcoming",
       noEvents: "No events this day",
+      noUpcoming: "No upcoming events",
       addEvent: "Add Event",
+      weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      eventTypes: {
+        practice: "Practice",
+        game: "Game",
+        meeting: "Meeting",
+        other: "Other",
+      },
+      until: "Until",
     },
     settings: {
       title: "Settings",
@@ -113,14 +140,14 @@ const translations = {
   },
   he: {
     nav: {
-      huddle: "לוח ראשי",
+      huddle: "ראשי",
       squads: "קבוצות",
-      calendar: "לוח שנה",
+      calendar: "לו\"ז",
       settings: "הגדרות",
     },
     common: {
       save: "שמור",
-      cancel: "בטל",
+      cancel: "ביטול",
       delete: "מחק",
       edit: "ערוך",
       close: "סגור",
@@ -137,23 +164,36 @@ const translations = {
       noData: "לא נמצאו נתונים",
       signOut: "התנתק",
       coachMode: "מצב מאמן",
+      allSquads: "כל הקבוצות",
     },
     auth: {
       signIn: "התחברות",
       signUp: "הרשמה",
-      welcome: "ברוכים הבאים לTeamHub",
+      welcome: "ברוכים הבאים ל-TeamHub",
       tagline: "ניהול קבוצות מקצועי למאמנים",
-      getStarted: "התחל עכשיו",
-      alreadyHaveAccount: "כבר יש לך חשבון?",
-      noAccount: "אין לך חשבון?",
+      getStarted: "בואו נתחיל",
+      alreadyHaveAccount: "כבר רשום?",
+      noAccount: "עדיין לא רשום?",
     },
     dashboard: {
-      title: "לוח ראשי",
+      title: "ראשי",
       subtitle: "מרכז הפיקוד שלך",
-      totalTeams: "סה״כ קבוצות",
-      totalPlayers: "סה״כ שחקנים",
+      totalTeams: "קבוצות",
+      totalPlayers: "שחקנים",
       upcomingEvents: "אירועים קרובים",
-      activeTasks: "משימות פעילות",
+      activeTasks: "משימות פתוחות",
+      squads: "קבוצות",
+      lineup: "לו\"ז",
+      openTasks: "משימות",
+      athletes: "שחקנים",
+      squadBreakdown: "סקירת קבוצות",
+      allSquads: "כל הקבוצות",
+      createFirstSquad: "צור את הקבוצה הראשונה שלך",
+      manageSquads: "ניהול קבוצות",
+      manageSquadsDesc: "סגל, לו\"ז, משימות, הודעות",
+      games: "משחקים",
+      tasks: "משימות",
+      noSquadsYet: "אין קבוצות עדיין",
     },
     teams: {
       title: "קבוצות",
@@ -172,10 +212,20 @@ const translations = {
     },
     calendar: {
       title: "לוח שנה",
+      schedule: "לו\"ז",
       today: "היום",
       upcoming: "קרובים",
-      noEvents: "אין אירועים ביום זה",
+      noEvents: "אין אימונים/משחקים ביום זה",
+      noUpcoming: "אין אירועים קרובים",
       addEvent: "הוסף אירוע",
+      weekdays: ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"],
+      eventTypes: {
+        practice: "אימון",
+        game: "משחק",
+        meeting: "פגישה",
+        other: "אחר",
+      },
+      until: "עד",
     },
     settings: {
       title: "הגדרות",
@@ -188,31 +238,31 @@ const translations = {
       newPassword: "סיסמה חדשה",
       confirmPassword: "אשר סיסמה",
       notificationsEnabled: "הפעל התראות",
-      emailNotifications: "התראות אימייל",
-      pushNotifications: "התראות דחיפה",
-      calendarReminder: "תזכורת לוח שנה",
+      emailNotifications: "התראות מייל",
+      pushNotifications: "התראות פוש",
+      calendarReminder: "תזכורת ללו\"ז",
       reminderBefore: "הזכר לי לפני אירועים",
-      mins15: "15 דקות",
-      mins30: "30 דקות",
+      mins15: "רבע שעה",
+      mins30: "חצי שעה",
       hour1: "שעה",
       day1: "יום",
       languageChanged: "השפה עודכנה",
       settingsSaved: "ההגדרות נשמרו",
-      signOutConfirm: "האם אתה בטוח שברצונך להתנתק?",
+      signOutConfirm: "בטוח שרוצה להתנתק?",
     },
     notifications: {
       title: "התראות",
       markAllRead: "סמן הכל כנקרא",
       noNotifications: "אין התראות",
       newTask: "משימה חדשה הוקצתה",
-      newEvent: "אירוע חדש נקבע",
+      newEvent: "אירוע חדש בלו\"ז",
       newMessage: "הודעה חדשה",
     },
     files: {
-      upload: "העלה קובץ",
+      upload: "העלאת קובץ",
       uploading: "מעלה...",
       selectFile: "בחר קובץ",
-      dragDrop: "או גרור ושחרר",
+      dragDrop: "או גרור לכאן",
       maxSize: "גודל מקסימלי: 10MB",
       images: "תמונות",
       videos: "סרטונים",
@@ -245,23 +295,36 @@ const translations = {
       noData: "No se encontraron datos",
       signOut: "Cerrar sesión",
       coachMode: "Modo Entrenador",
+      allSquads: "Todos los equipos",
     },
     auth: {
       signIn: "Iniciar sesión",
       signUp: "Registrarse",
       welcome: "Bienvenido a TeamHub",
-      tagline: "Gestión profesional de equipos para entrenadores",
+      tagline: "Gestión profesional de plantillas para entrenadores",
       getStarted: "Comenzar",
-      alreadyHaveAccount: "¿Ya tienes una cuenta?",
-      noAccount: "¿No tienes una cuenta?",
+      alreadyHaveAccount: "¿Ya tienes cuenta?",
+      noAccount: "¿No tienes cuenta?",
     },
     dashboard: {
       title: "Inicio",
-      subtitle: "Tu centro de comando de entrenamiento",
-      totalTeams: "Total de Equipos",
-      totalPlayers: "Total de Jugadores",
-      upcomingEvents: "Próximos Eventos",
-      activeTasks: "Tareas Activas",
+      subtitle: "Tu centro de comando",
+      totalTeams: "Equipos",
+      totalPlayers: "Jugadores",
+      upcomingEvents: "Próximos partidos",
+      activeTasks: "Tareas activas",
+      squads: "Plantillas",
+      lineup: "Agenda",
+      openTasks: "Tareas",
+      athletes: "Jugadores",
+      squadBreakdown: "Resumen de equipos",
+      allSquads: "Todos los equipos",
+      createFirstSquad: "Crea tu primer equipo",
+      manageSquads: "Gestionar equipos",
+      manageSquadsDesc: "Plantillas, calendario, tareas, mensajes",
+      games: "Partidos",
+      tasks: "Tareas",
+      noSquadsYet: "Sin equipos todavía",
     },
     teams: {
       title: "Equipos",
@@ -271,7 +334,7 @@ const translations = {
       players: "Jugadores",
       editTeam: "Editar Equipo",
       deleteTeam: "Eliminar Equipo",
-      joinCode: "Código de unión",
+      joinCode: "Código de acceso",
       teamName: "Nombre del equipo",
       sport: "Deporte",
       season: "Temporada",
@@ -280,10 +343,20 @@ const translations = {
     },
     calendar: {
       title: "Calendario",
+      schedule: "Agenda",
       today: "Hoy",
       upcoming: "Próximos",
       noEvents: "Sin eventos este día",
-      addEvent: "Agregar Evento",
+      noUpcoming: "Sin próximos eventos",
+      addEvent: "Agregar evento",
+      weekdays: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"],
+      eventTypes: {
+        practice: "Entrenamiento",
+        game: "Partido",
+        meeting: "Reunión",
+        other: "Otro",
+      },
+      until: "Hasta",
     },
     settings: {
       title: "Configuración",
@@ -299,14 +372,14 @@ const translations = {
       emailNotifications: "Notificaciones por email",
       pushNotifications: "Notificaciones push",
       calendarReminder: "Recordatorio de calendario",
-      reminderBefore: "Recordarme antes de los eventos",
+      reminderBefore: "Avisarme antes de los eventos",
       mins15: "15 minutos",
       mins30: "30 minutos",
       hour1: "1 hora",
       day1: "1 día",
       languageChanged: "Idioma actualizado",
       settingsSaved: "Configuración guardada",
-      signOutConfirm: "¿Estás seguro de que quieres cerrar sesión?",
+      signOutConfirm: "¿Seguro que quieres cerrar sesión?",
     },
     notifications: {
       title: "Notificaciones",
@@ -336,15 +409,29 @@ interface I18nContextValue {
   setLanguage: (lang: Language) => void;
   t: Translations;
   isRTL: boolean;
+  formatDate: (date: Date | string) => string;
+  formatTime: (date: Date | string) => string;
+  formatDateTime: (date: Date | string) => string;
+  formatDayOfWeek: (date: Date | string, style?: "short" | "letter") => string;
+  formatMonthYear: (date: Date | string) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 const RTL_LANGUAGES: Language[] = ["he"];
 
+function detectBrowserLanguage(): Language {
+  const nav = navigator.language || "";
+  if (nav.startsWith("he")) return "he";
+  if (nav.startsWith("es")) return "es";
+  return "en";
+}
+
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
-    return (localStorage.getItem("teamhub-lang") as Language) || "en";
+    const stored = localStorage.getItem("teamhub-lang") as Language | null;
+    if (stored && ["en", "he", "es"].includes(stored)) return stored;
+    return detectBrowserLanguage();
   });
 
   const setLanguage = useCallback((lang: Language) => {
@@ -359,10 +446,44 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.lang = language;
   }, [language, isRTL]);
 
+  const locale = LOCALE_MAP[language];
+
+  const formatDate = useCallback((date: Date | string): string => {
+    const d = typeof date === "string" ? parseISO(date) : date;
+    if (language === "en") return dateFnsFormat(d, "M/d/yyyy", { locale });
+    return dateFnsFormat(d, "dd/MM/yyyy", { locale });
+  }, [language, locale]);
+
+  const formatTime = useCallback((date: Date | string): string => {
+    const d = typeof date === "string" ? parseISO(date) : date;
+    if (language === "en") return dateFnsFormat(d, "h:mm a", { locale });
+    return dateFnsFormat(d, "HH:mm", { locale });
+  }, [language, locale]);
+
+  const formatDateTime = useCallback((date: Date | string): string => {
+    const d = typeof date === "string" ? parseISO(date) : date;
+    if (language === "en") return dateFnsFormat(d, "EEE, MMM d · h:mm a", { locale });
+    if (language === "he") return dateFnsFormat(d, "EEE, dd/MM · HH:mm", { locale });
+    return dateFnsFormat(d, "EEE, dd/MM · HH:mm", { locale });
+  }, [language, locale]);
+
+  const formatDayOfWeek = useCallback((date: Date | string, style: "short" | "letter" = "short"): string => {
+    const d = typeof date === "string" ? parseISO(date) : date;
+    if (style === "letter" && language === "he") {
+      return dateFnsFormat(d, "EEEEEE", { locale: he });
+    }
+    return dateFnsFormat(d, "EEE", { locale });
+  }, [language, locale]);
+
+  const formatMonthYear = useCallback((date: Date | string): string => {
+    const d = typeof date === "string" ? parseISO(date) : date;
+    return dateFnsFormat(d, "MMMM yyyy", { locale });
+  }, [language, locale]);
+
   const t = translations[language] as Translations;
 
   return (
-    <I18nContext.Provider value={{ language, setLanguage, t, isRTL }}>
+    <I18nContext.Provider value={{ language, setLanguage, t, isRTL, formatDate, formatTime, formatDateTime, formatDayOfWeek, formatMonthYear }}>
       {children}
     </I18nContext.Provider>
   );

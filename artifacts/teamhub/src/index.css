@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Heebo:wght@400;500;700;900&family=Inter:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap');
 @layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -125,6 +125,8 @@
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --app-font-display: 'Bebas Neue', 'Oswald', 'Impact', sans-serif;
+  --app-font-display-he: 'Heebo', sans-serif;
+  --app-font-he: 'Heebo', 'Inter', system-ui, sans-serif;
 
   /* Status colors */
   --kit-green: #2ecc71;
@@ -155,6 +157,12 @@
 /* Display font utility */
 .font-display {
   font-family: var(--app-font-display);
+  letter-spacing: -0.5px;
+}
+
+/* Wordmark — always Bebas Neue, even in Hebrew */
+.font-wordmark {
+  font-family: 'Bebas Neue', 'Oswald', 'Impact', sans-serif !important;
   letter-spacing: -0.5px;
 }
 
@@ -225,4 +233,50 @@
   letter-spacing: 2px;
   text-transform: uppercase;
   color: rgba(255,255,255,0.4);
+}
+
+/* RTL icon flip for directional icons (back arrow, chevrons, etc.) */
+[dir="rtl"] .flip-rtl {
+  transform: scaleX(-1);
+}
+
+/* ── Hebrew overrides ────────────────────────────────────────────────────── */
+
+/* All text in Hebrew uses Heebo */
+[lang="he"] body,
+[lang="he"] *:not(.font-wordmark):not(.font-wordmark *) {
+  font-family: var(--app-font-he) !important;
+}
+
+/* Hebrew display / headline text uses Heebo bold — NOT Bebas Neue */
+[lang="he"] .font-display:not(.font-wordmark) {
+  font-family: var(--app-font-display-he) !important;
+  font-weight: 900;
+  letter-spacing: 0 !important;
+}
+
+/* Hebrew body text is slightly larger for readability */
+[lang="he"] body {
+  font-size: 15px;
+}
+
+/* Strip letter-spacing and uppercase from section labels in Hebrew */
+[lang="he"] .section-label {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  font-size: 11px;
+}
+
+/* Strip letter-spacing and uppercase from stat labels in Hebrew */
+[lang="he"] .stat-label {
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  font-size: 11px;
+}
+
+/* Numbers always stay LTR (jersey numbers, scores, times) */
+.ltr-num {
+  direction: ltr;
+  unicode-bidi: embed;
+  display: inline-block;
 }

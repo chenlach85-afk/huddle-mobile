@@ -34,8 +34,8 @@ function NavItems({ onClose }: { onClose?: () => void }) {
               data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
               <item.icon className={cn("h-4 w-4", isActive && "text-primary")} />
-              <span className="tracking-wide">{item.label}</span>
-              {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+              <span>{item.label}</span>
+              {isActive && <div className="ms-auto w-1.5 h-1.5 rounded-full bg-primary" />}
             </div>
           </Link>
         );
@@ -65,7 +65,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30 group-hover:scale-105 transition-transform">
                 <Zap className="h-5 w-5 text-white" fill="white" />
               </div>
-              <span className="font-display text-xl text-white tracking-wide">TEAMHUB</span>
+              <span className="font-wordmark text-xl text-white">TEAMHUB</span>
             </div>
           </Link>
         </div>
@@ -87,7 +87,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/30">
                 <Zap className="h-4 w-4 text-white" fill="white" />
               </div>
-              <span className="font-display text-lg text-white tracking-wide">TEAMHUB</span>
+              <span className="font-wordmark text-lg text-white">TEAMHUB</span>
             </div>
           </Link>
           <div className="flex items-center gap-1">
@@ -101,7 +101,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SheetContent side={isRTL ? "right" : "left"} className="w-56 p-0 border-white/8"
                 style={{ background: "rgba(10,14,26,0.98)" }}>
                 <div className="p-4 border-b border-white/6 h-14 flex items-center">
-                  <span className="font-display text-lg text-white tracking-wide">TEAMHUB</span>
+                  <span className="font-wordmark text-lg text-white">TEAMHUB</span>
                 </div>
                 <nav className="p-3 pt-4">
                   <NavItems onClose={() => setMobileOpen(false)} />
