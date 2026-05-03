@@ -22,13 +22,23 @@ export const requireAuth = async (
   req.clerkId = clerkId;
 
   const [user] = await db
-    .select({ id: usersTable.id })
+    .select({ id: usersTable.id, accountStatus: usersTable.accountStatus })
     .from(usersTable)
     .where(eq(usersTable.clerkId, clerkId))
     .limit(1);
 
   if (!user) {
     res.status(401).json({ error: "User not found. Please complete registration." });
+    return;
+  }
+
+  if (user.accountStatus === "suspended") {
+    res.status(403).json({ error: "account_suspended", message: "Your account has been suspended. Please contact support." });
+    return;
+  }
+
+  if (user.accountStatus === "deleted") {
+    res.status(403).json({ error: "account_deleted", message: "This account no longer exists." });
     return;
   }
 

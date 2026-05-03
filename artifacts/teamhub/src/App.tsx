@@ -16,6 +16,7 @@ import CalendarPage from "@/pages/calendar";
 import MemberView from "@/pages/member-view";
 import SettingsPage from "@/pages/settings";
 import AdminPage from "@/pages/admin";
+import AuditLogPage from "@/pages/admin-audit-log";
 import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -184,6 +185,9 @@ function AppRouter() {
           </Route>
           <Route path="/settings">
             <ProtectedRoute><SettingsPage /></ProtectedRoute>
+          </Route>
+          <Route path="/admin/audit-log">
+            <ProtectedRoute><AuditLogPage /></ProtectedRoute>
           </Route>
           <Route path="/admin">
             <ProtectedRoute><AdminPage /></ProtectedRoute>

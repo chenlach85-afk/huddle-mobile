@@ -26,13 +26,14 @@ Clerk Auth (Replit-managed). Provisioned via `setupClerkWhitelabelAuth()`.
 PostgreSQL via `DATABASE_URL` env var. Schema push: `pnpm --filter @workspace/db run push`
 
 Tables:
-- `teams` — id, name, sport, season, description, coach_name, avatar_color, image_url, location, player_count, join_code, timestamps
+- `teams` — id, name, sport, season, description, coach_name, avatar_color, image_url, location, player_count, join_code, created_by (FK→users), archived_at, archived_by, archived_reason, timestamps
 - `players` — id, team_id (FK→teams), name, number, position, email, phone, date_of_birth, notes, status
 - `events` — id, team_id (FK→teams), title, type, location, starts_at, ends_at, notes, timestamps
 - `attendance` — id, event_id (FK→events), player_id (FK→players), status, notes, updated_at
 - `tasks` — id, team_id (FK→teams), title, description, assigned_to_player_id, due_date, status, priority, timestamps
 - `messages` — id, team_id (FK→teams), sender_name, sender_role, content, pinned, created_at
-- `users` — id, clerk_id (unique), email, name, role, language, notifications_enabled, email_notifications, push_notifications, calendar_reminder_minutes, timestamps
+- `users` — id, clerk_id (unique), email, name, role, language, account_status (active/suspended/deleted), deleted_at, deleted_by, deletion_reason, suspended_at, suspended_by, suspension_reason, notifications prefs, timestamps
+- `admin_audit_log` — id, admin_id, action, target_user_id, target_team_id, metadata (jsonb), created_at
 - `notifications` — id, user_id (FK→users), type, title, body, read, related_id, related_type, created_at
 - `team_members` — id, team_id (FK→teams), user_id (FK→users), role, created_at
 - `files` — id, uploader_id, team_id, filename, original_name, mime_type, size, url, related_type, related_id, created_at
@@ -67,6 +68,17 @@ All under `/api/` base path:
 | DELETE | /api/messages/:messageId | Delete message |
 | GET | /api/member/:joinCode | Public member view |
 | GET | /api/calendar | Calendar events with team info |
+| GET | /api/admin/kpis | Platform KPIs (admin only) |
+| GET | /api/admin/users | List users with filters: status, search, isAdmin, page, limit |
+| GET | /api/admin/users/:id | User detail + teams owned + audit log |
+| PATCH | /api/admin/users/:id | Edit user: name, role, language |
+| POST | /api/admin/users/:id/suspend | Suspend user (+ Clerk ban) |
+| POST | /api/admin/users/:id/reactivate | Reactivate user (+ Clerk unban) |
+| POST | /api/admin/users/:id/soft-delete | Anonymize user + handle teams (archive/transfer/delete) |
+| POST | /api/admin/users/:id/hard-delete | Permanently destroy user (confirmation phrase required) |
+| POST | /api/admin/teams/:id/archive | Archive a team |
+| POST | /api/admin/teams/:id/transfer | Transfer team ownership |
+| GET | /api/admin/audit-log | Paginated audit log with action filter |
 
 ## Frontend Pages
 

@@ -9,3 +9,4 @@ export * from "./notifications";
 export * from "./team_members";
 export * from "./files";
 export * from "./albums";
+export * from "./admin_audit_log";

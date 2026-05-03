@@ -15,6 +15,10 @@ export const teamsTable = pgTable("teams", {
   location: text("location"),
   playerCount: integer("player_count").notNull().default(0),
   joinCode: text("join_code").notNull().default(sql`gen_random_uuid()`),
+  createdBy: integer("created_by"),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  archivedBy: integer("archived_by"),
+  archivedReason: text("archived_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

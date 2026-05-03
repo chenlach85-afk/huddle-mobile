@@ -1,0 +1,440 @@
+Good — admin user management is the natural complement to invitations. Let me give you a focused prompt that adds full account control without breaking what you already have.
+
+A few important things to think about before I write it, because "delete a user" sounds simple but has nasty edge cases that bite you in production:
+
+What "delete" actually means — pick your approach
+There are three different actions, and you probably want all of them but for different situations:
+
+Action	What it does	When to use
+Suspend	User can't log in; data stays	Temporary block, payment issues, behavior warning
+Soft delete	User marked deleted, data anonymized but kept; user can't log in or recover	Standard "delete" — preserves history of what they did
+Hard delete	User row + all their data permanently destroyed	GDPR/privacy requests, mistakes, test accounts
+Why this matters: if a coach who managed 5 teams gets hard-deleted, what happens to those teams? Their messages? Their events? The task assignments they created? If you just DELETE FROM auth.users and let CASCADE handle it, you nuke real data that other users (the players) might still need.
+
+The professional pattern is: soft delete by default, hard delete as a separate destructive action. I'll build both.
+
+What about the data they own?
+When you delete a coach, you have three options for their teams:
+
+Cascade delete — team and all its data disappears (clean but destructive)
+Transfer ownership — admin picks a new owner before deletion
+Archive — team stays, marked as archived, players keep historical access read-only
+Best practice: make this a choice in the UI. Don't bake one option into the code. The admin sees a confirmation dialog with the three options every time.
+
+Here's the prompt to paste into Replit Agent
+Add full admin user management to my app — view, edit, suspend, soft-delete, and hard-delete user accounts. Also handle what happens to their teams and data.
+
+Goal
+As platform admin (is_platform_admin = true), I can manage every user account from /admin/users. I can view, edit, suspend, reactivate, soft-delete, and (with extra confirmation) hard-delete accounts. I also control what happens to a deleted user's teams and data.
+
+Database changes
+sql
+-- Add deletion tracking fields to profiles
+alter table public.profiles
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by uuid references auth.users(id),
+  add column if not exists deletion_reason text,
+  add column if not exists suspended_at timestamptz,
+  add column if not exists suspended_by uuid references auth.users(id),
+  add column if not exists suspension_reason text;
+
+-- Audit log for admin actions
+create table if not exists public.admin_audit_log (
+  id uuid primary key default uuid_generate_v4(),
+  admin_id uuid not null references auth.users(id),
+  action text not null check (action in (
+    'user_suspended', 'user_reactivated', 'user_soft_deleted', 'user_hard_deleted',
+    'user_promoted_admin', 'user_demoted_admin', 'user_password_reset',
+    'team_archived', 'team_transferred', 'team_deleted',
+    'invitation_sent', 'invitation_revoked'
+  )),
+  target_user_id uuid references auth.users(id),
+  target_team_id uuid,
+  metadata jsonb,
+  created_at timestamptz default now()
+);
+
+create index admin_audit_log_admin_idx on admin_audit_log(admin_id, created_at desc);
+create index admin_audit_log_target_idx on admin_audit_log(target_user_id);
+
+-- Add archived flag to teams
+alter table public.teams
+  add column if not exists archived_at timestamptz,
+  add column if not exists archived_by uuid references auth.users(id),
+  add column if not exists archived_reason text;
+
+-- RLS for audit log: only admins can read; nobody can update/delete (immutable)
+alter table public.admin_audit_log enable row level security;
+create policy "admins read audit log" on public.admin_audit_log for select
+  using (exists(select 1 from profiles where id = auth.uid() and is_platform_admin = true));
+-- Inserts happen via service role only (from API routes), no policy needed for that
+
+-- Helpful view: active users (not deleted, not suspended)
+create or replace view public.active_users as
+  select p.*, u.email as auth_email, u.created_at as auth_created_at, u.last_sign_in_at
+  from profiles p
+  join auth.users u on u.id = p.id
+  where p.deleted_at is null and p.account_status != 'suspended';
+After running this, no manual setup needed — the admin flag is already on your profile from the previous prompt.
+
+API routes
+All routes in this section require platform admin. Verify on every request:
+
+typescript
+async function requireAdmin(request: Request) {
+  const supabase = createServerClient(/* ... */);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Response('Unauthorized', { status: 401 });
+  const { data: profile } = await supabase.from('profiles').select('is_platform_admin').eq('id', user.id).single();
+  if (!profile?.is_platform_admin) throw new Response('Forbidden', { status: 403 });
+  return user;
+}
+GET /api/admin/users
+List users with filters and pagination.
+
+Query params:
+
+status — active | suspended | deleted | all (default active)
+search — search by email or name (ILIKE %term%)
+is_admin — true/false filter for platform admins
+page — pagination, default 1
+limit — default 25, max 100
+Response:
+
+json
+{
+  "users": [
+    {
+      "id": "uuid",
+      "email": "...",
+      "full_name": "...",
+      "preferred_language": "he",
+      "account_status": "active",
+      "is_platform_admin": false,
+      "deleted_at": null,
+      "suspended_at": null,
+      "created_at": "...",
+      "last_sign_in_at": "...",
+      "team_count": 2,
+      "active_subscription": null
+    }
+  ],
+  "total": 47,
+  "page": 1,
+  "limit": 25
+}
+Use the service role client for this query so RLS doesn't filter out other users (admin needs to see everyone).
+
+GET /api/admin/users/:id
+Detailed user view. Returns profile + teams owned/joined + invitations sent + recent activity + audit log entries about this user.
+
+json
+{
+  "user": { /* profile */ },
+  "teams_owned": [{ "id": "...", "name": "...", "member_count": 12, "archived_at": null }],
+  "teams_joined": [{ "id": "...", "name": "...", "role": "player" }],
+  "invitations_sent": [...],
+  "audit_log": [...]
+}
+PATCH /api/admin/users/:id
+Edit user fields. Admin can update:
+
+json
+{
+  "full_name": "string?",
+  "email": "string?",
+  "preferred_language": "he|en|es",
+  "is_platform_admin": "boolean?",
+  "account_status": "active|suspended|pending"
+}
+Email change requires updating auth.users via admin API (supabase.auth.admin.updateUserById).
+
+If is_platform_admin is being set to true: log to audit as user_promoted_admin. If set to false: log as user_demoted_admin.
+
+Safety rail: prevent admin from removing their OWN admin flag. Return error: "You cannot remove your own admin status. Ask another admin to do it."
+
+Safety rail: prevent removing admin status if there's only one platform admin total. Return: "Cannot demote the last platform admin."
+
+POST /api/admin/users/:id/suspend
+json
+// Body
+{ "reason": "string?" }
+
+// Behavior:
+// 1. Set account_status = 'suspended', suspended_at = now(), suspended_by = admin.id, suspension_reason = body.reason
+// 2. Optionally: invalidate all of the user's existing sessions via supabase.auth.admin.signOut(userId)
+// 3. Log to audit: action='user_suspended'
+// 4. Send notification email (in user's preferred language): "Your HUDDLE account has been suspended. Contact support if this is an error."
+Suspended users:
+
+Cannot log in (login route checks account_status after auth and returns "account suspended")
+Existing sessions are invalidated
+Their data stays untouched
+Their teams continue to exist (members can still see them)
+POST /api/admin/users/:id/reactivate
+typescript
+// 1. Set account_status = 'active', clear suspended_at/suspended_by/suspension_reason
+// 2. Log to audit
+// 3. Send notification email: "Your HUDDLE account has been reactivated"
+POST /api/admin/users/:id/reset-password
+typescript
+// Use Supabase admin API to send a password reset email:
+// supabase.auth.admin.generateLink({ type: 'recovery', email: user.email })
+// Then send the link via Resend in the user's preferred language
+// Log to audit
+POST /api/admin/users/:id/soft-delete
+The standard "delete" action. Marks the user as deleted but keeps their row.
+
+json
+// Body
+{
+  "reason": "string?",
+  "team_action": "archive" | "transfer" | "delete",
+  "transfer_to_user_id": "uuid?"  // required if team_action === 'transfer'
+}
+Behavior:
+
+Validate team_action. If transfer, ensure transfer_to_user_id exists and isn't deleted.
+For each team this user owns (teams.created_by = userId):
+If team_action === 'archive': set archived_at = now(), archived_by = admin.id, archived_reason = 'Owner soft-deleted'. Players in archived teams get read-only access.
+If team_action === 'transfer': update teams.created_by = transfer_to_user_id. Update team_members to make new user a coach role.
+If team_action === 'delete': cascade delete the team (events, messages, etc. all gone via existing FK cascade).
+Anonymize the profile: full_name = 'Deleted User', email = 'deleted-{user_id}@deleted.local', phone = null, avatar_url = null. Keep id intact so foreign keys don't break.
+Set deleted_at = now(), deleted_by = admin.id, deletion_reason = body.reason, account_status = 'suspended'.
+Disable the auth user: supabase.auth.admin.updateUserById(userId, { ban_duration: '876000h' }) (100 years).
+Sign out all sessions.
+Log to audit with metadata containing team_action and counts.
+Don't send a confirmation email (the user is being removed, not notified).
+Soft-deleted users do NOT count toward platform stats but their historical records (messages they sent, events they created) remain visible to other users with the anonymized name.
+
+POST /api/admin/users/:id/hard-delete
+DESTRUCTIVE. Use rarely. Requires extra confirmation in the UI.
+
+json
+// Body
+{
+  "reason": "string?",
+  "team_action": "delete" | "transfer",
+  "transfer_to_user_id": "uuid?",
+  "confirmation_text": "string"  // must match exact phrase like "DELETE PERMANENTLY"
+}
+Behavior:
+
+Verify confirmation_text === 'DELETE PERMANENTLY'. Return 400 otherwise.
+Handle teams per team_action (only delete or transfer allowed for hard delete — no archive option since there'll be no owner to revive it).
+Log audit BEFORE deletion (user_hard_deleted with snapshot of user data in metadata so audit trail isn't lost).
+Delete the auth user via service role: supabase.auth.admin.deleteUser(userId). This cascades through all FK relationships in your schema (positions, alerts, messages they sent, etc.).
+Don't try to anonymize first — the deletion is the anonymization.
+Safety rails:
+
+Can't hard-delete yourself
+Can't hard-delete the last platform admin
+Can't hard-delete if user has active subscription (must cancel first via Stripe)
+POST /api/admin/teams/:id/archive
+json
+// Body
+{ "reason": "string?" }
+
+// Sets teams.archived_at, archived_by, archived_reason
+// Players see "This team has been archived" banner; can read but not write
+// Log to audit
+POST /api/admin/teams/:id/transfer
+json
+// Body
+{ "new_owner_user_id": "uuid", "reason": "string?" }
+
+// 1. Verify new owner exists and isn't deleted
+// 2. Add them to team_members with role='coach' if not already
+// 3. Update teams.created_by = new_owner_user_id
+// 4. Log to audit
+// 5. Email both old owner (if active) and new owner
+DELETE /api/admin/teams/:id
+Hard delete a team and all its data. Same confirmation phrase pattern as hard-delete user.
+
+Sign-in flow change
+Update the sign-in handler to check account status AFTER successful auth:
+
+typescript
+// In /api/auth/signin or wherever login happens
+const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+if (error) return /* normal error */;
+
+const { data: profile } = await supabase.from('profiles').select('account_status, deleted_at').eq('id', data.user.id).single();
+
+if (profile.deleted_at) {
+  await supabase.auth.signOut();
+  return error('Account no longer exists', 'account_deleted');
+}
+if (profile.account_status === 'suspended') {
+  await supabase.auth.signOut();
+  return error('Account is suspended. Please contact support.', 'account_suspended');
+}
+// proceed with login
+Show suspended/deleted error messages translated into the user's browser language.
+
+Pages
+/admin/users (updated)
+Top section:
+
+Search box
+Filter pills: All / Active / Suspended / Deleted / Admins only
+Total count display
+Users table:
+
+Columns: Avatar+Name, Email, Status badge, Role (Player/Coach/Admin), Teams count, Last seen, Created, Actions (kebab menu)
+Status badges: Active (green), Suspended (yellow), Deleted (gray strikethrough)
+Admin users have a small shield icon next to their name
+Kebab menu actions per row (varies by status):
+Active: View / Edit / Reset password / Suspend / Soft delete / Hard delete
+Suspended: View / Edit / Reactivate / Soft delete / Hard delete
+Deleted: View (read-only) / Hard delete
+Pagination at bottom
+/admin/users/[id] (updated detail page)
+Header: Avatar + name + status badge + email + admin shield if applicable
+
+Action buttons row:
+
+Edit (opens edit modal)
+Reset password
+Toggle admin status (with confirmation)
+Suspend / Reactivate (depending on current status)
+Soft delete (opens delete modal — see below)
+Hard delete (separate red button at very bottom of page in a "Danger zone" section)
+Tabs:
+
+Overview — basic info, last sign-in, total teams, total messages, etc.
+Teams owned — list with member counts and archive status
+Teams joined — list with role
+Invitations sent — list with status
+Audit log — entries from admin_audit_log where this user is target_user_id
+Delete confirmation modals
+Soft delete modal
+Title: "Delete user account?"
+
+Body explains:
+
+This account will be deactivated and the user can't log in
+Their personal info (name, email) will be anonymized
+Their historical records (messages, events) will remain visible to others under "Deleted User"
+This can be reversed by contacting support (data is preserved)
+Form:
+
+Reason (optional textarea)
+"What should happen to their teams?" radio:
+Archive teams (recommended) — players keep read-only access
+Transfer to another user — opens user search dropdown
+Delete teams permanently — destructive, shows warning
+Cancel / "Delete account" button (orange, not red)
+Hard delete modal
+Title in red: "⚠️ Permanently delete user?"
+
+Body explains in clear terms:
+
+This action CANNOT be undone
+All personal data will be permanently destroyed
+Audit log entry will be created with a snapshot
+Any active subscription must be canceled first (link to user's billing if applicable)
+Form:
+
+Reason (required textarea, min 10 chars)
+Team action: Delete teams / Transfer teams
+Confirmation: "Type DELETE PERMANENTLY to confirm" (input)
+Cancel / "Permanently delete" button (red, disabled until confirmation matches)
+/admin/audit-log
+New page showing the full admin audit log:
+
+Searchable / filterable table
+Columns: Time, Admin, Action, Target user, Target team, Metadata
+Each row expandable to show full metadata JSON
+Export to CSV button
+Filter by action type, admin, date range
+Translations
+Add to he.json:
+
+json
+{
+  "admin": {
+    "users_title": "ניהול משתמשים",
+    "search_users": "חפש משתמשים",
+    "filter_all": "הכל",
+    "filter_active": "פעילים",
+    "filter_suspended": "מושעים",
+    "filter_deleted": "נמחקו",
+    "filter_admins": "מנהלים בלבד",
+    "status_active": "פעיל",
+    "status_suspended": "מושעה",
+    "status_deleted": "נמחק",
+    "actions": "פעולות",
+    "view": "צפייה",
+    "edit": "עריכה",
+    "reset_password": "איפוס סיסמה",
+    "promote_admin": "קדם למנהל",
+    "demote_admin": "הסר הרשאות מנהל",
+    "suspend": "השעה חשבון",
+    "reactivate": "הפעל מחדש",
+    "soft_delete": "מחק חשבון",
+    "hard_delete": "מחיקה לצמיתות",
+    "delete_user_title": "למחוק חשבון משתמש?",
+    "delete_user_warning": "החשבון יבוטל והמשתמש לא יוכל להתחבר. הפרטים האישיים יוסתרו אך הרשומות ההיסטוריות יישארו.",
+    "delete_reason": "סיבה",
+    "team_action_label": "מה לעשות עם הקבוצות שלו?",
+    "team_action_archive": "העבר לארכיון (מומלץ)",
+    "team_action_transfer": "העבר לבעלים אחר",
+    "team_action_delete": "מחק לצמיתות",
+    "transfer_to": "העבר ל-",
+    "hard_delete_title": "מחיקה לצמיתות של משתמש?",
+    "hard_delete_warning": "פעולה זו אינה ניתנת לביטול. כל הנתונים האישיים יימחקו לחלוטין.",
+    "hard_delete_confirm_label": "הקלד DELETE PERMANENTLY כדי לאשר",
+    "hard_delete_confirm_phrase": "DELETE PERMANENTLY",
+    "cannot_self_demote": "לא ניתן להוריד את עצמך מסטטוס מנהל",
+    "cannot_demote_last_admin": "לא ניתן להוריד את המנהל היחיד",
+    "cannot_self_delete": "לא ניתן למחוק את החשבון של עצמך",
+    "user_suspended_email_subject": "החשבון שלך ב-HUDDLE הושעה",
+    "user_reactivated_email_subject": "החשבון שלך ב-HUDDLE הופעל מחדש",
+    "audit_log": "יומן פעולות",
+    "audit_action": "פעולה",
+    "audit_admin": "מנהל",
+    "audit_target": "יעד",
+    "audit_time": "זמן"
+  }
+}
+Add equivalent keys to en.json and es.json.
+
+Acceptance criteria
+Logged in as admin, I navigate to /admin/users and see all users with filters
+I can search by name or email and results update
+I filter to "Suspended" and only suspended users show
+I click a user and see their detail page with all tabs (Overview, Teams owned, Teams joined, Invitations, Audit log)
+I edit a user's name and language — changes save and appear immediately
+I suspend a user — their account_status flips to suspended, they receive an email, their next login attempt fails with the suspended message
+I reactivate them — they can log in again
+I reset a user's password — they receive a password reset email
+I attempt to demote myself from admin — blocked with clear error
+I attempt to delete myself — blocked
+I soft-delete a user with team_action: 'archive' — their teams are marked archived, their profile is anonymized, they can't log in
+Other users still see "Deleted User" in old messages from this user, but the rest of the app works
+I navigate to /admin/audit-log and see every action I just performed with full metadata
+I attempt to hard-delete a user without typing the confirmation phrase exactly — blocked
+I hard-delete a test user with confirmation — they're gone from auth.users and profiles; the audit log entry remains showing what was deleted
+The team transfer flow works: I soft-delete a coach with team_action: 'transfer' to another coach — the team's owner changes, both get email notifications
+All confirmation modals translate correctly across Hebrew, English, and Spanish
+Don't break the email-based invitation system from the previous prompt — they're separate features.
+
+That's the prompt. Some honest notes:
+
+On testing the destructive stuff — create 2-3 test accounts via the invitation flow first, then practice suspend → reactivate → soft delete → hard delete on those. Don't experiment on real coach accounts. Once you've proven it works on test data, you'll trust it for production.
+
+On audit logs in practice — you'll be tempted to skip them ("it's just me as admin"). Don't. The first time you accidentally delete the wrong user (everyone does this once), the audit log is what saves you. It's also what you show a regulator if you ever face a privacy complaint.
+
+On the "active subscription" check before hard delete — I added this rule but only conceptually. If you haven't built billing yet, the agent might skip it or implement it as a no-op stub. That's fine. When you add Stripe later (the billing addendum prompt I gave you earlier), wire it up properly then.
+
+On data preservation tradeoffs — soft delete is almost always right. Hard delete should be reserved for: GDPR/privacy requests, accidental signups, spam accounts, and your own test accounts. If a real coach asks "delete my account," soft delete is enough — their data is anonymized and they can't log in. Only escalate to hard delete if they specifically ask for full data removal.
+
+One feature I deliberately left out: bulk operations (suspend 50 users at once). Easy to add later if you ever need it. For early-stage admin work, one-at-a-time is safer.
+
+Paste it. Let me know if the agent gets stuck — especially the cascade delete logic, which is where Supabase RLS and admin API can fight each other.
+
+
+
+
+
