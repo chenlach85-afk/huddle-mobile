@@ -11,9 +11,7 @@ import {
   getListAttendanceQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -29,15 +27,15 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Calendar, MapPin, Trash2, Pencil, Users, Check, X, HelpCircle } from "lucide-react";
+import { Plus, Calendar, MapPin, Trash2, Pencil, Check, X, HelpCircle, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
-const TYPE_COLORS: Record<string, string> = {
-  practice: "bg-blue-100 text-blue-700 border-blue-200",
-  game: "bg-orange-100 text-orange-700 border-orange-200",
-  meeting: "bg-purple-100 text-purple-700 border-purple-200",
-  other: "bg-gray-100 text-gray-600 border-gray-200",
+const TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  practice: { label: "Practice", color: "#4a90e2" },
+  game: { label: "Game", color: "#FF6B35" },
+  meeting: { label: "Meeting", color: "#9b59b6" },
+  other: { label: "Other", color: "rgba(255,255,255,0.3)" },
 };
 
 const eventSchema = z.object({
@@ -50,7 +48,7 @@ const eventSchema = z.object({
 });
 type EventForm = z.infer<typeof eventSchema>;
 
-function AttendancePanel({ eventId, teamId }: { eventId: number; teamId: number }) {
+function AttendancePanel({ eventId, teamId, teamColor }: { eventId: number; teamId: number; teamColor: string }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: players = [] } = useListPlayers(teamId, { query: { enabled: true, queryKey: [] } });
@@ -59,10 +57,13 @@ function AttendancePanel({ eventId, teamId }: { eventId: number; teamId: number 
   });
   const upsert = useUpsertAttendance();
 
+  const attending = attendance.filter(a => a.status === "attending").length;
+  const notAttending = attendance.filter(a => a.status === "not_attending").length;
+  const maybe = attendance.filter(a => a.status === "maybe").length;
+
   function getStatus(playerId: number) {
     return attendance.find(a => a.playerId === playerId)?.status || "no_response";
   }
-
   function markAttendance(playerId: number, status: "attending" | "not_attending" | "maybe") {
     upsert.mutate({ eventId, data: { playerId, status } }, {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: getListAttendanceQueryKey(eventId) }),
@@ -70,52 +71,80 @@ function AttendancePanel({ eventId, teamId }: { eventId: number; teamId: number 
     });
   }
 
-  if (players.length === 0) return <p className="text-xs text-muted-foreground">No players on roster yet.</p>;
-
   return (
-    <div className="space-y-2">
-      {players.map(player => {
-        const status = getStatus(player.id);
-        return (
-          <div key={player.id} className="flex items-center justify-between" data-testid={`attendance-player-${player.id}`}>
-            <span className="text-sm">{player.name}</span>
-            <div className="flex gap-1">
-              <button
-                onClick={() => markAttendance(player.id, "attending")}
-                className={`p-1 rounded transition-colors ${status === "attending" ? "bg-green-500 text-white" : "text-muted-foreground hover:text-green-600"}`}
-                title="Attending"
-                data-testid={`btn-attending-${player.id}`}
-              >
-                <Check className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => markAttendance(player.id, "maybe")}
-                className={`p-1 rounded transition-colors ${status === "maybe" ? "bg-yellow-500 text-white" : "text-muted-foreground hover:text-yellow-600"}`}
-                title="Maybe"
-                data-testid={`btn-maybe-${player.id}`}
-              >
-                <HelpCircle className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => markAttendance(player.id, "not_attending")}
-                className={`p-1 rounded transition-colors ${status === "not_attending" ? "bg-red-500 text-white" : "text-muted-foreground hover:text-red-600"}`}
-                title="Not attending"
-                data-testid={`btn-not-attending-${player.id}`}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
+    <div className="border-t border-white/6 pt-4 mt-1">
+      {/* Scoreboard stats */}
+      <div className="flex items-center gap-4 mb-4 pb-3 border-b border-white/6">
+        <div className="text-center">
+          <div className="font-display text-3xl leading-none text-[#2ecc71]">{attending}</div>
+          <div className="stat-label mt-1">IN</div>
+        </div>
+        <div className="w-px h-8 bg-white/10" />
+        <div className="text-center">
+          <div className="font-display text-3xl leading-none text-[#e74c3c]">{notAttending}</div>
+          <div className="stat-label mt-1">OUT</div>
+        </div>
+        <div className="w-px h-8 bg-white/10" />
+        <div className="text-center">
+          <div className="font-display text-3xl leading-none text-[#f7b538]">{maybe}</div>
+          <div className="stat-label mt-1">MAYBE</div>
+        </div>
+        <div className="w-px h-8 bg-white/10" />
+        <div className="text-center">
+          <div className="font-display text-3xl leading-none text-white/30">{players.length - attending - notAttending - maybe}</div>
+          <div className="stat-label mt-1">?</div>
+        </div>
+      </div>
+
+      {players.length === 0 ? (
+        <p className="text-xs text-white/30 text-center py-2">No players on squad yet.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {players.map(player => {
+            const status = getStatus(player.id);
+            return (
+              <div key={player.id} className="flex items-center justify-between py-1" data-testid={`attendance-player-${player.id}`}>
+                <div className="flex items-center gap-2.5">
+                  <div className="jersey-tile w-7 h-7 text-xs" style={{ background: `linear-gradient(135deg, ${teamColor}, ${teamColor}88)` }}>
+                    {player.number ?? player.name.charAt(0)}
+                  </div>
+                  <span className="text-sm text-white/70">{player.name}</span>
+                </div>
+                <div className="flex gap-1">
+                  {[
+                    { s: "attending" as const, icon: Check, color: "#2ecc71", label: "In" },
+                    { s: "maybe" as const, icon: HelpCircle, color: "#f7b538", label: "?" },
+                    { s: "not_attending" as const, icon: X, color: "#e74c3c", label: "Out" },
+                  ].map(({ s, icon: Icon, color, label }) => (
+                    <button
+                      key={s}
+                      onClick={() => markAttendance(player.id, s)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-all text-xs font-bold"
+                      style={{
+                        background: status === s ? `${color}30` : "rgba(255,255,255,0.04)",
+                        color: status === s ? color : "rgba(255,255,255,0.25)",
+                        border: status === s ? `1px solid ${color}60` : "1px solid rgba(255,255,255,0.06)",
+                      }}
+                      title={label}
+                      data-testid={`btn-${s === "attending" ? "attending" : s === "maybe" ? "maybe" : "not-attending"}-${player.id}`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-export default function EventsTab({ teamId }: { teamId: number }) {
+export default function EventsTab({ teamId, teamColor }: { teamId: number; teamColor: string }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -157,16 +186,17 @@ export default function EventsTab({ teamId }: { teamId: number }) {
       });
     } else {
       createEvent.mutate({ teamId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListEventsQueryKey(teamId) }); setOpen(false); toast({ title: "Event created" }); },
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListEventsQueryKey(teamId) }); setOpen(false); toast({ title: "Event added to lineup" }); },
         onError: () => toast({ title: "Failed to create event", variant: "destructive" }),
       });
     }
   }
 
-  function handleDelete(eventId: number) {
+  function handleDelete(eventId: number, e: React.MouseEvent) {
+    e.stopPropagation();
     if (!confirm("Delete this event?")) return;
     deleteEvent.mutate({ eventId }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListEventsQueryKey(teamId) }); if (selectedEventId === eventId) setSelectedEventId(null); toast({ title: "Event deleted" }); },
+      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListEventsQueryKey(teamId) }); if (expandedId === eventId) setExpandedId(null); toast({ title: "Event deleted" }); },
       onError: () => toast({ title: "Failed to delete event", variant: "destructive" }),
     });
   }
@@ -174,104 +204,109 @@ export default function EventsTab({ teamId }: { teamId: number }) {
   const isPending = createEvent.isPending || updateEvent.isPending;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{events.length} event{events.length !== 1 ? "s" : ""}</p>
-        <Button size="sm" onClick={openCreate} data-testid="button-add-event">
-          <Plus className="h-4 w-4 mr-1.5" />
+        <p className="section-label">{events.length} EVENTS IN LINEUP</p>
+        <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-event">
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
           Add Event
         </Button>
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
       ) : events.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Calendar className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="font-medium mb-1">No events scheduled</p>
-            <p className="text-sm text-muted-foreground mb-4">Schedule your first practice or game</p>
-            <Button size="sm" onClick={openCreate}>Add Event</Button>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+          <Calendar className="h-10 w-10 mx-auto text-white/15 mb-3" />
+          <p className="font-display text-xl text-white/30 tracking-wide">EMPTY LINEUP</p>
+          <p className="text-xs text-white/25 mt-1 mb-4">Schedule your first practice or game</p>
+          <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold">Add Event</Button>
+        </div>
       ) : (
         <div className="space-y-2">
-          {events.map(event => (
-            <div key={event.id}>
-              <Card
-                className={`group cursor-pointer transition-all ${selectedEventId === event.id ? "border-primary shadow-sm" : "hover:border-primary/40"}`}
-                onClick={() => setSelectedEventId(selectedEventId === event.id ? null : event.id)}
-                data-testid={`card-event-${event.id}`}
-              >
-                <CardContent className="p-4 flex items-start gap-4">
-                  <div className={`text-xs px-2 py-1 rounded border font-medium mt-0.5 ${TYPE_COLORS[event.type]}`}>
-                    {event.type}
+          {events.map(event => {
+            const typeCfg = TYPE_CONFIG[event.type];
+            const isExpanded = expandedId === event.id;
+            return (
+              <div key={event.id} className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }} data-testid={`card-event-${event.id}`}>
+                <div
+                  className="p-4 flex items-start gap-3 cursor-pointer hover:bg-white/3 transition-colors group"
+                  onClick={() => setExpandedId(isExpanded ? null : event.id)}
+                >
+                  {/* Type pill */}
+                  <div className="mt-0.5 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-widest shrink-0"
+                    style={{ background: `${typeCfg.color}20`, color: typeCfg.color, border: `1px solid ${typeCfg.color}40` }}>
+                    {typeCfg.label}
                   </div>
+
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium" data-testid={`text-event-title-${event.id}`}>{event.title}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {format(new Date(event.startsAt), "EEE MMM d, yyyy • h:mm a")}
+                    <h4 className="font-semibold text-white text-sm" data-testid={`text-event-title-${event.id}`}>{event.title}</h4>
+                    <p className="text-xs text-white/40 mt-0.5 font-medium">
+                      {format(new Date(event.startsAt), "EEE, MMM d · h:mm a")}
                     </p>
                     {event.location && (
-                      <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />{event.location}
+                      <p className="text-xs text-white/30 mt-0.5 flex items-center gap-1">
+                        <MapPin className="h-2.5 w-2.5 shrink-0" />{event.location}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Users className="h-3 w-3" />{event.attendingCount}/{event.totalCount}
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Attendance mini scoreboard */}
+                    <span className="text-xs font-bold" style={{ color: teamColor }}>
+                      {event.attendingCount}/{event.totalCount}
                     </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); openEdit(event); }} data-testid={`button-edit-event-${event.id}`}>
-                        <Pencil className="h-3.5 w-3.5" />
+                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-white/40 hover:text-white hover:bg-white/8" onClick={(e) => { e.stopPropagation(); openEdit(event); }} data-testid={`button-edit-event-${event.id}`}>
+                        <Pencil className="h-3 w-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); handleDelete(event.id); }} data-testid={`button-delete-event-${event.id}`}>
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400/40 hover:text-red-400 hover:bg-red-400/10" onClick={(e) => handleDelete(event.id, e)} data-testid={`button-delete-event-${event.id}`}>
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
+                    <ChevronDown className={`h-4 w-4 text-white/20 transition-transform ml-1 ${isExpanded ? "rotate-180" : ""}`} />
                   </div>
-                </CardContent>
-              </Card>
-              {selectedEventId === event.id && (
-                <Card className="border-primary/30 rounded-t-none -mt-1">
-                  <CardHeader className="pb-2 pt-4">
-                    <CardTitle className="text-sm">Attendance</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pb-4">
-                    <AttendancePanel eventId={event.id} teamId={teamId} />
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          ))}
+                </div>
+
+                {isExpanded && (
+                  <div className="px-4 pb-4">
+                    <AttendancePanel eventId={event.id} teamId={teamId} teamColor={teamColor} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Event" : "Add Event"}</DialogTitle>
+            <DialogTitle className="font-display text-2xl text-white tracking-wide">{editingId ? "EDIT EVENT" : "ADD EVENT"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="title" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
-                  <FormControl><Input placeholder="e.g. Practice" data-testid="input-event-title" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">Title</FormLabel>
+                  <FormControl><Input placeholder="e.g. Practice" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-event-title" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="type" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Type</FormLabel>
+                  <FormLabel className="stat-label text-white/50">Type</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl><SelectTrigger data-testid="select-event-type"><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="practice">Practice</SelectItem>
-                      <SelectItem value="game">Game</SelectItem>
-                      <SelectItem value="meeting">Meeting</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                    <FormControl>
+                      <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-event-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                      <SelectItem value="practice" className="text-white">Practice</SelectItem>
+                      <SelectItem value="game" className="text-white">Game</SelectItem>
+                      <SelectItem value="meeting" className="text-white">Meeting</SelectItem>
+                      <SelectItem value="other" className="text-white">Other</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -280,35 +315,35 @@ export default function EventsTab({ teamId }: { teamId: number }) {
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="startsAt" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Starts At</FormLabel>
-                    <FormControl><Input type="datetime-local" data-testid="input-starts-at" {...field} /></FormControl>
+                    <FormLabel className="stat-label text-white/50">Starts At</FormLabel>
+                    <FormControl><Input type="datetime-local" className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="input-starts-at" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="endsAt" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Ends At (optional)</FormLabel>
-                    <FormControl><Input type="datetime-local" data-testid="input-ends-at" {...field} /></FormControl>
+                    <FormLabel className="stat-label text-white/50">Ends At</FormLabel>
+                    <FormControl><Input type="datetime-local" className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="input-ends-at" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
               </div>
               <FormField control={form.control} name="location" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Location (optional)</FormLabel>
-                  <FormControl><Input placeholder="Field address or name" data-testid="input-location" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">Location</FormLabel>
+                  <FormControl><Input placeholder="Field or venue" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-location" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="notes" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes (optional)</FormLabel>
-                  <FormControl><Textarea placeholder="Any notes for the team..." data-testid="input-event-notes" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">Notes</FormLabel>
+                  <FormControl><Textarea placeholder="Instructions for the team..." className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-event-notes" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
-              <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-event">
-                {isPending ? "Saving..." : editingId ? "Update Event" : "Create Event"}
+              <Button type="submit" className="w-full font-semibold rounded-xl h-11" style={{ background: teamColor, color: "white" }} disabled={isPending} data-testid="button-submit-event">
+                {isPending ? "Saving..." : editingId ? "Update Event" : "Add to Lineup"}
               </Button>
             </form>
           </Form>

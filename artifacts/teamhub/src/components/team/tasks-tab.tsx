@@ -8,7 +8,6 @@ import {
   getListTasksQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -28,16 +27,16 @@ import { z } from "zod";
 import { Plus, CheckSquare, Trash2, Pencil, Circle, CheckCircle2, Clock3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const PRIORITY_COLORS: Record<string, string> = {
-  low: "text-green-600",
-  medium: "text-yellow-600",
-  high: "text-red-600",
+const PRIORITY_CONFIG: Record<string, { color: string; label: string }> = {
+  low: { color: "#2ecc71", label: "LOW" },
+  medium: { color: "#f7b538", label: "MED" },
+  high: { color: "#e74c3c", label: "HIGH" },
 };
 
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  pending: <Circle className="h-4 w-4 text-muted-foreground" />,
-  in_progress: <Clock3 className="h-4 w-4 text-blue-500" />,
-  done: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
+  pending: { icon: <Circle className="h-4 w-4" />, color: "rgba(255,255,255,0.3)" },
+  in_progress: { icon: <Clock3 className="h-4 w-4" />, color: "#4a90e2" },
+  done: { icon: <CheckCircle2 className="h-4 w-4" />, color: "#2ecc71" },
 };
 
 const taskSchema = z.object({
@@ -50,7 +49,7 @@ const taskSchema = z.object({
 });
 type TaskForm = z.infer<typeof taskSchema>;
 
-export default function TasksTab({ teamId }: { teamId: number }) {
+export default function TasksTab({ teamId, teamColor }: { teamId: number; teamColor: string }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "in_progress" | "done">("all");
@@ -113,100 +112,147 @@ export default function TasksTab({ teamId }: { teamId: number }) {
   }
 
   const filtered = statusFilter === "all" ? tasks : tasks.filter(t => t.status === statusFilter);
+
+  const pending = tasks.filter(t => t.status === "pending").length;
+  const inProgress = tasks.filter(t => t.status === "in_progress").length;
+  const done = tasks.filter(t => t.status === "done").length;
+
   const isPending = createTask.isPending || updateTask.isPending;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex gap-1">
-          {(["all", "pending", "in_progress", "done"] as const).map(s => (
-            <Button key={s} size="sm" variant={statusFilter === s ? "default" : "ghost"} onClick={() => setStatusFilter(s)} className="text-xs h-7" data-testid={`filter-${s}`}>
-              {s === "all" ? "All" : s === "in_progress" ? "In Progress" : s.charAt(0).toUpperCase() + s.slice(1)}
+    <div className="space-y-3">
+      {/* Scoreboard */}
+      <div className="rounded-2xl border border-white/6 p-4" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="flex items-center gap-5">
+          <div className="text-center">
+            <div className="font-display text-3xl leading-none text-[#e74c3c]">{pending}</div>
+            <div className="stat-label mt-1">PENDING</div>
+          </div>
+          <div className="w-px h-8 bg-white/10" />
+          <div className="text-center">
+            <div className="font-display text-3xl leading-none text-[#4a90e2]">{inProgress}</div>
+            <div className="stat-label mt-1">IN PROGRESS</div>
+          </div>
+          <div className="w-px h-8 bg-white/10" />
+          <div className="text-center">
+            <div className="font-display text-3xl leading-none text-[#2ecc71]">{done}</div>
+            <div className="stat-label mt-1">DONE</div>
+          </div>
+          <div className="ml-auto">
+            <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-task">
+              <Plus className="h-3.5 w-3.5 mr-1.5" />
+              Add Task
             </Button>
-          ))}
+          </div>
         </div>
-        <Button size="sm" onClick={openCreate} data-testid="button-add-task">
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Task
-        </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-1.5">
+        {(["all", "pending", "in_progress", "done"] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
+            style={{
+              background: statusFilter === s ? `${teamColor}25` : "rgba(255,255,255,0.04)",
+              color: statusFilter === s ? teamColor : "rgba(255,255,255,0.35)",
+              border: statusFilter === s ? `1px solid ${teamColor}50` : "1px solid rgba(255,255,255,0.06)",
+            }}
+            data-testid={`filter-${s}`}
+          >
+            {s === "all" ? "All" : s === "in_progress" ? "In Progress" : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
       ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <CheckSquare className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-            <p className="font-medium mb-1">No tasks{statusFilter !== "all" ? ` with status "${statusFilter}"` : ""}</p>
-            {statusFilter === "all" && <Button size="sm" onClick={openCreate} className="mt-4">Add Task</Button>}
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+          <CheckSquare className="h-10 w-10 mx-auto text-white/15 mb-3" />
+          <p className="font-display text-xl text-white/30 tracking-wide">NO TASKS</p>
+          {statusFilter === "all" && <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold mt-4">Add Task</Button>}
+        </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(task => (
-            <Card key={task.id} className={`group ${task.status === "done" ? "opacity-60" : ""}`} data-testid={`card-task-${task.id}`}>
-              <CardContent className="p-4 flex items-start gap-3">
+          {filtered.map(task => {
+            const statusCfg = STATUS_CONFIG[task.status];
+            const priorityCfg = PRIORITY_CONFIG[task.priority];
+            return (
+              <div
+                key={task.id}
+                className={`rounded-2xl border border-white/6 p-4 flex items-start gap-3 group hover:bg-white/3 transition-all ${task.status === "done" ? "opacity-50" : ""}`}
+                style={{
+                  background: "rgba(22,27,46,0.8)",
+                  borderLeft: `3px solid ${statusCfg.color}`,
+                }}
+                data-testid={`card-task-${task.id}`}
+              >
                 <button
                   onClick={() => cycleStatus(task.id, task.status)}
-                  className="mt-0.5 hover:scale-110 transition-transform"
-                  title="Click to change status"
+                  className="mt-0.5 hover:scale-110 transition-transform shrink-0"
+                  style={{ color: statusCfg.color }}
+                  title="Click to advance status"
                   data-testid={`button-cycle-status-${task.id}`}
                 >
-                  {STATUS_ICONS[task.status]}
+                  {statusCfg.icon}
                 </button>
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`font-medium ${task.status === "done" ? "line-through text-muted-foreground" : ""}`} data-testid={`text-task-title-${task.id}`}>
+                    <span className={`font-semibold text-sm text-white ${task.status === "done" ? "line-through" : ""}`} data-testid={`text-task-title-${task.id}`}>
                       {task.title}
                     </span>
-                    <span className={`text-xs font-medium ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${priorityCfg.color}20`, color: priorityCfg.color }}>
+                      {priorityCfg.label}
+                    </span>
                   </div>
                   {task.assignedToPlayerName && (
-                    <p className="text-xs text-muted-foreground mt-0.5">Assigned to {task.assignedToPlayerName}</p>
+                    <p className="text-xs text-white/35 mt-0.5">Assigned to {task.assignedToPlayerName}</p>
                   )}
-                  {task.dueDate && (
-                    <p className="text-xs text-muted-foreground">Due {task.dueDate}</p>
-                  )}
-                  {task.description && <p className="text-xs text-muted-foreground mt-1">{task.description}</p>}
+                  {task.dueDate && <p className="text-xs text-white/30">Due {task.dueDate}</p>}
+                  {task.description && <p className="text-xs text-white/30 mt-0.5">{task.description}</p>}
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(task)} data-testid={`button-edit-task-${task.id}`}>
-                    <Pencil className="h-3.5 w-3.5" />
+
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-white/40 hover:text-white hover:bg-white/8" onClick={() => openEdit(task)} data-testid={`button-edit-task-${task.id}`}>
+                    <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleDelete(task.id)} data-testid={`button-delete-task-${task.id}`}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400/40 hover:text-red-400 hover:bg-red-400/10" onClick={() => handleDelete(task.id)} data-testid={`button-delete-task-${task.id}`}>
+                    <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
           <DialogHeader>
-            <DialogTitle>{editingId ? "Edit Task" : "Add Task"}</DialogTitle>
+            <DialogTitle className="font-display text-2xl text-white tracking-wide">{editingId ? "EDIT TASK" : "ADD TASK"}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField control={form.control} name="title" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
-                  <FormControl><Input placeholder="Task title" data-testid="input-task-title" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">Title</FormLabel>
+                  <FormControl><Input placeholder="Task title" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-task-title" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="priority" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Priority</FormLabel>
+                    <FormLabel className="stat-label text-white/50">Priority</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
+                      <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                        <SelectItem value="low" className="text-white">Low</SelectItem>
+                        <SelectItem value="medium" className="text-white">Medium</SelectItem>
+                        <SelectItem value="high" className="text-white">High</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -214,13 +260,13 @@ export default function TasksTab({ teamId }: { teamId: number }) {
                 )} />
                 <FormField control={form.control} name="status" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status</FormLabel>
+                    <FormLabel className="stat-label text-white/50">Status</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-status"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="done">Done</SelectItem>
+                      <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-status"><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                        <SelectItem value="pending" className="text-white">Pending</SelectItem>
+                        <SelectItem value="in_progress" className="text-white">In Progress</SelectItem>
+                        <SelectItem value="done" className="text-white">Done</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -230,12 +276,12 @@ export default function TasksTab({ teamId }: { teamId: number }) {
               {players.length > 0 && (
                 <FormField control={form.control} name="assignedToPlayerId" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Assign to (optional)</FormLabel>
+                    <FormLabel className="stat-label text-white/50">Assign to</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl><SelectTrigger data-testid="select-assigned-player"><SelectValue placeholder="Unassigned" /></SelectTrigger></FormControl>
-                      <SelectContent>
-                        <SelectItem value="">Unassigned</SelectItem>
-                        {players.map(p => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
+                      <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-assigned-player"><SelectValue placeholder="Unassigned" /></SelectTrigger></FormControl>
+                      <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                        <SelectItem value="" className="text-white">Unassigned</SelectItem>
+                        {players.map(p => <SelectItem key={p.id} value={p.id.toString()} className="text-white">{p.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -244,19 +290,19 @@ export default function TasksTab({ teamId }: { teamId: number }) {
               )}
               <FormField control={form.control} name="dueDate" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Due Date (optional)</FormLabel>
-                  <FormControl><Input type="date" data-testid="input-due-date" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">Due Date</FormLabel>
+                  <FormControl><Input type="date" className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="input-due-date" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
               <FormField control={form.control} name="description" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Description (optional)</FormLabel>
-                  <FormControl><Textarea placeholder="Task details..." data-testid="input-task-description" {...field} /></FormControl>
+                  <FormLabel className="stat-label text-white/50">Description</FormLabel>
+                  <FormControl><Textarea placeholder="Task details..." className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-task-description" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
-              <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-task">
+              <Button type="submit" className="w-full font-semibold rounded-xl h-11" style={{ background: teamColor, color: "white" }} disabled={isPending} data-testid="button-submit-task">
                 {isPending ? "Saving..." : editingId ? "Update Task" : "Create Task"}
               </Button>
             </form>

@@ -1,7 +1,6 @@
 import { useGetDashboardSummary } from "@workspace/api-client-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, Calendar, CheckSquare, MessageSquare, AlertCircle } from "lucide-react";
+import { Users, Calendar, CheckSquare, AlertCircle, ArrowRight, Zap } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Dashboard() {
@@ -9,111 +8,155 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
-        <Skeleton className="h-10 w-48" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full" />)}
+      <div className="p-6 md:p-8 space-y-6 max-w-5xl mx-auto">
+        <Skeleton className="h-40 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}
         </div>
-        <Skeleton className="h-96 w-full" />
+        <Skeleton className="h-64 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />
       </div>
     );
   }
 
   if (error || !summary) {
     return (
-      <div className="p-6 flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <p>Failed to load dashboard summary.</p>
+      <div className="p-8 flex flex-col items-center justify-center h-[50vh] text-white/40">
+        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+        <p>Failed to load dashboard.</p>
       </div>
     );
   }
 
-  const statCards = [
-    { label: "Total Teams", value: summary.totalTeams, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { label: "Total Players", value: summary.totalPlayers, icon: Users, color: "text-indigo-500", bg: "bg-indigo-500/10" },
-    { label: "Upcoming Events", value: summary.upcomingEventsCount, icon: Calendar, color: "text-orange-500", bg: "bg-orange-500/10" },
-    { label: "Pending Tasks", value: summary.pendingTasksCount, icon: CheckSquare, color: "text-rose-500", bg: "bg-rose-500/10" },
-  ];
-
   return (
-    <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Overview</h1>
-        <p className="text-muted-foreground mt-1">Here's what's happening across your teams today.</p>
+    <div className="p-5 md:p-8 max-w-5xl mx-auto space-y-6">
+
+      {/* Hero card */}
+      <div className="hero-card p-7" style={{ background: "linear-gradient(135deg, hsl(22,100%,42%) 0%, hsl(22,90%,28%) 100%)" }}>
+        <p className="section-label text-white/60 mb-1">COACH OVERVIEW</p>
+        <h1 className="font-display text-5xl text-white tracking-wide leading-none mb-1">HUDDLE</h1>
+        <p className="text-white/60 text-sm font-medium">
+          {summary.totalTeams} squad{summary.totalTeams !== 1 ? "s" : ""} · {summary.totalPlayers} athletes
+        </p>
+
+        <div className="mt-6 grid grid-cols-3 gap-3">
+          <div>
+            <div className="stat-value text-white">{summary.totalTeams}</div>
+            <div className="stat-label mt-1">Squads</div>
+          </div>
+          <div>
+            <div className="stat-value text-white">{summary.upcomingEventsCount}</div>
+            <div className="stat-label mt-1">Lineup</div>
+          </div>
+          <div>
+            <div className="stat-value" style={{ color: summary.pendingTasksCount > 0 ? "#f7b538" : "white" }}>
+              {summary.pendingTasksCount}
+            </div>
+            <div className="stat-label mt-1">Open Tasks</div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat, i) => (
-          <Card key={i}>
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-                <h3 className="text-3xl font-bold mt-1">{stat.value}</h3>
+      {/* Stat row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "TOTAL SQUADS", value: summary.totalTeams, color: "hsl(22,100%,60%)", icon: Zap },
+          { label: "ATHLETES", value: summary.totalPlayers, color: "#4a90e2", icon: Users },
+          { label: "LINEUP", value: summary.upcomingEventsCount, color: "#f7b538", icon: Calendar },
+          { label: "OPEN TASKS", value: summary.pendingTasksCount, color: "#e74c3c", icon: CheckSquare },
+        ].map((s) => (
+          <div key={s.label} className="rounded-2xl p-4 border border-white/6"
+            style={{ background: "rgba(22,27,46,0.8)" }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="stat-label">{s.label}</span>
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ background: `${s.color}22` }}>
+                <s.icon className="h-3.5 w-3.5" style={{ color: s.color }} />
               </div>
-              <div className={`p-3 rounded-full ${stat.bg} ${stat.color}`}>
-                <stat.icon className="h-6 w-6" />
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="font-display text-4xl leading-none" style={{ color: s.color }}>{s.value}</div>
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Team Breakdown</CardTitle>
-            <CardDescription>Status summary for each team</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {summary.teamBreakdown.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <p>No teams yet.</p>
-                <Link href="/teams">
-                  <div className="mt-4 text-primary font-medium hover:underline cursor-pointer">Create your first team</div>
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {summary.teamBreakdown.map((team) => (
-                  <Link key={team.teamId} href={`/teams/${team.teamId}`}>
-                    <div className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                      <div>
-                        <h4 className="font-semibold group-hover:text-primary transition-colors">{team.teamName}</h4>
-                        <p className="text-sm text-muted-foreground">{team.sport} • {team.playerCount} players</p>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm">
-                        <div className="flex items-center gap-1.5" title="Upcoming Events">
-                          <Calendar className="h-4 w-4 text-orange-500" />
-                          <span className="font-medium">{team.upcomingEvents}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5" title="Pending Tasks">
-                          <CheckSquare className="h-4 w-4 text-rose-500" />
-                          <span className="font-medium">{team.pendingTasks}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Squad breakdown */}
+      <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="px-5 py-4 border-b border-white/6 flex items-center justify-between">
+          <p className="section-label">Squad Breakdown</p>
+          <Link href="/teams">
+            <span className="text-xs text-primary font-semibold hover:text-primary/80 transition-colors cursor-pointer flex items-center gap-1">
+              All Squads <ArrowRight className="h-3 w-3" />
+            </span>
+          </Link>
+        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Manage your organization</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        {summary.teamBreakdown.length === 0 ? (
+          <div className="px-5 py-10 text-center">
+            <p className="text-white/30 text-sm mb-3">No squads yet</p>
             <Link href="/teams">
-              <div className="w-full justify-start text-left font-normal border p-4 rounded-md cursor-pointer hover:border-primary hover:bg-primary/5 transition-all">
-                <div className="font-medium">View all teams</div>
-                <div className="text-xs text-muted-foreground mt-1">Manage rosters, schedules, and messages</div>
-              </div>
+              <span className="text-primary text-sm font-semibold cursor-pointer hover:text-primary/80">
+                Create your first squad
+              </span>
             </Link>
-          </CardContent>
-        </Card>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {summary.teamBreakdown.map((team) => (
+              <Link key={team.teamId} href={`/teams/${team.teamId}`}>
+                <div className="px-5 py-4 flex items-center gap-4 hover:bg-white/4 transition-colors cursor-pointer group">
+                  {/* Team initial tile */}
+                  <div className="jersey-tile flex-shrink-0"
+                    style={{ background: "linear-gradient(135deg, hsl(22,100%,55%), hsl(22,90%,35%))" }}>
+                    {team.teamName.charAt(0).toUpperCase()}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-white group-hover:text-primary transition-colors truncate">
+                      {team.teamName}
+                    </h4>
+                    <p className="text-xs text-white/40 font-medium">
+                      {team.sport} · {team.playerCount} athletes
+                    </p>
+                  </div>
+
+                  {/* Scoreboard mini stats */}
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="text-center">
+                      <div className="font-display text-2xl leading-none" style={{ color: "#f7b538" }}>
+                        {team.upcomingEvents}
+                      </div>
+                      <div className="stat-label mt-0.5">GAMES</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="font-display text-2xl leading-none" style={{ color: team.pendingTasks > 0 ? "#e74c3c" : "#2ecc71" }}>
+                        {team.pendingTasks}
+                      </div>
+                      <div className="stat-label mt-0.5">TASKS</div>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-white/20 group-hover:text-primary transition-colors" />
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-1 gap-3">
+        <Link href="/teams">
+          <div className="rounded-2xl border border-primary/20 p-4 flex items-center gap-4 cursor-pointer hover:bg-primary/8 transition-all group"
+            style={{ background: "rgba(255,107,53,0.06)" }}>
+            <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/30 transition-colors">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-white text-sm">Manage Squads</p>
+              <p className="text-xs text-white/40">Rosters, schedules, tasks, messages</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-primary/50 group-hover:text-primary transition-colors" />
+          </div>
+        </Link>
+      </div>
+
     </div>
   );
 }

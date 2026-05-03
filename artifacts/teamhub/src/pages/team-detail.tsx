@@ -8,8 +8,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Tooltip,
   TooltipContent,
@@ -17,7 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   ArrowLeft, Users, Calendar, CheckSquare, MessageSquare,
-  Clock, AlertCircle, Activity, Link2, Check,
+  Clock, AlertCircle, Activity, Link2, Check, Zap,
 } from "lucide-react";
 import PlayersTab from "@/components/team/players-tab";
 import EventsTab from "@/components/team/events-tab";
@@ -26,6 +24,14 @@ import MessagesTab from "@/components/team/messages-tab";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+
+const ACTIVITY_COLORS: Record<string, string> = {
+  event_created: "#f7b538",
+  player_added: "#2ecc71",
+  task_created: "#4a90e2",
+  task_completed: "#2ecc71",
+  message_sent: "#9b59b6",
+};
 
 export default function TeamDetailPage() {
   const { teamId } = useParams<{ teamId: string }>();
@@ -41,6 +47,8 @@ export default function TeamDetailPage() {
     query: { enabled: !!id, queryKey: getGetTeamActivityQueryKey(id) },
   });
 
+  const teamColor = team?.avatarColor ?? "#FF6B35";
+
   function copyMemberLink() {
     if (!team || !(team as any).joinCode) return;
     const joinCode = (team as any).joinCode as string;
@@ -48,159 +56,168 @@ export default function TeamDetailPage() {
     const url = `${base}/member/${joinCode}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopied(true);
-      toast({ title: "Member link copied to clipboard", description: "Share this link with your players" });
+      toast({ title: "Member link copied", description: "Share with your players" });
       setTimeout(() => setCopied(false), 2000);
     });
   }
 
   if (teamLoading) {
     return (
-      <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-96 w-full" />
+      <div className="p-5 md:p-8 max-w-6xl mx-auto space-y-5">
+        <Skeleton className="h-32 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />
+        <Skeleton className="h-10 w-72 rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />
+        <Skeleton className="h-96 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />
       </div>
     );
   }
 
   if (!team) {
     return (
-      <div className="p-8 flex flex-col items-center justify-center h-[50vh] text-muted-foreground">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <p>Team not found.</p>
-        <Button variant="ghost" className="mt-4" onClick={() => setLocation("/teams")}>
+      <div className="p-8 flex flex-col items-center justify-center h-[50vh] text-white/40">
+        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+        <p>Squad not found.</p>
+        <Button variant="ghost" className="mt-4 text-white/50 hover:text-white" onClick={() => setLocation("/teams")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Teams
+          Back to Squads
         </Button>
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/teams")} data-testid="button-back">
+    <div className="p-5 md:p-8 max-w-6xl mx-auto space-y-5">
+
+      {/* Team hero banner */}
+      <div className="hero-card p-5 flex items-center gap-4" style={{
+        background: `linear-gradient(135deg, ${teamColor}cc 0%, ${teamColor}55 100%)`,
+        borderColor: `${teamColor}33`,
+        border: `1px solid ${teamColor}33`,
+      }}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setLocation("/teams")}
+          className="text-white/70 hover:text-white hover:bg-white/10 shrink-0"
+          data-testid="button-back"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg shrink-0"
-            style={{ backgroundColor: team.avatarColor }}
-          >
-            {team.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-team-name">{team.name}</h1>
-              <Badge variant="secondary">{team.sport}</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Coach: {team.coachName}
-              {team.season && ` • ${team.season}`}
-            </p>
-          </div>
+
+        <div
+          className="jersey-tile text-2xl shadow-lg shrink-0"
+          style={{ background: `linear-gradient(135deg, white 0%, rgba(255,255,255,0.7) 100%)`, color: teamColor }}
+        >
+          {team.name.charAt(0).toUpperCase()}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h1 className="font-display text-3xl text-white tracking-wide leading-none" data-testid="text-team-name">
+            {team.name.toUpperCase()}
+          </h1>
+          <p className="text-white/60 text-sm font-medium mt-1">
+            {team.sport} · Coach {team.coachName}{team.season ? ` · ${team.season}` : ""}
+          </p>
         </div>
 
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="outline"
               size="sm"
               onClick={copyMemberLink}
-              className="shrink-0"
+              className="shrink-0 font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
+              style={{ background: "rgba(255,255,255,0.12)" }}
               data-testid="button-share-member-link"
             >
               {copied ? (
-                <><Check className="h-4 w-4 mr-2 text-green-500" />Copied</>
+                <><Check className="h-4 w-4 mr-1.5 text-green-400" />Copied</>
               ) : (
-                <><Link2 className="h-4 w-4 mr-2" />Share with Team</>
+                <><Link2 className="h-4 w-4 mr-1.5" />Share Link</>
               )}
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p className="text-xs">Copy the member link to share with your players</p>
+            <p className="text-xs">Copy member view link for players</p>
           </TooltipContent>
         </Tooltip>
       </div>
 
       <Tabs defaultValue="players" className="space-y-4">
-        <TabsList className="grid grid-cols-4 w-full md:w-auto md:inline-flex">
-          <TabsTrigger value="players" data-testid="tab-players">
-            <Users className="h-4 w-4 mr-1.5" />
-            Roster
-          </TabsTrigger>
-          <TabsTrigger value="events" data-testid="tab-events">
-            <Calendar className="h-4 w-4 mr-1.5" />
-            Schedule
-          </TabsTrigger>
-          <TabsTrigger value="tasks" data-testid="tab-tasks">
-            <CheckSquare className="h-4 w-4 mr-1.5" />
-            Tasks
-          </TabsTrigger>
-          <TabsTrigger value="messages" data-testid="tab-messages">
-            <MessageSquare className="h-4 w-4 mr-1.5" />
-            Messages
-          </TabsTrigger>
+        <TabsList className="border border-white/8 p-1 rounded-xl h-auto gap-0.5" style={{ background: "rgba(22,27,46,0.9)" }}>
+          {[
+            { value: "players", label: "Squad", icon: Users },
+            { value: "events", label: "Lineup", icon: Calendar },
+            { value: "tasks", label: "Tasks", icon: CheckSquare },
+            { value: "messages", label: "Huddle", icon: MessageSquare },
+          ].map(t => (
+            <TabsTrigger
+              key={t.value}
+              value={t.value}
+              className="rounded-lg px-4 py-2 text-white/50 font-semibold text-sm data-[state=active]:text-white data-[state=active]:shadow-none transition-all"
+              style={{ ["--tw-data-active-bg" as string]: `${teamColor}33` }}
+              data-testid={`tab-${t.value === "players" ? "players" : t.value === "events" ? "events" : t.value}`}
+            >
+              <t.icon className="h-3.5 w-3.5 mr-1.5" />
+              {t.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
           <div className="lg:col-span-3">
-            <TabsContent value="players"><PlayersTab teamId={id} /></TabsContent>
-            <TabsContent value="events"><EventsTab teamId={id} /></TabsContent>
-            <TabsContent value="tasks"><TasksTab teamId={id} /></TabsContent>
-            <TabsContent value="messages"><MessagesTab teamId={id} /></TabsContent>
+            <TabsContent value="players" className="mt-0"><PlayersTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} /></TabsContent>
           </div>
 
           <div className="lg:col-span-1 space-y-4">
             {/* Member link card */}
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="p-4">
-                <p className="text-xs font-semibold text-primary mb-1.5">Member Access</p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Share the member link with your players. They'll see the schedule, messages, tasks, and roster — but nothing from other teams.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full border-primary/30 text-primary hover:bg-primary/10"
-                  onClick={copyMemberLink}
-                  data-testid="button-copy-member-link-card"
-                >
-                  {copied ? (
-                    <><Check className="h-3.5 w-3.5 mr-2 text-green-500" />Link Copied</>
-                  ) : (
-                    <><Link2 className="h-3.5 w-3.5 mr-2" />Copy Member Link</>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="rounded-2xl p-4 border" style={{ background: `${teamColor}10`, borderColor: `${teamColor}30` }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="h-3.5 w-3.5" style={{ color: teamColor }} />
+                <p className="text-xs font-bold tracking-widest uppercase" style={{ color: teamColor }}>Member Access</p>
+              </div>
+              <p className="text-xs text-white/40 mb-3 leading-relaxed">
+                Share the link with players. They see schedule, tasks, messages, and roster only.
+              </p>
+              <Button
+                size="sm"
+                onClick={copyMemberLink}
+                className="w-full font-semibold rounded-xl text-white border"
+                style={{ background: `${teamColor}20`, borderColor: `${teamColor}40` }}
+                data-testid="button-copy-member-link-card"
+              >
+                {copied ? (
+                  <><Check className="h-3.5 w-3.5 mr-1.5 text-green-400" />Copied!</>
+                ) : (
+                  <><Link2 className="h-3.5 w-3.5 mr-1.5" />Copy Member Link</>
+                )}
+              </Button>
+            </div>
 
             {/* Activity feed */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Recent Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+              <div className="px-4 py-3 border-b border-white/6 flex items-center gap-2">
+                <Activity className="h-3.5 w-3.5 text-white/40" />
+                <p className="section-label">Recent Activity</p>
+              </div>
+              <div className="p-3 space-y-2">
                 {activity.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-4">No recent activity</p>
+                  <p className="text-xs text-white/25 text-center py-4">No recent activity</p>
                 ) : (
                   activity.slice(0, 8).map(item => (
-                    <div key={item.id} className="flex gap-2" data-testid={`activity-item-${item.id}`}>
-                      <Clock className="h-3 w-3 text-muted-foreground mt-0.5 shrink-0" />
+                    <div key={item.id} className="flex gap-2.5 py-1.5 border-l-2 pl-2.5" style={{ borderColor: ACTIVITY_COLORS[item.type] ?? "#4a90e2" }} data-testid={`activity-item-${item.id}`}>
                       <div>
-                        <p className="text-xs">{item.description}</p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-white/70 leading-tight">{item.description}</p>
+                        <p className="text-[10px] text-white/30 mt-0.5">
                           {formatDistanceToNow(new Date(item.occurredAt), { addSuffix: true })}
                         </p>
                       </div>
                     </div>
                   ))
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
       </Tabs>
