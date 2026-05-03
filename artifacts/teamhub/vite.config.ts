@@ -51,7 +51,10 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
     },
-    dedupe: ["react", "react-dom", "@clerk/react", "@clerk/shared"],
+    dedupe: ["react", "react-dom"],
+  },
+  optimizeDeps: {
+    include: ["@clerk/react", "@clerk/themes"],
   },
   root: path.resolve(import.meta.dirname),
   build: {
