@@ -107,9 +107,14 @@ function SendInvitationForm({ onSent }: { onSent: () => void }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, role }),
-      }) as { inviteLink: string; emailSent: boolean };
+      }) as { inviteLink: string; emailSent: boolean; emailError?: string };
       setLastLink(data.inviteLink);
-      toast({ title: data.emailSent ? inv.emailSent : inv.noEmail });
+      if (!data.emailSent) {
+        const reason = data.emailError ? `: ${data.emailError}` : "";
+        toast({ title: `${inv.noEmail}${reason}`, variant: "default" });
+      } else {
+        toast({ title: inv.emailSent });
+      }
       setEmail("");
       setRole("coach");
       onSent();
@@ -204,7 +209,8 @@ function InvitationRow({ inv: invitation, onRevoke, onResent }: { inv: Invitatio
       toast({ title: inv.emailSent + " ✓" });
       onResent();
     } catch (e: unknown) {
-      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+      const msg = e instanceof Error ? e.message : "Error";
+      toast({ title: msg, variant: "destructive", description: inv.linkReady });
     } finally {
       setResending(false);
     }

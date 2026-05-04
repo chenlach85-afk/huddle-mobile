@@ -1,0 +1,276 @@
+Two critical bugs. Both broke previous fix attempts. Be aggressive — do not cut corners.
+Bug 1 — Resend email is failing
+The user has set RESEND_API_KEY but emails fail with "Failed to send email — check RESEND_API_K..." (error message is truncated).
+Diagnostic steps
+
+Show me the exact value of these environment variables (redact the API key but show its prefix and length):
+
+RESEND_API_KEY — should start with re_ and be roughly 35-40 characters
+RESEND_FROM_EMAIL — should be in format Name <email@domain.com>
+
+
+Show me the code that calls Resend — typically lib/email.ts or similar. I want to see the exact resend.emails.send() call.
+Capture the actual error response from Resend. Wrap the call:
+
+typescript   try {
+     const result = await resend.emails.send({...});
+     console.log('Resend response:', JSON.stringify(result));
+     if (result.error) {
+       console.error('Resend error detail:', JSON.stringify(result.error));
+       throw new Error(`Resend rejected: ${result.error.message} (${result.error.name})`);
+     }
+     return result;
+   } catch (err) {
+     console.error('Resend full error:', err);
+     throw err;
+   }
+Run a test send and paste the FULL error output. Don't truncate.
+Most likely causes (check in order)
+Cause A: API key invalid or revoked. The error message "check RESEND_API_K..." literally means the key didn't authenticate. Verify in the Resend dashboard that the key is still active. If you generated a new key, the old one in Replit Secrets is stale. Test with curl:
+bashcurl -X POST 'https://api.resend.com/emails' \
+  -H 'Authorization: Bearer YOUR_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "from": "onboarding@resend.dev",
+    "to": "your-email@gmail.com",
+    "subject": "Test",
+    "html": "<p>Test</p>"
+  }'
+If this returns 200, the key works. If 401/403, regenerate the key.
+Cause B: From address not verified. Resend requires the "from" email to be either:
+
+onboarding@resend.dev (their default test sender, always works)
+An address from a domain you've verified in Resend
+
+If RESEND_FROM_EMAIL is set to something like noreply@huddle.app and you haven't verified that domain in Resend, every send will fail. Check Resend dashboard → Domains. If no verified domain, set:
+RESEND_FROM_EMAIL=HUDDLE <onboarding@resend.dev>
+Cause C: Recipient is not allowed in test mode. Resend's free tier only allows sending to the email associated with your Resend account when using onboarding@resend.dev. If you're trying to send to another address, it fails. Either:
+
+Send to your own email first to verify it works
+Verify a domain so you can send to anyone
+
+Cause D: Rate limit hit. Free tier is 100 emails/day. If you've burned through testing, you'll get rate-limit errors. Check Resend dashboard → Usage.
+Cause E: Recipient address invalid format. Some implementations accept comma-separated emails but Resend expects an array.
+Fix the error display
+Whatever the cause, the user-facing error message is currently truncated and unhelpful. Update the error toast to show:
+
+The actual error message from Resend (not just "check RESEND_API_KEY")
+A link or button "View details" that opens a modal with the full error stack
+Different copy for different errors:
+
+401/403 → "Email service authentication failed. Admin should verify API key."
+422 → "Email rejected by service. Check sender domain configuration."
+429 → "Email rate limit reached. Try again in a few minutes."
+Network/timeout → "Could not reach email service. Check connection and retry."
+
+
+
+Fallback: copy invitation link
+The email error sometimes happens silently and there's no fallback. Add this:
+When sending an invitation, ALWAYS show the user the invitation URL in a copy-able field, regardless of email send success. Then they can manually share via WhatsApp if email fails:
+✓ Invitation created (email sending in background)
+
+Manual share link:
+[ https://app.com/invite/abc123...        ] [Copy]
+
+Email status: ⏳ Sending... / ✓ Sent / ✗ Failed (retry?)
+This way the workflow doesn't block on email reliability. Even if Resend has a problem, you can copy the link and send via WhatsApp.
+Resend webhook verification
+If /api/webhooks/resend exists, verify it's not the source of the "send failed" message. Sometimes the webhook handler crashes and is mistakenly reported as a send failure. Show me the webhook code if it exists.
+Bug 2 — Light mode still has invisible text in many places
+The screenshots show the previous fix only partially worked. Specifically:
+
+Page titles (large headings like "הקבוצות שלך", "לוח שנה") — invisible
+Team names in card lists — invisible
+Player names — invisible
+KPI numbers in admin dashboard — invisible
+Right sidebar text — invisible
+Various headings throughout
+
+Why the previous fix missed these
+These are usually styled differently than body text. Common culprits:
+
+Page titles use display fonts and might have text-white baked into the heading component
+Card list items render dynamic data with style={{ color: 'white' }} inline
+KPI numbers are large display text with custom color rules
+Bebas Neue / display font wrappers might have hardcoded color
+
+Do this aggressively
+Don't just search and replace this time. Take this approach:
+Step 1 — Force-find every white text in light mode using the browser
+Have me run this in the browser console while light mode is active. It finds every visible element with white-ish text:
+javascript// Run in browser console while in light mode
+const all = document.querySelectorAll('*');
+const invisible = [];
+all.forEach(el => {
+  const style = getComputedStyle(el);
+  const color = style.color;
+  // Match white-ish colors
+  if (color === 'rgb(255, 255, 255)' ||
+      color.match(/rgba\(255,\s*255,\s*255,\s*[0-9.]+\)/) ||
+      color === 'rgb(254, 254, 254)' ||
+      color === 'rgb(250, 250, 250)') {
+    // Check if it's on a white-ish background
+    let bgEl = el;
+    while (bgEl && bgEl !== document.body) {
+      const bg = getComputedStyle(bgEl).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+        if (bg.match(/rgb\(2[4-5][0-9]/)) {
+          invisible.push({
+            text: el.textContent?.slice(0, 50),
+            tag: el.tagName,
+            classes: el.className,
+            color: color,
+            bg: bg
+          });
+        }
+        break;
+      }
+      bgEl = bgEl.parentElement;
+    }
+  }
+});
+console.table(invisible);
+I'll run this and paste you the output. Use the output to identify exact components that need fixing.
+Step 2 — Look at these specific files
+Based on the screenshots, the problem is concentrated in:
+
+Page heading components — search for components that render large titles (h1, page-title, screen-title, hero-title). Files like:
+
+components/PageTitle.tsx
+components/Heading.tsx
+app/team/[id]/teams/page.tsx
+app/team/[id]/schedule/page.tsx
+app/admin/page.tsx
+Any component using a Bebas Neue display font wrapper
+
+
+List/card item components — anywhere a list of teams or players is rendered:
+
+components/TeamCard.tsx
+components/PlayerCard.tsx
+components/PlayerTile.tsx
+Look for the actual {team.name} or {player.full_name} JSX nodes
+
+
+KPI/stat number components — admin dashboard:
+
+components/KPICard.tsx
+components/StatNumber.tsx
+The big number is probably a separate component with its own color rule
+
+
+Display font wrappers — components that wrap text in display/condensed font:
+
+Search for font-display, Bebas, Oswald, Heebo className usage
+Many of these will have hardcoded text-white to "match the dark theme"
+
+
+
+Step 3 — Fix using BOTH layers
+Don't just fix the className. Some places use inline styles. Fix BOTH layers:
+tsx// BEFORE (broken)
+<h1 className="text-4xl font-display text-white">{team.name}</h1>
+
+// AFTER (correct)
+<h1 className="text-4xl font-display text-text">{team.name}</h1>
+
+// BEFORE (broken — inline style overrides everything)
+<span style={{ color: 'white', fontWeight: 900 }}>{player.name}</span>
+
+// AFTER (correct)
+<span className="text-text" style={{ fontWeight: 900 }}>{player.name}</span>
+
+// BEFORE (broken — wrapper with hardcoded color)
+<DisplayText color="white">{teamName}</DisplayText>
+
+// AFTER (correct — let it inherit)
+<DisplayText>{teamName}</DisplayText>
+// And inside DisplayText component, default to text-text instead of text-white
+Step 4 — Use the data-attribute test
+Add a temporary visual indicator. While debugging, add this to globals.css:
+css/* Temporary: highlight any white text in light mode for debugging */
+[data-theme="light"] *[style*="color: white"],
+[data-theme="light"] *[style*="color:#fff"],
+[data-theme="light"] .text-white {
+  outline: 2px solid red !important;
+  background: yellow !important;
+}
+Switch to light mode and take new screenshots. Every red-outlined element is a bug. Fix them all. Then remove the debug CSS.
+Step 5 — Specifically fix what's in the user's screenshots
+The screenshots show these specific bugs — fix at minimum these:
+
+"הקבוצות שלך" / "Your Teams" page heading — invisible in light mode
+"לוח שנה" / "Calendar" page heading — invisible in light mode
+"לוח המאמן" / "Coach Dashboard" page heading — invisible in light mode
+Team names in /teams list cards — invisible (only sport badges and avatar visible)
+Player names in /team/[id]/squad — invisible (only jersey numbers and status visible)
+Admin dashboard KPI card numbers — invisible (cards show only icons)
+Admin dashboard KPI labels ("COACHES", "TEAMS", etc.) — invisible
+Activity feed item text in admin dashboard — invisible (only badges/avatars show)
+Calendar event titles — barely visible (faint orange on cream)
+
+For each of the above, find the component, identify the color source, fix it.
+Step 6 — One special case: calendar event pills
+In the schedule view, event pills currently use orange-tinted backgrounds with white text. On the dark theme background, white text reads. On the cream light theme background, the pills are barely distinguishable.
+Two options:
+
+Make the event pills use a stronger orange background (saturated, not pastel) with white text — works in both themes
+OR use text-text for the pill text and a lighter pastel orange background — fails on dark theme
+
+Go with option 1: make event pills use bg-ignition (full saturation) with text-white (intentional). They'll look like solid orange pills in both themes.
+For different event types:
+
+Training → solid kit_blue background
+Game → solid kit_red background
+Meeting → solid trophy/gold background
+Tournament → solid kit_purple background
+Other → solid ignition background
+
+All with text-white (intentional white on saturated color).
+Step 7 — Verify by walking through every screen
+Take new screenshots in light mode of all the screens that were broken:
+
+/teams — team names readable
+/team/[id] — team header card readable, page heading readable
+/team/[id]/schedule — calendar header, day labels, event pills all readable
+/team/[id]/squad — player names readable
+/admin — KPI numbers and labels readable, activity feed readable
+/admin/users — user names readable
+All modals — already working but verify
+
+Don't claim done until ALL these screens look readable in light mode. Send me the screenshots.
+Acceptance criteria
+Email:
+
+✓ Diagnostic output shown (env vars, code path, full error response)
+✓ Root cause identified (key, from address, rate limit, etc.)
+✓ Fix applied OR clear explanation of what user must do (e.g., regenerate key, verify domain)
+✓ Better error messages shown to user — not generic "check API key"
+✓ Manual share-link fallback works regardless of email status
+✓ Test invitation send to admin's own email succeeds
+
+Light mode:
+7. ✓ Browser console script run, output reviewed
+8. ✓ All page headings readable
+9. ✓ All team names in lists readable
+10. ✓ All player names readable
+11. ✓ All admin KPI numbers and labels readable
+12. ✓ Activity feed text readable
+13. ✓ Calendar event pills clearly visible (saturated colors, not pastels)
+14. ✓ Dark mode still works (no regression — verify with screenshot)
+15. ✓ Screenshots provided of all 7+ screens in light mode showing readability
+Do bug 1 first (email diagnostic — it might be a 30-second fix). Then bug 2 (the deeper light mode problem).
+
+That's the prompt. A few honest notes:
+On the email error specifically — your screenshot shows BOTH a Hebrew "מייל נשלח" (email sent) success message AND the red "Failed to send email" error. That's a contradiction. Likely explanation: the database write succeeded (so the success toast fired) but the actual Resend send failed in a separate try/catch (so the error toast also fired). The fix should make these consistent — if email fails, the operation reports failure, not partial success.
+On the light mode situation — I want to be honest with you. Three rounds of "fix the light mode" haven't fully fixed it. That's a sign the codebase has a deeper inconsistency. Most likely the project mixes:
+
+Tailwind utility classes (those got fixed)
+Inline styles on dynamic content (didn't get fixed)
+A custom font/display component with hardcoded colors (didn't get fixed)
+shadcn/ui or Radix components with their own theme system (might be partly broken)
+
+The browser console script in Step 1 is genuinely useful — it WILL find every invisible element. Run it yourself if the agent doesn't. Open DevTools in light mode, paste it in, hit Enter. The output is a table of everything that's invisible. Send the table to the agent and tell it to fix every entry.
+One pragmatic option to consider — if light mode keeps being broken after another round, ask the agent: "Please default the app to dark mode and disable the light mode toggle for now. We'll come back to it later." Sometimes the right call is to remove a half-broken feature instead of spending more credits trying to fix it. Dark mode in your screenshots looks polished. If your users are happy with dark mode, light mode can wait until you have a redesign budget.
+Paste the prompt. If after this round light mode is still broken in places, seriously consider hiding the toggle.Opus 4.7Adaptive

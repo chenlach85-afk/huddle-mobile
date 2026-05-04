@@ -18,10 +18,13 @@ const requireAdminMiddleware = async (req: AuthedRequest, res: any, next: any): 
   next();
 };
 
-async function sendInvitationEmail(to: string, inviterName: string, role: string, token: string): Promise<boolean> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return false;
+type EmailResult = { success: boolean; error?: string };
 
+async function sendInvitationEmail(to: string, inviterName: string, role: string, token: string): Promise<EmailResult> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return { success: false, error: "RESEND_API_KEY not configured" };
+
+  const from = process.env.RESEND_FROM_EMAIL ?? "Huddle <onboarding@resend.dev>";
   const basePath = process.env.BASE_PATH ?? "";
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
   const link = `https://${domain}${basePath}/invite/${token}`;
@@ -46,11 +49,14 @@ async function sendInvitationEmail(to: string, inviterName: string, role: string
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: "Huddle <onboarding@resend.dev>", to, subject, html }),
+      body: JSON.stringify({ from, to, subject, html }),
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (res.ok) return { success: true };
+    const body = await res.json().catch(() => ({})) as { name?: string; message?: string; statusCode?: number };
+    const msg = body.message ?? body.name ?? `HTTP ${res.status}`;
+    return { success: false, error: msg };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Network error" };
   }
 }
 
@@ -412,9 +418,9 @@ router.post("/admin/invitations", requireAuth, requireAdminMiddleware, async (re
 
   // Try to send email
   const [admin] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, adminId)).limit(1);
-  const emailSent = await sendInvitationEmail(email, admin?.name ?? "Admin", role, token);
+  const emailResult = await sendInvitationEmail(email, admin?.name ?? "Admin", role, token);
 
-  if (emailSent) {
+  if (emailResult.success) {
     await db.update(platformInvitationsTable).set({ emailSentAt: new Date() }).where(eq(platformInvitationsTable.id, inv.id));
     inv.emailSentAt = new Date();
   }
@@ -423,7 +429,7 @@ router.post("/admin/invitations", requireAuth, requireAdminMiddleware, async (re
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
   const inviteLink = `https://${domain}${basePath}/invite/${token}`;
 
-  res.status(201).json({ ...inv, inviteLink, emailSent });
+  res.status(201).json({ ...inv, inviteLink, emailSent: emailResult.success, emailError: emailResult.error });
 });
 
 /* ─── Admin: resend invitation email ───────────────────── */
@@ -442,12 +448,19 @@ router.post("/admin/invitations/:id/resend", requireAuth, requireAdminMiddleware
   if (!inv) { res.status(404).json({ error: "Pending invitation not found" }); return; }
 
   const [admin] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, adminId)).limit(1);
-  const emailSent = await sendInvitationEmail(inv.email, admin?.name ?? "Admin", inv.invitedRole, inv.token);
+  const emailResult = await sendInvitationEmail(inv.email, admin?.name ?? "Admin", inv.invitedRole, inv.token);
 
-  if (!emailSent) { res.status(502).json({ error: "Failed to send email — check RESEND_API_KEY" }); return; }
+  const basePath2 = process.env.BASE_PATH ?? "";
+  const domain2 = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
+  const inviteLink = `https://${domain2}${basePath2}/invite/${inv.token}`;
+
+  if (!emailResult.success) {
+    res.status(502).json({ error: emailResult.error ?? "Failed to send email", inviteLink });
+    return;
+  }
 
   await db.update(platformInvitationsTable).set({ emailSentAt: new Date() }).where(eq(platformInvitationsTable.id, id));
-  res.json({ success: true });
+  res.json({ success: true, inviteLink });
 });
 
 /* ─── Admin: revoke invitation ──────────────────────────── */

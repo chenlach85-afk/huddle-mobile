@@ -27,6 +27,7 @@ import {
 import { useListTeams } from "@workspace/api-client-react";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/lib/useTheme";
 
 type CalendarEvent = {
   id: number;
@@ -46,6 +47,8 @@ const EVENT_TYPES = ["practice", "game", "meeting", "other"] as const;
 export default function CalendarPage() {
   const { t, isRTL, formatTime, formatDateTime, formatMonthYear, language } = useI18n();
   const { toast } = useToast();
+  const { theme } = useTheme();
+  const isLight = theme === "light" || (theme === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches);
   const queryClient = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
@@ -100,7 +103,7 @@ export default function CalendarPage() {
     practice: "#4a90e2",
     game: "#FF6B35",
     meeting: "#9b59b6",
-    other: "rgba(255,255,255,0.4)",
+    other: "#6b7280",
   };
 
   function openAddEvent(day?: Date) {
@@ -266,9 +269,9 @@ export default function CalendarPage() {
             onClick={() => setSelectedTeamId(null)}
             className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
             style={{
-              background: selectedTeamId === null ? "rgba(255,107,53,0.2)" : "rgba(255,255,255,0.05)",
-              color: selectedTeamId === null ? "#FF6B35" : "rgba(255,255,255,0.4)",
-              border: selectedTeamId === null ? "1px solid rgba(255,107,53,0.4)" : "1px solid rgba(255,255,255,0.08)",
+              background: selectedTeamId === null ? "rgba(255,107,53,0.2)" : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
+              color: selectedTeamId === null ? "#FF6B35" : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
+              border: selectedTeamId === null ? "1px solid rgba(255,107,53,0.4)" : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
             }}
           >
             {t.common.allSquads}
@@ -279,9 +282,9 @@ export default function CalendarPage() {
               onClick={() => setSelectedTeamId(team.id === selectedTeamId ? null : team.id)}
               className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
               style={{
-                background: selectedTeamId === team.id ? `${team.avatarColor}28` : "rgba(255,255,255,0.05)",
-                color: selectedTeamId === team.id ? team.avatarColor : "rgba(255,255,255,0.4)",
-                border: selectedTeamId === team.id ? `1px solid ${team.avatarColor}50` : "1px solid rgba(255,255,255,0.08)",
+                background: selectedTeamId === team.id ? `${team.avatarColor}28` : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
+                color: selectedTeamId === team.id ? team.avatarColor : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
+                border: selectedTeamId === team.id ? `1px solid ${team.avatarColor}50` : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
               }}
             >
               {team.name}
@@ -357,7 +360,10 @@ export default function CalendarPage() {
                         className="ltr-num w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold transition-all"
                         style={{
                           background: isTodayDay ? "#FF6B35" : isSelected ? "rgba(255,107,53,0.2)" : "transparent",
-                          color: isTodayDay ? "white" : isCurrentMonth ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.2)",
+                          color: isTodayDay ? "white"
+                            : isCurrentMonth
+                              ? (isLight ? "rgba(10,14,26,0.82)" : "rgba(255,255,255,0.8)")
+                              : (isLight ? "rgba(10,14,26,0.28)" : "rgba(255,255,255,0.2)"),
                           fontSize: isTodayDay ? "14px" : "12px",
                         }}
                       >

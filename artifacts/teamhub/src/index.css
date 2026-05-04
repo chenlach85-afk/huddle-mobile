@@ -355,19 +355,76 @@
   color: rgba(10,14,26,0.4);
 }
 
-/* ── Light mode: fix hardcoded white text patterns in dialog surfaces ── */
+/* ── Light mode: global white text → dark text ──────────────────────────── */
 
-/* Dialog content: override white text sitting on var(--surface-card) white bg */
-[data-theme="light"] [role="dialog"] .text-white {
-  color: hsl(var(--foreground));
-}
-[data-theme="light"] [role="dialog"] .text-white\/50,
-[data-theme="light"] [role="dialog"] .text-white\/60,
-[data-theme="light"] [role="dialog"] .text-white\/70,
-[data-theme="light"] [role="dialog"] .text-white\/75,
-[data-theme="light"] [role="dialog"] .text-white\/80 {
-  color: hsl(var(--muted-foreground));
-}
-[data-theme="light"] [role="dialog"] input {
-  color: hsl(var(--foreground));
-}
+[data-theme="light"] .text-white { color: hsl(var(--foreground)); }
+[data-theme="light"] .text-white\/5  { color: hsl(var(--foreground) / 0.06); }
+[data-theme="light"] .text-white\/10 { color: hsl(var(--foreground) / 0.12); }
+[data-theme="light"] .text-white\/15 { color: hsl(var(--foreground) / 0.18); }
+[data-theme="light"] .text-white\/20 { color: hsl(var(--foreground) / 0.25); }
+[data-theme="light"] .text-white\/25 { color: hsl(var(--foreground) / 0.32); }
+[data-theme="light"] .text-white\/30 { color: hsl(var(--foreground) / 0.38); }
+[data-theme="light"] .text-white\/35 { color: hsl(var(--muted-foreground) / 0.72); }
+[data-theme="light"] .text-white\/40 { color: hsl(var(--muted-foreground)); }
+[data-theme="light"] .text-white\/45 { color: hsl(var(--muted-foreground)); }
+[data-theme="light"] .text-white\/50 { color: hsl(var(--muted-foreground)); }
+[data-theme="light"] .text-white\/60 { color: hsl(var(--muted-foreground)); }
+[data-theme="light"] .text-white\/65 { color: hsl(var(--muted-foreground)); }
+[data-theme="light"] .text-white\/70 { color: hsl(var(--foreground) / 0.70); }
+[data-theme="light"] .text-white\/75 { color: hsl(var(--foreground) / 0.75); }
+[data-theme="light"] .text-white\/80 { color: hsl(var(--foreground) / 0.82); }
+
+[data-theme="light"] .hover\:text-white:hover      { color: hsl(var(--foreground)); }
+[data-theme="light"] .hover\:text-white\/60:hover  { color: hsl(var(--muted-foreground)); }
+[data-theme="light"] .hover\:text-white\/70:hover  { color: hsl(var(--foreground) / 0.70); }
+[data-theme="light"] .hover\:text-white\/80:hover  { color: hsl(var(--foreground) / 0.82); }
+
+[data-theme="light"] .placeholder\:text-white\/30::placeholder { color: hsl(var(--muted-foreground) / 0.55); }
+
+/* data-state active */
+[data-theme="light"] .data-\[state\=active\]\:text-white[data-state="active"] { color: hsl(var(--foreground)); }
+
+/* Input / form-field backgrounds */
+[data-theme="light"] .bg-white\/3  { background-color: hsl(var(--muted)); }
+[data-theme="light"] .bg-white\/4  { background-color: hsl(var(--muted)); }
+[data-theme="light"] .bg-white\/5  { background-color: hsl(var(--muted)); }
+[data-theme="light"] .bg-white\/6  { background-color: hsl(var(--muted)); }
+[data-theme="light"] .bg-white\/8  { background-color: hsl(var(--muted)); }
+[data-theme="light"] .bg-white\/10 { background-color: hsl(var(--accent)); }
+
+/* Hover backgrounds */
+[data-theme="light"] .hover\:bg-white\/2:hover  { background-color: hsl(var(--accent) / 0.5); }
+[data-theme="light"] .hover\:bg-white\/3:hover  { background-color: hsl(var(--accent)); }
+[data-theme="light"] .hover\:bg-white\/4:hover  { background-color: hsl(var(--accent)); }
+[data-theme="light"] .hover\:bg-white\/5:hover  { background-color: hsl(var(--accent)); }
+[data-theme="light"] .hover\:bg-white\/6:hover  { background-color: hsl(var(--accent)); }
+[data-theme="light"] .hover\:bg-white\/8:hover  { background-color: hsl(var(--accent)); }
+[data-theme="light"] .hover\:bg-white\/10:hover { background-color: hsl(var(--accent)); }
+
+/* Borders */
+[data-theme="light"] .border-white\/3  { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/4  { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/5  { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/6  { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/8  { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/10 { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/15 { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/20 { border-color: hsl(var(--border)); }
+[data-theme="light"] .border-white\/25 { border-color: hsl(var(--border)); }
+
+/* Dividers */
+[data-theme="light"] .divide-white\/5 > * + * { border-color: hsl(var(--border)); }
+
+/* Input text color fallback */
+[data-theme="light"] input,
+[data-theme="light"] textarea { color: hsl(var(--foreground)); }
+
+/* ── Exception: hero-card always has white text (gradient bg) ──────────── */
+[data-theme="light"] .hero-card .text-white,
+[data-theme="light"] .hero-card .text-white\/40,
+[data-theme="light"] .hero-card .text-white\/50,
+[data-theme="light"] .hero-card .text-white\/60,
+[data-theme="light"] .hero-card .text-white\/70,
+[data-theme="light"] .hero-card .hover\:text-white:hover { color: white; }
+[data-theme="light"] .hero-card .border-white\/20 { border-color: rgba(255,255,255,0.20); }
+[data-theme="light"] .hero-card .hover\:border-white\/40:hover { border-color: rgba(255,255,255,0.40); }

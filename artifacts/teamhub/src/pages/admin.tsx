@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { useTheme } from "@/lib/useTheme";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -559,6 +560,8 @@ export default function AdminPage() {
   const { t, language } = useI18n();
   const ad = t.admin;
   const dateLocale = DATE_LOCALES[language] ?? enUS;
+  const { theme } = useTheme();
+  const isLight = useMemo(() => theme === "light" || (theme === "system" && !window.matchMedia("(prefers-color-scheme: dark)").matches), [theme]);
   const queryClient = useQueryClient();
 
   const [tab, setTab] = useState<"kpis" | "users">("kpis");
@@ -656,9 +659,9 @@ export default function AdminPage() {
           <button key={tb.id} onClick={() => setTab(tb.id)}
             className="px-4 py-2 rounded-xl text-sm font-bold transition-all"
             style={{
-              background: tab === tb.id ? "rgba(255,107,53,0.2)" : "rgba(255,255,255,0.05)",
-              color: tab === tb.id ? "#FF6B35" : "rgba(255,255,255,0.4)",
-              border: tab === tb.id ? "1px solid rgba(255,107,53,0.4)" : "1px solid rgba(255,255,255,0.08)",
+              background: tab === tb.id ? "rgba(255,107,53,0.2)" : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
+              color: tab === tb.id ? "#FF6B35" : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
+              border: tab === tb.id ? "1px solid rgba(255,107,53,0.4)" : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
             }}>
             <tb.icon className="h-4 w-4 inline me-2" />{tb.label}
           </button>
