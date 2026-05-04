@@ -116,7 +116,7 @@ export default function AuditLogPage() {
             <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl h-9 text-xs">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+            <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
               <SelectItem value="all" className="text-white text-xs">All actions</SelectItem>
               {Object.entries(ACTION_LABELS).map(([key, label]) => (
                 <SelectItem key={key} value={key} className="text-xs" style={{ color: ACTION_COLORS[key] ?? "white" }}>
@@ -132,7 +132,7 @@ export default function AuditLogPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+      <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
         {/* Header row */}
         <div className="hidden md:grid grid-cols-[1fr_1fr_1fr_1fr_40px] px-5 py-3 border-b border-white/6 gap-4">
           <p className="stat-label">{ad.auditAction}</p>

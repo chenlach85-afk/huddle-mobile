@@ -141,7 +141,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-white/6 p-4" style={{ background: "rgba(22,27,46,0.8)" }}>
+      <div className="rounded-2xl border border-border p-4" style={{ background: "var(--surface-card)" }}>
         <div className="flex items-center gap-5">
           <div className="text-center">
             <div className="font-display text-3xl leading-none text-[#e74c3c] ltr-num">{pending}</div>
@@ -187,7 +187,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
       {isLoading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
           <CheckSquare className="h-10 w-10 mx-auto text-white/15 mb-3" />
           <p className="font-display text-xl text-white/30 tracking-wide">{tk.noTasks.toUpperCase()}</p>
           {statusFilter === "all" && <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold mt-4">{tk.addTask}</Button>}
@@ -200,8 +200,8 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
             return (
               <div
                 key={task.id}
-                className={`rounded-2xl border border-white/6 p-4 flex items-start gap-3 group hover:bg-white/3 transition-all ${task.status === "done" ? "opacity-50" : ""}`}
-                style={{ background: "rgba(22,27,46,0.8)", borderLeft: `3px solid ${statusColor}` }}
+                className={`rounded-2xl border border-border p-4 flex items-start gap-3 group hover:bg-white/3 transition-all ${task.status === "done" ? "opacity-50" : ""}`}
+                style={{ background: "var(--surface-card)", borderLeft: `3px solid ${statusColor}` }}
                 data-testid={`card-task-${task.id}`}
               >
                 <button
@@ -244,7 +244,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">
               {editingId ? tk.editTask.toUpperCase() : tk.addTask.toUpperCase()}
@@ -265,7 +265,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
                     <FormLabel className="stat-label text-white/50">{tk.priority}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-priority"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                      <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                         <SelectItem value="low" className="text-white">{tk.priorityLow}</SelectItem>
                         <SelectItem value="medium" className="text-white">{tk.priorityMedium}</SelectItem>
                         <SelectItem value="high" className="text-white">{tk.priorityHigh}</SelectItem>
@@ -279,7 +279,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
                     <FormLabel className="stat-label text-white/50">{tk.statusLabel}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-status"><SelectValue /></SelectTrigger></FormControl>
-                      <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                      <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                         <SelectItem value="pending" className="text-white">{tk.pending}</SelectItem>
                         <SelectItem value="in_progress" className="text-white">{tk.inProgress}</SelectItem>
                         <SelectItem value="done" className="text-white">{tk.done}</SelectItem>
@@ -295,7 +295,7 @@ export default function TasksTab({ teamId, teamColor }: { teamId: number; teamCo
                     <FormLabel className="stat-label text-white/50">{tk.assignTo}</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl><SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-assigned-player"><SelectValue placeholder={tk.unassigned} /></SelectTrigger></FormControl>
-                      <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                      <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                         <SelectItem value="" className="text-white">{tk.unassigned}</SelectItem>
                         {players.map(p => <SelectItem key={p.id} value={p.id.toString()} className="text-white">{p.name}</SelectItem>)}
                       </SelectContent>

@@ -122,7 +122,7 @@ function SuspendModal({ user, open, onClose, onDone }: {
   }
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
+      <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
         <DialogHeader><DialogTitle className="font-display text-2xl text-white">{ad.suspendTitle}</DialogTitle></DialogHeader>
         <p className="text-sm text-white/50">{ad.suspendWarning}</p>
         <p className="text-xs text-yellow-400/80 font-semibold">— {user.name} ({user.email})</p>
@@ -163,7 +163,7 @@ function ReactivateModal({ user, open, onClose, onDone }: {
   }
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
+      <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
         <DialogHeader><DialogTitle className="font-display text-2xl text-white">{ad.reactivateTitle}</DialogTitle></DialogHeader>
         <p className="text-sm text-white/50">{ad.reactivateWarning}</p>
         <p className="text-xs text-green-400/80 font-semibold">— {user.name} ({user.email})</p>
@@ -218,7 +218,7 @@ function SoftDeleteModal({ user, open, onClose, onDone, allUsers }: {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+      <DialogContent className="max-w-lg border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
         <DialogHeader>
           <DialogTitle className="font-display text-2xl text-white">{ad.softDeleteTitle}</DialogTitle>
         </DialogHeader>
@@ -256,7 +256,7 @@ function SoftDeleteModal({ user, open, onClose, onDone, allUsers }: {
                 <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                   <SelectValue placeholder="Select user…" />
                 </SelectTrigger>
-                <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                   {activeUsers.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-white text-xs">
                       {u.name} ({u.email})
@@ -323,7 +323,7 @@ function HardDeleteModal({ user, open, onClose, onDone, allUsers }: {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg border-red-500/30 max-h-[90vh] overflow-y-auto" style={{ background: "#1a0a0a" }}>
+      <DialogContent className="max-w-lg border-red-500/30 max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
         <DialogHeader>
           <DialogTitle className="font-display text-2xl text-red-400">{ad.hardDeleteTitle}</DialogTitle>
         </DialogHeader>
@@ -364,7 +364,7 @@ function HardDeleteModal({ user, open, onClose, onDone, allUsers }: {
                 <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                   <SelectValue placeholder="Select user…" />
                 </SelectTrigger>
-                <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                   {activeUsers.map(u => (
                     <SelectItem key={u.id} value={String(u.id)} className="text-white text-xs">
                       {u.name} ({u.email})
@@ -427,7 +427,7 @@ function EditUserModal({ user, open, onClose, onDone }: {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
+      <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
         <DialogHeader><DialogTitle className="font-display text-2xl text-white">{ad.editUserTitle}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div>
@@ -441,7 +441,7 @@ function EditUserModal({ user, open, onClose, onDone }: {
               <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+              <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                 <SelectItem value="coach" className="text-white">{ad.coach}</SelectItem>
                 <SelectItem value="player" className="text-white">{ad.player}</SelectItem>
                 <SelectItem value="admin" className="text-white">{ad.admin}</SelectItem>
@@ -454,7 +454,7 @@ function EditUserModal({ user, open, onClose, onDone }: {
               <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+              <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                 <SelectItem value="en" className="text-white">English</SelectItem>
                 <SelectItem value="he" className="text-white">עברית</SelectItem>
                 <SelectItem value="es" className="text-white">Español</SelectItem>
@@ -515,7 +515,7 @@ function UserRow({ user, allUsers, onRefresh }: { user: AdminUser; allUsers: Adm
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 border-white/10" style={{ background: "#1f2742" }}>
+          <DropdownMenuContent align="end" className="w-48 border-white/10" style={{ background: "var(--surface-elevated)" }}>
             <DropdownMenuItem className="text-white/80 cursor-pointer" onClick={() => setModal("edit")}>
               <Edit3 className="h-3.5 w-3.5 me-2 text-primary" />{ad.edit}
             </DropdownMenuItem>
@@ -679,7 +679,7 @@ export default function AdminPage() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {kpiCards.map(card => (
-                <div key={card.label} className="rounded-2xl p-4 border border-white/6" style={{ background: "rgba(22,27,46,0.8)" }}>
+                <div key={card.label} className="rounded-2xl p-4 border border-border" style={{ background: "var(--surface-card)" }}>
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: `${card.color}20` }}>
                     <card.icon className="h-5 w-5" style={{ color: card.color }} />
                   </div>
@@ -691,7 +691,7 @@ export default function AdminPage() {
           )}
 
           {kpis && (
-            <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+            <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
               <div className="px-5 py-4 border-b border-white/6 flex items-center gap-2">
                 <Users className="h-4 w-4 text-primary" />
                 <p className="font-semibold text-white text-sm">{ad.recentUsers}</p>
@@ -766,7 +766,7 @@ export default function AdminPage() {
             </p>
           )}
 
-          <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+          <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
             {usersLoading ? (
               <div className="p-4 space-y-3">
                 {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-16 rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}

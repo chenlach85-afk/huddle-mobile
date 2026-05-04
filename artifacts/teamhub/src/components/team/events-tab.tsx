@@ -226,7 +226,7 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
       {isLoading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-20 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
       ) : events.length === 0 ? (
-        <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
           <Calendar className="h-10 w-10 mx-auto text-white/15 mb-3" />
           <p className="font-display text-xl text-white/30 tracking-wide">{ev.emptyLineup.toUpperCase()}</p>
           <p className="text-xs text-white/25 mt-1 mb-4">{ev.scheduleFirstEvent}</p>
@@ -238,7 +238,7 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
             const color = TYPE_COLORS[event.type];
             const isExpanded = expandedId === event.id;
             return (
-              <div key={event.id} className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }} data-testid={`card-event-${event.id}`}>
+              <div key={event.id} className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }} data-testid={`card-event-${event.id}`}>
                 <div
                   className="p-4 flex items-start gap-3 cursor-pointer hover:bg-white/3 transition-colors group"
                   onClick={() => setExpandedId(isExpanded ? null : event.id)}
@@ -288,7 +288,7 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">
               {editingId ? ev.editEvent.toUpperCase() : ev.addEvent.toUpperCase()}
@@ -312,7 +312,7 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
                         <SelectValue />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                    <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                       <SelectItem value="practice" className="text-white">{ev.typePractice}</SelectItem>
                       <SelectItem value="game" className="text-white">{ev.typeGame}</SelectItem>
                       <SelectItem value="meeting" className="text-white">{ev.typeMeeting}</SelectItem>

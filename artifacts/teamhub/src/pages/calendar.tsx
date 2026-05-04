@@ -158,7 +158,7 @@ export default function CalendarPage() {
 
       {/* Add Event Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-md border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">{t.calendar.addEvent.toUpperCase()}</DialogTitle>
           </DialogHeader>
@@ -178,7 +178,7 @@ export default function CalendarPage() {
                 <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                   <SelectValue placeholder={t.calendar.selectTeam} />
                 </SelectTrigger>
-                <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                   {teams.map(team => (
                     <SelectItem key={team.id} value={String(team.id)} className="text-white">
                       {team.name}
@@ -193,7 +193,7 @@ export default function CalendarPage() {
                 <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                   {EVENT_TYPES.map(et => (
                     <SelectItem key={et} value={et} className="text-white">{eventTypeLabel(et)}</SelectItem>
                   ))}
@@ -292,8 +292,8 @@ export default function CalendarPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Calendar grid */}
-        <div className="lg:col-span-3 rounded-2xl border border-white/6 overflow-hidden"
-          style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="lg:col-span-3 rounded-2xl border border-border overflow-hidden"
+          style={{ background: "var(--surface-card)" }}>
 
           {/* Month nav */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/6">
@@ -398,8 +398,8 @@ export default function CalendarPage() {
         {/* Right panel: selected day or upcoming */}
         <div className="lg:col-span-1 space-y-4">
           {selectedDay ? (
-            <div className="rounded-2xl border border-white/6 overflow-hidden"
-              style={{ background: "rgba(22,27,46,0.8)" }}>
+            <div className="rounded-2xl border border-border overflow-hidden"
+              style={{ background: "var(--surface-card)" }}>
               <div className="px-4 py-3 border-b border-white/6 flex items-center justify-between">
                 <div>
                   <p className="section-label">
@@ -458,8 +458,8 @@ export default function CalendarPage() {
             </div>
           ) : (
             /* Upcoming events sidebar */
-            <div className="rounded-2xl border border-white/6 overflow-hidden"
-              style={{ background: "rgba(22,27,46,0.8)" }}>
+            <div className="rounded-2xl border border-border overflow-hidden"
+              style={{ background: "var(--surface-card)" }}>
               <div className="px-4 py-3 border-b border-white/6">
                 <p className="section-label">{t.calendar.upcoming}</p>
               </div>

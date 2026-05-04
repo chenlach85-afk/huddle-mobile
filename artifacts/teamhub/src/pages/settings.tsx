@@ -141,7 +141,7 @@ export default function SettingsPage() {
 
       {/* Page header */}
       <div className="mb-2">
-        <h1 className="font-display text-3xl text-white tracking-wide">{s.title}</h1>
+        <h1 className="font-display text-3xl text-foreground tracking-wide">{s.title}</h1>
       </div>
 
       {/* ── PROFILE ── */}
@@ -150,7 +150,7 @@ export default function SettingsPage() {
           {/* Avatar with camera overlay */}
           <div className="relative shrink-0 group cursor-pointer" onClick={() => photoInputRef.current?.click()}>
             <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-            <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/10 shadow-lg">
+            <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-border shadow-lg">
               {avatarUrl ? (
                 <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
               ) : (
@@ -168,13 +168,13 @@ export default function SettingsPage() {
 
           {/* Info */}
           <div className="flex-1 min-w-0 pt-1 space-y-0.5">
-            <p className="font-semibold text-white text-base leading-tight">{displayName}</p>
-            <p className="text-white/50 text-sm break-all leading-snug">{displayEmail}</p>
+            <p className="font-semibold text-foreground text-base leading-tight">{displayName}</p>
+            <p className="text-muted-foreground text-sm break-all leading-snug">{displayEmail}</p>
             {appUser?.role && (
               <p className="text-xs text-primary font-semibold capitalize">{appUser.role}</p>
             )}
             {oauthAccounts.length > 0 && (
-              <p className="text-xs text-white/35 mt-1">
+              <p className="text-xs text-muted-foreground/60 mt-1">
                 {s.connectedAccount} {oauthAccounts.map(a => a.provider).join(", ")}
               </p>
             )}
@@ -185,7 +185,7 @@ export default function SettingsPage() {
         <Button
           variant="outline"
           size="sm"
-          className="mt-4 border-white/15 text-white/65 hover:text-white hover:bg-white/8 gap-1.5"
+          className="mt-4 gap-1.5"
           onClick={() => photoInputRef.current?.click()}
           disabled={photoUploading}
         >
@@ -205,7 +205,7 @@ export default function SettingsPage() {
                 "flex flex-col items-center gap-1.5 p-4 rounded-xl border transition-all",
                 language === lang.value
                   ? "border-primary/60 bg-primary/12 text-primary shadow-sm shadow-primary/20"
-                  : "border-white/8 bg-white/3 text-white/50 hover:border-white/20 hover:bg-white/5 hover:text-white/80"
+                  : "border-border bg-muted/50 text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground"
               )}
             >
               <span className="text-2xl">{lang.flag}</span>
@@ -230,7 +230,7 @@ export default function SettingsPage() {
                 "flex flex-col items-center gap-1.5 p-4 rounded-xl border transition-all",
                 theme === value
                   ? "border-primary/60 bg-primary/12 text-primary shadow-sm shadow-primary/20"
-                  : "border-white/8 bg-white/3 text-white/50 hover:border-white/20 hover:bg-white/5 hover:text-white/80"
+                  : "border-border bg-muted/50 text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground"
               )}
             >
               <Icon className="h-5 w-5" />
@@ -250,14 +250,14 @@ export default function SettingsPage() {
             <ToggleRow id="push-notif" label={s.pushNotifications} checked={pushNotifications} onChange={setPushNotifications} />
 
             <div>
-              <Label className="text-white/75 text-sm mb-2 block">{s.reminderBefore}</Label>
+              <Label className="text-foreground/75 text-sm mb-2 block">{s.reminderBefore}</Label>
               <Select value={reminderMinutes} onValueChange={setReminderMinutes}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white w-44" dir="ltr">
+                <SelectTrigger className="bg-muted border-border text-foreground w-44" dir="ltr">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent style={{ background: "#1f2742" }} className="border-white/10">
+                <SelectContent className="border-border bg-card">
                   {REMINDER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value} className="text-white">
+                    <SelectItem key={opt.value} value={opt.value}>
                       {s[opt.labelKey]}
                     </SelectItem>
                   ))}
@@ -340,10 +340,10 @@ export default function SettingsPage() {
 
 function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "#161b2e" }}>
-      <div className="px-5 py-4 border-b border-white/6 flex items-center gap-2">
+    <section className="rounded-2xl border border-border overflow-hidden bg-card">
+      <div className="px-5 py-4 border-b border-border flex items-center gap-2">
         <span className="shrink-0">{icon}</span>
-        <h2 className="font-semibold text-white text-sm">{title}</h2>
+        <h2 className="font-semibold text-card-foreground text-sm">{title}</h2>
       </div>
       <div className="p-5">{children}</div>
     </section>
@@ -353,7 +353,7 @@ function SectionCard({ icon, title, children }: { icon: React.ReactNode; title: 
 function ToggleRow({ id, label, checked, onChange }: { id: string; label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center gap-3">
-      <Label htmlFor={id} className="flex-1 text-white/80 text-sm cursor-pointer leading-snug">{label}</Label>
+      <Label htmlFor={id} className="flex-1 text-foreground/80 text-sm cursor-pointer leading-snug">{label}</Label>
       <div dir="ltr" className="shrink-0">
         <Switch id={id} checked={checked} onCheckedChange={onChange} />
       </div>
@@ -367,21 +367,21 @@ function PasswordField({ id, label, value, onChange, show, onToggle }: {
 }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id} className="stat-label text-white/50">{label}</Label>
+      <Label htmlFor={id} className="text-muted-foreground text-sm">{label}</Label>
       <div className="relative">
         <Input
           id={id}
           type={show ? "text" : "password"}
           value={value}
           onChange={e => onChange(e.target.value)}
-          className="bg-white/6 border-white/10 text-white rounded-xl pe-10"
+          className="bg-muted border-border text-foreground rounded-xl pe-10"
           dir="ltr"
           autoComplete="off"
         />
         <button
           type="button"
           onClick={onToggle}
-          className="absolute inset-y-0 end-0 flex items-center pe-3 text-white/40 hover:text-white/70 transition-colors"
+          className="absolute inset-y-0 end-0 flex items-center pe-3 text-muted-foreground/60 hover:text-foreground/70 transition-colors"
         >
           {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
         </button>

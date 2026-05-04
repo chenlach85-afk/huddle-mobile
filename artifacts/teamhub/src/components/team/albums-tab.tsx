@@ -13,7 +13,7 @@ function AlbumFilesView({ albumId, teamColor, onClose }: { albumId: number; team
   const { data: files = [], isLoading } = useListAlbumFiles(albumId);
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-2xl border-white/10" style={{ background: "#161b2e" }}>
+      <DialogContent className="max-w-2xl border-border" style={{ background: "var(--surface-card)" }}>
         <DialogHeader>
           <DialogTitle className="font-display text-xl text-white tracking-wide">Album Files</DialogTitle>
         </DialogHeader>
@@ -29,7 +29,7 @@ function AlbumFilesView({ albumId, teamColor, onClose }: { albumId: number; team
         ) : (
           <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
             {files.map(f => (
-              <div key={f.id} className="rounded-xl overflow-hidden border border-white/8" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <div key={f.id} className="rounded-xl overflow-hidden border border-border" style={{ background: "rgba(255,255,255,0.04)" }}>
                 {f.mimeType.startsWith("image/") ? (
                   <img src={f.url} alt={f.originalName} className="w-full h-28 object-cover" />
                 ) : (
@@ -88,7 +88,7 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
   }
 
   return (
-    <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+    <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
       <div className="px-5 py-4 border-b border-white/6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ImageIcon className="h-4 w-4" style={{ color: teamColor }} />
@@ -101,7 +101,7 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
               New Album
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm border-white/10" style={{ background: "#161b2e" }}>
+          <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
             <DialogHeader>
               <DialogTitle className="font-display text-xl text-white tracking-wide">CREATE ALBUM</DialogTitle>
             </DialogHeader>
@@ -134,7 +134,7 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
             <div
               key={album.id}
               onClick={() => setSelectedAlbum(album.id)}
-              className="flex items-center gap-3 p-3 rounded-xl border border-white/6 cursor-pointer hover:bg-white/4 transition-all group"
+              className="flex items-center gap-3 p-3 rounded-xl border border-border cursor-pointer hover:bg-white/4 transition-all group"
             >
               <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${teamColor}20` }}>
                 <ImageIcon className="h-5 w-5" style={{ color: teamColor }} />

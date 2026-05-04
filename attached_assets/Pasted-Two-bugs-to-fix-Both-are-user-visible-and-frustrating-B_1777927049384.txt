@@ -1,0 +1,239 @@
+Two bugs to fix. Both are user-visible and frustrating.
+Bug 1 — Light mode is broken because text is still white
+The previous attempt to fix this didn't go deep enough. Light mode still has white text on white backgrounds, making content invisible.
+Do this differently than last time
+Don't just search for text-white. The bug is broader than that. Take a more aggressive approach:
+Step 1 — Test the current state
+In the running app:
+
+Switch to light mode
+Open these screens and screenshot each one:
+
+Sign-in page
+Onboarding (coach + player)
+Team home / dashboard
+Schedule view
+Event detail
+Squad list
+Chat / messages
+Settings page
+Admin panel
+Any modals you can open
+
+
+
+For EACH screenshot, list every element where text is missing or unreadable. Be specific — "the player names in the squad list are invisible" not just "the squad page is broken."
+Show me the full list before fixing anything.
+Step 2 — Find ALL color-defining patterns, not just text-white
+The bug is that some text colors are baked in via mechanisms my last prompt didn't catch. Search exhaustively:
+bash# In every .tsx, .ts, .jsx, .js, .css, .scss file:
+
+# Direct white in className
+grep -rn "text-white" --include="*.tsx" --include="*.jsx"
+grep -rn "text-\[#fff" --include="*.tsx" --include="*.jsx"
+grep -rn "text-\[#ffffff" --include="*.tsx" --include="*.jsx"
+grep -rn "text-\[rgb(255" --include="*.tsx" --include="*.jsx"
+grep -rn "text-\[rgba(255" --include="*.tsx" --include="*.jsx"
+
+# Inline styles
+grep -rn "color: 'white'" --include="*.tsx" --include="*.jsx"
+grep -rn 'color: "white"' --include="*.tsx" --include="*.jsx"
+grep -rn "color: '#fff" --include="*.tsx" --include="*.jsx"
+grep -rn 'color: "#fff' --include="*.tsx" --include="*.jsx"
+grep -rn "color:.*255.*255.*255" --include="*.tsx" --include="*.jsx"
+
+# CSS files
+grep -rn "color: white" --include="*.css" --include="*.scss"
+grep -rn "color: #fff" --include="*.css" --include="*.scss"
+grep -rn "color: rgb(255" --include="*.css" --include="*.scss"
+
+# Tailwind config-defined custom colors that might be white
+grep -rn "text-text" --include="*.tsx"  # check what --text actually resolves to
+Also check for these silent killers:
+
+Components using className={cn(...)} where one of the merged classes is hardcoded white
+Style objects spread from a theme constants file (e.g., THEMES.dark.text = '#fff') being applied without checking current theme
+Tailwind's default prose styling on <article> or <div className="prose"> — has its own color rules
+shadcn/ui components imported from components/ui/* — these often have hardcoded text-white in variants
+
+Step 3 — Verify the CSS variable is actually different in light mode
+Before fixing components, confirm the foundation works. In your browser DevTools while in light mode:
+
+Inspect the <html> element
+Check it has data-theme="light" (or whatever attribute your theme system uses)
+Inspect the :root or [data-theme="light"] rule in DevTools
+Confirm --text resolves to a dark color (like #0a0e1a), NOT white
+
+If --text is still resolving to white in light mode, the CSS variable system itself is broken and must be fixed first. Show me the computed value.
+If --text IS resolving correctly, the bug is purely in components that aren't using the variable.
+Step 4 — Fix using semantic classes, not raw colors
+For every text color reference you find, classify:
+Where the text appearsReplacementOn the page background or a cardtext-text (uses var(--text))On a dimmed/secondary surfacetext-text-dimOn a tertiary surface (timestamps, hints)text-text-faintOn the orange hero gradient cardtext-white (KEEP — it's intentional)On a colored status pill (green/red/blue badge)text-white (KEEP)On the HUDDLE wordmark which sits on dark gradienttext-white (KEEP)On a button with colored backgroundtext-white (KEEP)
+Rule: white text is ONLY allowed when it sits on a permanently colored/dark surface that exists in both themes. Everywhere else, use the variable.
+Step 5 — Light mode contrast tuning
+If after replacements the light mode still looks washed out or low-contrast, adjust the variables themselves:
+css[data-theme="light"] {
+  --bg: #f5f5f0;            /* warm off-white background */
+  --bg-elev: #ffffff;        /* card background */
+  --bg-elev-2: #ebebe5;      /* hover / alt rows */
+  --border: #c8c8c0;         /* visible borders, slightly darker than before */
+  --border-soft: #dddcd5;
+  --text: #0a0e1a;           /* deep navy, high contrast on light bg */
+  --text-dim: rgba(10, 14, 26, 0.75);    /* up from 0.7 for better legibility */
+  --text-faint: rgba(10, 14, 26, 0.55);  /* up from 0.5 */
+  --text-ghost: rgba(10, 14, 26, 0.35);
+}
+These values target WCAG AA contrast on white/cream backgrounds.
+Step 6 — Special case: shadcn/ui or pre-built components
+If you used any pre-built component library, those have their own theme mechanism. For shadcn specifically:
+
+Check globals.css for --foreground and --background HSL variables
+They should be defined for both :root (default = light) and .dark class
+The <html> element should toggle the dark class to switch themes
+
+If your project mixes shadcn theming (HSL variables, dark: class) with custom theming (CSS variables, data-theme attribute), pick ONE and align everything. Mixing them is the root cause of half-broken theme switching.
+Recommended: switch fully to shadcn's pattern since most components already use it. That means:
+
+Use <html className={theme === 'dark' ? 'dark' : ''}> instead of data-theme
+Use shadcn's text-foreground instead of custom text-text
+Use bg-background, bg-card, text-muted-foreground etc. throughout
+
+If you're already using shadcn and it's just misconfigured, fix the config rather than working around it.
+Step 7 — Verify by walking through every screen
+After the fix:
+
+Switch to light mode
+Open every screen listed in Step 1
+Take new screenshots
+Confirm every piece of text is readable
+
+If any screen still has invisible text, the fix is incomplete. Don't claim done until all 10+ screens look right in BOTH themes.
+Bug 2 — Settings save shows "saving" forever
+When user changes a setting (theme, language, profile field) and saves, the spinner/message stays on screen indefinitely.
+Diagnostic
+Show me the relevant code:
+
+The settings form component
+The save handler (the function that runs on submit)
+The API route or Supabase call it makes
+The loading state management (useState? form library?)
+
+Common causes (check each):
+Cause A: Async function never resolves
+typescript// Wrong:
+const handleSave = async () => {
+  setLoading(true);
+  await supabase.from('profiles').update(...).eq('id', userId);
+  // forgot setLoading(false);
+};
+Fix: ensure setLoading(false) runs after the await — preferably in a finally block:
+typescriptconst handleSave = async () => {
+  setLoading(true);
+  try {
+    const { error } = await supabase.from('profiles').update(data).eq('id', userId);
+    if (error) throw error;
+    showSuccess('Saved');
+  } catch (err) {
+    showError('Save failed: ' + err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+Cause B: Supabase call is silently failing
+If RLS or a constraint blocks the update, the call returns an error but the code only checks for success. Always check error:
+typescriptconst { data, error } = await supabase.from('profiles').update(...).eq('id', userId);
+if (error) {
+  console.error('Save error:', error);
+  setLoading(false);
+  showError(error.message);
+  return;
+}
+Check the browser network tab and console for the actual response. There might be an RLS policy issue (e.g., the user can't update certain fields) or a constraint violation (e.g., the value doesn't match the check constraint).
+Cause C: Optimistic update racing with server response
+If the UI updates locally first then refetches, a slow refetch makes it look frozen. Decouple the local state update from the refetch.
+Cause D: Toast/banner doesn't auto-dismiss
+If you're using a toast that says "Saving..." and you only update its message but never dismiss it, it stays forever. Use a toast library that auto-dismisses success messages after 3-5 seconds, or call dismiss() explicitly:
+typescriptconst toast = showToast('Saving...', { persistent: true });
+try {
+  await save();
+  toast.update('Saved!', { duration: 3000 });
+} catch (e) {
+  toast.update('Failed', { type: 'error' });
+}
+Cause E: Form library state not resetting
+If using react-hook-form, after a successful submit, the isSubmitting flag should clear automatically. If it doesn't, you might be using setValue outside the form context or have a stale handler.
+Apply the fix
+
+Identify which cause matches
+Apply the fix
+Test by changing a setting and confirming:
+
+Loading indicator shows briefly (< 2 seconds for a normal save)
+Success message shows for 3-5 seconds then disappears
+Form is responsive again immediately after save
+On error, error message shows and form is responsive
+User can save again immediately
+
+
+
+Add a global save-state pattern (optional but worth it)
+To prevent this bug from coming back in other settings forms, create a reusable hook:
+typescript// hooks/useSaveState.ts
+export function useSaveState() {
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (fn: () => Promise<void>) => {
+    setState('saving');
+    setError(null);
+    try {
+      await fn();
+      setState('saved');
+      setTimeout(() => setState('idle'), 3000);
+    } catch (err: any) {
+      setState('error');
+      setError(err.message || 'Unknown error');
+      setTimeout(() => setState('idle'), 5000);
+    }
+  };
+
+  return { state, error, save };
+}
+Use it in any settings form:
+typescriptconst { state, error, save } = useSaveState();
+
+const handleSave = () => save(async () => {
+  const { error } = await supabase.from('profiles').update(data).eq('id', userId);
+  if (error) throw error;
+});
+
+// In JSX:
+<button disabled={state === 'saving'}>
+  {state === 'saving' ? 'Saving...' : state === 'saved' ? '✓ Saved' : 'Save'}
+</button>
+{error && <div className="text-kit_red">{error}</div>}
+This automatically handles loading, success, error, and idle states with proper timeouts.
+Acceptance criteria
+Light mode:
+
+✓ Step 1 audit list provided showing every problematic screen
+✓ All identified hardcoded text colors replaced with theme-aware tokens
+✓ CSS variables verified to resolve correctly in DevTools
+✓ Light mode screenshots of all 10 screens with all text readable
+✓ Dark mode still works identically to before (no regression)
+✓ Orange hero card and colored pills retain white text appropriately
+✓ Contrast meets WCAG AA on all text
+
+Settings save:
+8. ✓ Save handler always clears loading state in finally block
+9. ✓ Errors are caught and shown to user
+10. ✓ Success message auto-dismisses after 3-5 seconds
+11. ✓ User can save again immediately after a save
+12. ✓ Reusable useSaveState hook available for future forms
+Show me the light mode screenshots and the relevant code before/after for the save handler.
+
+That's the prompt. A few honest notes:
+Why the first attempt didn't fully work — most likely cause is that the project uses shadcn/ui or Radix components, and those components have their own theme variables that the previous fix didn't touch. Or the project mixes two theme systems (the custom data-theme one I had you use, and shadcn's dark: class). When two theme systems coexist, switching one doesn't switch the other, and you end up with half-themed pages.
+The most useful part of this prompt — Step 3 (verify CSS variable in DevTools). Spend 30 seconds doing this yourself before paying the agent to fix it. Right-click any text that's invisible in light mode → Inspect → look at "Computed" panel → check what color actually resolves to. If it shows rgb(255, 255, 255), the component is hardcoded. If it shows var(--text) resolving to white, the variable system is broken.
+On the saving stuck bug — 90% chance it's Cause A (forgot to clear loading state) or Cause B (silently failing RLS check). Browser DevTools → Network tab → click the failing request → look at the response. If you see an error like "new row violates row-level security policy" or "value violates check constraint" — that's your culprit, not a UI bug.
+One quick test you can do right now — open DevTools, switch to light mode, and look at the Console tab. If there are any red errors, paste them to the agent verbatim. The error messages usually point straight at the bug.

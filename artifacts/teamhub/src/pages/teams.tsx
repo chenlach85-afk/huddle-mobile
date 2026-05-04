@@ -99,7 +99,7 @@ function TeamFormFields({ form, sq }: { form: any; sq: any }) {
                 <SelectValue placeholder={sq.selectSport} />
               </SelectTrigger>
             </FormControl>
-            <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+            <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
               {SPORTS.map(s => <SelectItem key={s} value={s} className="text-white">{s}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -283,7 +283,7 @@ export default function TeamsPage() {
 
       {/* Create Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-md border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">{sq.createSquad.toUpperCase()}</DialogTitle>
           </DialogHeader>
@@ -300,7 +300,7 @@ export default function TeamsPage() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editTeam} onOpenChange={(v) => { if (!v) setEditTeam(null); }}>
-        <DialogContent className="max-w-md border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">{sq.editSquad.toUpperCase()}</DialogTitle>
           </DialogHeader>
@@ -320,7 +320,7 @@ export default function TeamsPage() {
           {[1,2,3].map(i => <Skeleton key={i} className="h-24 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}
         </div>
       ) : teams.length === 0 ? (
-        <div className="rounded-2xl border border-white/6 p-12 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="rounded-2xl border border-border p-12 text-center" style={{ background: "var(--surface-card)" }}>
           <Users className="h-12 w-12 mx-auto text-white/20 mb-4" />
           <h3 className="font-display text-2xl text-white tracking-wide mb-2">{sq.noSquadsYet.toUpperCase()}</h3>
           <p className="text-white/40 text-sm mb-5">{sq.createFirstDesc}</p>
@@ -334,8 +334,8 @@ export default function TeamsPage() {
           {(teams as TeamRow[]).map(team => (
             <div
               key={team.id}
-              className="rounded-2xl border border-white/6 p-4 flex items-center gap-4 cursor-pointer hover:bg-white/4 transition-all group"
-              style={{ background: "rgba(22,27,46,0.8)" }}
+              className="rounded-2xl border border-border p-4 flex items-center gap-4 cursor-pointer hover:bg-white/4 transition-all group"
+              style={{ background: "var(--surface-card)" }}
               onClick={() => setLocation(`/teams/${team.id}`)}
               data-testid={`card-team-${team.id}`}
             >

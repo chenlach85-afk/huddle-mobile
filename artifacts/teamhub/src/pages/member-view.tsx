@@ -79,7 +79,7 @@ export default function MemberView() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen p-5 flex items-center justify-center" style={{ background: "#0a0e1a" }}>
+      <div className="min-h-screen p-5 flex items-center justify-center" style={{ background: "var(--surface-sidebar)" }}>
         <div className="w-full max-w-2xl space-y-4">
           <Skeleton className="h-40 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />
           <Skeleton className="h-32 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />
@@ -91,7 +91,7 @@ export default function MemberView() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6" style={{ background: "#0a0e1a" }}>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6" style={{ background: "var(--surface-sidebar)" }}>
         <AlertCircle className="h-14 w-14 text-red-500" />
         <h2 className="font-display text-3xl text-white tracking-wide">TEAM NOT FOUND</h2>
         <p className="text-sm text-center text-white/40 max-w-xs">
@@ -110,10 +110,10 @@ export default function MemberView() {
   const openTasks = tasks.filter(t => t.status !== "done").length;
 
   return (
-    <div className="min-h-screen" style={{ background: "#0a0e1a" }}>
+    <div className="min-h-screen" style={{ background: "var(--surface-sidebar)" }}>
       {/* Sticky header */}
       <header className="sticky top-0 z-10 border-b border-white/6"
-        style={{ background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)" }}>
+        style={{ background: "var(--surface-sidebar)", backdropFilter: "blur(12px)" }}>
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="jersey-tile w-8 h-8 text-sm font-bold"
@@ -207,8 +207,8 @@ export default function MemberView() {
             Upcoming Schedule
           </p>
           {upcomingEvents.length === 0 ? (
-            <div className="rounded-2xl border border-white/6 p-6 text-center text-white/30 text-sm"
-              style={{ background: "rgba(22,27,46,0.8)" }}>
+            <div className="rounded-2xl border border-border p-6 text-center text-white/30 text-sm"
+              style={{ background: "var(--surface-card)" }}>
               No upcoming events scheduled.
             </div>
           ) : (
@@ -216,8 +216,8 @@ export default function MemberView() {
               {upcomingEvents.map(event => {
                 const typeCfg = TYPE_CONFIG[event.type] ?? { color: "rgba(255,255,255,0.3)", label: event.type };
                 return (
-                  <div key={event.id} className="rounded-2xl border border-white/6 p-4 flex gap-3 items-start"
-                    style={{ background: "rgba(22,27,46,0.8)" }}
+                  <div key={event.id} className="rounded-2xl border border-border p-4 flex gap-3 items-start"
+                    style={{ background: "var(--surface-card)" }}
                     data-testid={`member-event-${event.id}`}>
                     <div className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-widest shrink-0 mt-0.5"
                       style={{ background: `${typeCfg.color}20`, color: typeCfg.color, border: `1px solid ${typeCfg.color}40` }}>
@@ -254,8 +254,8 @@ export default function MemberView() {
                 const priorityCfg = PRIORITY_CONFIG[task.priority] ?? { color: "#fff", label: task.priority };
                 return (
                   <div key={task.id}
-                    className={`rounded-2xl border border-white/6 p-3.5 flex items-start gap-3 ${task.status === "done" ? "opacity-50" : ""}`}
-                    style={{ background: "rgba(22,27,46,0.8)" }}
+                    className={`rounded-2xl border border-border p-3.5 flex items-start gap-3 ${task.status === "done" ? "opacity-50" : ""}`}
+                    style={{ background: "var(--surface-card)" }}
                     data-testid={`member-task-${task.id}`}>
                     <span className="mt-0.5 shrink-0">{STATUS_ICONS[task.status]}</span>
                     <div className="flex-1 min-w-0">
@@ -286,8 +286,8 @@ export default function MemberView() {
             <Users className="h-2.5 w-2.5" />
             Squad Roster
           </p>
-          <div className="rounded-2xl border border-white/6 overflow-hidden divide-y divide-white/5"
-            style={{ background: "rgba(22,27,46,0.8)" }}>
+          <div className="rounded-2xl border border-border overflow-hidden divide-y divide-white/5"
+            style={{ background: "var(--surface-card)" }}>
             {players.length === 0 ? (
               <p className="text-sm text-white/30 text-center py-6">No players on roster yet.</p>
             ) : (
@@ -326,8 +326,8 @@ export default function MemberView() {
               {[...regularMessages].reverse().map(msg => {
                 const roleCfg = ROLE_CONFIG[msg.senderRole] ?? { color: "#fff", label: msg.senderRole.toUpperCase() };
                 return (
-                  <div key={msg.id} className="rounded-2xl border border-white/6 p-4"
-                    style={{ background: "rgba(22,27,46,0.8)", borderLeft: `3px solid ${roleCfg.color}50` }}
+                  <div key={msg.id} className="rounded-2xl border border-border p-4"
+                    style={{ background: "var(--surface-card)", borderLeft: `3px solid ${roleCfg.color}50` }}
                     data-testid={`member-message-${msg.id}`}>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
@@ -358,8 +358,8 @@ export default function MemberView() {
               {[...pastEvents].reverse().map(event => {
                 const typeCfg = TYPE_CONFIG[event.type] ?? { color: "rgba(255,255,255,0.3)", label: event.type };
                 return (
-                  <div key={event.id} className="rounded-2xl border border-white/6 p-3.5 flex gap-3 items-center"
-                    style={{ background: "rgba(22,27,46,0.8)" }}>
+                  <div key={event.id} className="rounded-2xl border border-border p-3.5 flex gap-3 items-center"
+                    style={{ background: "var(--surface-card)" }}>
                     <div className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-widest shrink-0"
                       style={{ background: `${typeCfg.color}18`, color: typeCfg.color }}>
                       {typeCfg.label}

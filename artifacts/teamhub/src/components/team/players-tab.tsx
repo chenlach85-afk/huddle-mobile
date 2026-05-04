@@ -123,7 +123,7 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
       {isLoading ? (
         <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
       ) : players.length === 0 ? (
-        <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
           <Users className="h-10 w-10 mx-auto text-white/15 mb-3" />
           <p className="font-display text-xl text-white/30 tracking-wide">{p.emptySquad.toUpperCase()}</p>
           <p className="text-xs text-white/25 mt-1 mb-4">{p.addToGetStarted}</p>
@@ -134,10 +134,10 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
           {players.map(player => {
             const color = STATUS_COLORS[player.status];
             return (
-              <div key={player.id} className="rounded-2xl border border-white/6 p-4 flex items-center gap-4 group hover:bg-white/3 transition-all" style={{ background: "rgba(22,27,46,0.8)" }} data-testid={`card-player-${player.id}`}>
+              <div key={player.id} className="rounded-2xl border border-border p-4 flex items-center gap-4 group hover:bg-white/3 transition-all" style={{ background: "var(--surface-card)" }} data-testid={`card-player-${player.id}`}>
                 <div className="jersey-tile text-lg relative" style={{ background: `linear-gradient(135deg, ${teamColor}, ${teamColor}88)` }}>
                   <span className="ltr-num">{player.number ?? player.name.charAt(0).toUpperCase()}</span>
-                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#161b2e]" style={{ background: color }} />
+                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-card" style={{ background: color }} />
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -168,7 +168,7 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md border-white/10" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">
               {editingId ? p.editAthlete.toUpperCase() : p.addAthlete.toUpperCase()}
@@ -208,7 +208,7 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
                         <SelectValue />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                    <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                       <SelectItem value="active" className="text-white">{p.statusActive}</SelectItem>
                       <SelectItem value="inactive" className="text-white">{p.statusInactive}</SelectItem>
                       <SelectItem value="injured" className="text-white">{p.statusInjured}</SelectItem>

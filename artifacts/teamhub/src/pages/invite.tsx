@@ -85,7 +85,7 @@ export default function InvitePage() {
   }
 
   const glassCard = "rounded-2xl p-8 space-y-6 max-w-md w-full mx-auto";
-  const cardStyle = { background: "rgba(22,27,46,0.95)", border: "1px solid rgba(255,255,255,0.08)" };
+  const cardStyle = { background: "var(--surface-card)", border: "1px solid var(--border-subtle)" };
 
   // ── Loading ──
   if (view === "loading" || !isLoaded) {

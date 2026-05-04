@@ -31,7 +31,7 @@ export function NotificationBell() {
         <Button
           variant="ghost"
           size="icon"
-          className="relative text-white/60 hover:text-white hover:bg-white/8"
+          className="relative text-foreground/60 hover:text-foreground hover:bg-accent"
         >
           <Bell className="h-5 w-5" />
           {unread > 0 && (
@@ -43,11 +43,10 @@ export function NotificationBell() {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 p-0 border-white/10"
-        style={{ background: "#161b2e" }}
+        className="w-80 p-0 border-border bg-card"
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
-          <h3 className="font-semibold text-white text-sm">{t.notifications.title}</h3>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h3 className="font-semibold text-foreground text-sm">{t.notifications.title}</h3>
           {unread > 0 && (
             <button
               onClick={() => markAll.mutate()}
@@ -60,7 +59,7 @@ export function NotificationBell() {
 
         <div className="max-h-80 overflow-y-auto">
           {notifications.length === 0 ? (
-            <div className="py-8 text-center text-white/35 text-sm">
+            <div className="py-8 text-center text-muted-foreground/60 text-sm">
               {t.notifications.noNotifications}
             </div>
           ) : (
@@ -68,7 +67,7 @@ export function NotificationBell() {
               <button
                 key={n.id}
                 className={cn(
-                  "w-full text-left px-4 py-3 border-b border-white/5 hover:bg-white/4 transition-colors",
+                  "w-full text-left px-4 py-3 border-b border-border hover:bg-accent transition-colors",
                   !n.read && "bg-primary/5",
                 )}
                 onClick={() => markRead.mutate(n.id)}
@@ -76,11 +75,11 @@ export function NotificationBell() {
                 <div className="flex items-start gap-3">
                   <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", TYPE_COLORS[n.type])} />
                   <div className="min-w-0 flex-1">
-                    <p className={cn("text-xs font-semibold truncate", n.read ? "text-white/50" : "text-white")}>
+                    <p className={cn("text-xs font-semibold truncate", n.read ? "text-muted-foreground" : "text-foreground")}>
                       {n.title}
                     </p>
-                    <p className="text-xs text-white/40 mt-0.5 line-clamp-2">{n.body}</p>
-                    <p className="text-[10px] text-white/25 mt-1">
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>
+                    <p className="text-[10px] text-muted-foreground/50 mt-1">
                       {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                     </p>
                   </div>

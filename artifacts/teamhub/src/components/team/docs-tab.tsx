@@ -21,7 +21,7 @@ export default function DocsTab({ teamId, teamColor }: { teamId: number; teamCol
   const { data: docs = [], isLoading } = useListTeamDocs(teamId);
 
   return (
-    <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+    <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
       <div className="px-5 py-4 border-b border-white/6 flex items-center gap-2">
         <FileText className="h-4 w-4" style={{ color: teamColor }} />
         <p className="font-semibold text-white text-sm">{t.teamDetail.tabDocs}</p>
@@ -42,7 +42,7 @@ export default function DocsTab({ teamId, teamColor }: { teamId: number; teamCol
               href={doc.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 p-3 rounded-xl border border-white/6 hover:bg-white/4 transition-all group"
+              className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-white/4 transition-all group"
             >
               <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${teamColor}20` }}>
                 <FileText className="h-5 w-5" style={{ color: teamColor }} />

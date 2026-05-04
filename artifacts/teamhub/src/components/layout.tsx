@@ -35,7 +35,7 @@ function NavItems({ onClose }: { onClose?: () => void }) {
                 "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all cursor-pointer text-sm font-semibold",
                 isActive
                   ? "bg-primary/20 text-primary border border-primary/30"
-                  : "text-white/50 hover:text-white/80 hover:bg-white/5",
+                  : "text-foreground/50 hover:text-foreground/80 hover:bg-accent",
               )}
               data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
@@ -58,7 +58,7 @@ function ThemeToggleButton({ className }: { className?: string }) {
       variant="ghost"
       size="icon"
       onClick={cycleTheme}
-      className={cn("text-white/60 hover:text-white hover:bg-white/8", className)}
+      className={cn("text-foreground/60 hover:text-foreground hover:bg-accent", className)}
       title={`Theme: ${theme}`}
       data-testid="button-theme-toggle"
     >
@@ -118,7 +118,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <NotificationBell />
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-white/60 hover:text-white hover:bg-white/8" data-testid="button-mobile-menu">
+                <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-foreground hover:bg-accent" data-testid="button-mobile-menu">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>

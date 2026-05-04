@@ -310,7 +310,7 @@ export default function TeamDetailPage() {
 
       {/* Edit Team Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-md border-white/10 max-h-[90vh] overflow-y-auto" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-white tracking-wide">{sq.editSquad.toUpperCase()}</DialogTitle>
           </DialogHeader>
@@ -332,7 +332,7 @@ export default function TeamDetailPage() {
                         <SelectValue placeholder={sq.selectSport} />
                       </SelectTrigger>
                     </FormControl>
-                    <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+                    <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
                       {SPORTS.map(s => <SelectItem key={s} value={s} className="text-white">{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -509,7 +509,7 @@ export default function TeamDetailPage() {
       </div>
 
       <Tabs defaultValue="players" className="space-y-4">
-        <TabsList className="border border-white/8 p-1 rounded-xl h-auto gap-0.5 flex-wrap" style={{ background: "rgba(22,27,46,0.9)" }}>
+        <TabsList className="border border-border p-1 rounded-xl h-auto gap-0.5 flex-wrap" style={{ background: "var(--surface-card)" }}>
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.value}
@@ -555,7 +555,7 @@ export default function TeamDetailPage() {
               </Button>
             </div>
 
-            <div className="rounded-2xl border border-white/6 overflow-hidden" style={{ background: "rgba(22,27,46,0.8)" }}>
+            <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
               <div className="px-4 py-3 border-b border-white/6 flex items-center gap-2">
                 <Activity className="h-3.5 w-3.5 text-white/40" />
                 <p className="section-label">{td.recentActivity}</p>

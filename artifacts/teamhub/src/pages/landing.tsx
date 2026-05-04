@@ -16,7 +16,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="h-16 flex items-center justify-between px-6 border-b border-white/6"
-        style={{ background: "rgba(10,14,26,0.95)" }}>
+        style={{ background: "var(--surface-sidebar)" }}>
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
             <Zap className="h-5 w-5 text-white" fill="white" />
@@ -68,8 +68,8 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {FEATURES.map((f) => (
             <div key={f.label}
-              className="rounded-2xl p-5 text-left border border-white/6"
-              style={{ background: "rgba(22,27,46,0.8)" }}>
+              className="rounded-2xl p-5 text-left border border-border"
+              style={{ background: "var(--surface-card)" }}>
               <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center mb-3">
                 <f.icon className="h-5 w-5 text-primary" />
               </div>

@@ -88,7 +88,7 @@ export default function MessagesTab({ teamId, teamColor }: { teamId: number; tea
             <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl h-9 text-sm" data-testid="select-sender-role">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+            <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
               <SelectItem value="coach" className="text-white">{msg.roleCoach}</SelectItem>
               <SelectItem value="player" className="text-white">{msg.rolePlayer}</SelectItem>
               <SelectItem value="admin" className="text-white">{msg.roleAdmin}</SelectItem>
@@ -119,7 +119,7 @@ export default function MessagesTab({ teamId, teamColor }: { teamId: number; tea
       {isLoading ? (
         <div className="space-y-2">{[1,2].map(i => <Skeleton key={i} className="h-20 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
       ) : messages.length === 0 ? (
-        <div className="rounded-2xl border border-white/6 p-10 text-center" style={{ background: "rgba(22,27,46,0.8)" }}>
+        <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
           <MessageSquare className="h-10 w-10 mx-auto text-white/15 mb-3" />
           <p className="font-display text-xl text-white/30 tracking-wide">{msg.huddleIsQuiet.toUpperCase()}</p>
           <p className="text-xs text-white/25 mt-1">{msg.sendFirst}</p>
@@ -164,9 +164,9 @@ function MessageBubble({
 
   return (
     <div
-      className="rounded-2xl border border-white/6 p-4 group hover:bg-white/2 transition-all"
+      className="rounded-2xl border border-border p-4 group hover:bg-white/2 transition-all"
       style={{
-        background: msg.pinned ? `${teamColor}0d` : "rgba(22,27,46,0.8)",
+        background: msg.pinned ? `${teamColor}0d` : "var(--surface-card)",
         borderColor: msg.pinned ? `${teamColor}25` : "rgba(255,255,255,0.06)",
         borderLeft: `3px solid ${color}50`,
       }}

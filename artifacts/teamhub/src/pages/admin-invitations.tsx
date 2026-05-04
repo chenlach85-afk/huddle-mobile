@@ -137,7 +137,7 @@ function SendInvitationForm({ onSent }: { onSent: () => void }) {
             <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl h-10">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border-white/10" style={{ background: "#1f2742" }}>
+            <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
               <SelectItem value="coach" className="text-white">
                 <span className="flex items-center gap-2"><Users className="h-3.5 w-3.5 text-blue-400" />{inv.roleCoach}</span>
               </SelectItem>
@@ -278,7 +278,7 @@ function InvitationRow({ inv: invitation, onRevoke, onResent }: { inv: Invitatio
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-sm border-white/10" style={{ background: "#161b2e" }}>
+        <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
             <DialogTitle className="font-display text-xl text-white">{inv.revokeConfirm}</DialogTitle>
           </DialogHeader>
