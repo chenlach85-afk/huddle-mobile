@@ -1,0 +1,154 @@
+Light mode has invisible text in places. White text is hardcoded in many components and stays white even in light mode, making it disappear on the light background. Find every hardcoded white-ish color and replace with theme-aware tokens.
+The exact problem
+The CSS variables work correctly for backgrounds and most text. But some components use:
+
+className="text-white"
+className="text-[#fff]" or text-[#ffffff]
+className="text-[rgba(255,255,255,...)]"
+Inline styles like style={{ color: 'white' }} or style={{ color: '#fff' }}
+Any explicit white color value
+
+These don't change with the theme. They render white on white in light mode = invisible.
+Step 1 — Audit
+Search the entire codebase (all .tsx, .ts, .jsx, .js, .css, .scss files) for any of these patterns and produce a complete list:
+text-white
+text-[#fff
+text-[#ffffff
+text-[rgb(255
+text-[rgba(255, 255, 255
+color: 'white'
+color: "white"
+color: '#fff'
+color: "#fff"
+color: '#ffffff'
+color: "#ffffff"
+color:#fff
+color:white
+color:rgba(255,255,255
+color:rgb(255,255,255
+text-[rgba(255,255,255
+Also search for these less-common-but-related patterns that hardcode dark-mode-only colors:
+bg-[#0a0e1a
+bg-[#161b2e
+bg-[#1f2742
+bg-black (when used as the page or card background, not a button/badge)
+text-[#a89a85
+text-[#6b6050
+border-[#3a2d20
+border-[#2a3354
+For each match, show the file path and line. Don't change anything yet — just produce the audit list.
+Step 2 — Decide the right replacement for each
+The replacement depends on context. Here's the decision tree:
+If the white text is on a permanently dark background
+Examples: text inside the orange gradient hero card, text inside a colored status pill (green/red/blue), text inside a dark-themed modal that stays dark in both modes, the HUDDLE wordmark.
+These should stay white because they sit on a colored or dark surface that exists in both themes. But mark them explicitly so it's clear they're intentional:
+
+Either keep text-white (it's correct for these cases)
+Or use a more explicit class like text-on-accent (a new utility for "text that appears on top of a colored brand surface")
+
+The orange gradient hero card text is the main example: orange is orange in both themes, so white text on orange always works.
+If the white text is supposed to mean "primary readable text"
+Examples: card titles, body text, list item text, form labels, headers, navigation labels, anything that's "the main text content."
+Replace with a theme-aware token:
+
+text-white → text-text (which maps to var(--text) — white in dark mode, deep navy in light mode)
+
+If the text is "secondary/dimmed text"
+Examples: timestamps, hints, captions, helper text under inputs, "Sent 2 hours ago" type labels.
+Replace with:
+
+text-[rgba(255,255,255,0.7)] → text-text-dim (var(--text-dim))
+text-[rgba(255,255,255,0.5)] → text-text-faint (var(--text-faint))
+text-[rgba(255,255,255,0.3)] → text-text-ghost (var(--text-ghost))
+
+Step 3 — Apply replacements
+Go through the audit list and apply the right replacement for each based on context. Don't bulk-replace — context matters.
+For each file you change, briefly explain why you chose the replacement (e.g., "this text is inside the orange hero card so kept text-white" or "this is a card title, changed to text-text").
+Adding the text-on-accent utility (optional but clean)
+If you want explicit semantics for "text on colored surface," add this to Tailwind config:
+javascript{
+  theme: {
+    extend: {
+      colors: {
+        // ...existing tokens
+        'on-accent': '#ffffff',  // always white, intentionally
+      }
+    }
+  }
+}
+Then use text-on-accent for the orange card text, status pill text, etc. This makes it easy in the future to find "intentional white" vs "accidental white."
+Step 4 — Also check inline styles and CSS files
+The audit covers className matches but inline styles need separate attention. Search for:
+style={{ color
+style={{color
+style: { color
+And for CSS files (.css, .scss, globals.css):
+color: white
+color: #fff
+color: rgb(255
+color: rgba(255, 255, 255
+Replace with var(--text), var(--text-dim), etc., as appropriate.
+Step 5 — Check shadcn/ui components
+If the project uses shadcn/ui or any pre-built component library, those components may have their own hardcoded colors. Check:
+
+components/ui/* files (typical shadcn location)
+Any third-party component being used directly without wrapping
+
+For shadcn specifically, the standard pattern uses text-foreground and text-muted-foreground. If those exist and are wired to your CSS variables correctly, prefer them. If not, replace with your text-text / text-text-dim tokens.
+Step 6 — Visual verification
+After changes, take screenshots of these screens IN LIGHT MODE specifically. All text must be clearly readable:
+
+Sign-in page — form labels, input text, button text
+Dashboard / team home — every label, count, name, timestamp
+Team header card (the orange one in my earlier screenshot) — text on orange should still be white; nothing else should be white
+Schedule / calendar — day labels, event titles, times
+Player roster / squad — names, positions, jersey numbers
+Chat / messages — message bubbles (sender name, body, timestamp)
+Event details — uniform, arrival, what to bring sections
+Settings page — all section labels and option text
+Admin panel — KPI cards, table rows, audit log
+Modals — confirmation dialogs, forms, dropdowns
+
+If ANY text is invisible or low-contrast in light mode, fix it. The standard contrast target is WCAG AA (4.5:1 for normal text, 3:1 for large text).
+Step 7 — Catch the next one preemptively
+To prevent this from happening again, add an ESLint rule (or a pre-commit check) that flags hardcoded white text in JSX:
+javascript// In .eslintrc.js or eslint.config.js, add a custom rule or warning pattern
+{
+  rules: {
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value='text-white']",
+        "message": "Use 'text-text' for theme-aware white. Only use 'text-white' inside a colored/dark always-on surface like the orange hero card. If intentional, use 'text-on-accent' instead."
+      }
+    ]
+  }
+}
+This isn't perfect but it gives a warning when someone types text-white next time.
+Acceptance criteria
+
+✓ Audit produces a list of every hardcoded white text reference in the codebase
+✓ Each instance is reviewed in context and replaced appropriately (not bulk-replaced)
+✓ Light mode shows readable text on every screen — no invisible or barely-visible text anywhere
+✓ Dark mode still looks identical to before (nothing regressed)
+✓ Screenshots of all 10 screens in light mode demonstrate readability
+✓ Orange hero card and colored pills/buttons still have white text where appropriate
+✓ Optional: text-on-accent utility added for explicit "intentional white" semantics
+✓ Optional: ESLint warning added to catch new hardcoded whites in the future
+
+Don't break anything else. Don't refactor unrelated code. This is purely a theme contrast fix.
+Show me the audit list first so I can approve before changes.
+
+That's the prompt. A few quick notes:
+On the "show audit first" instruction — this is important. If you let the agent rip through and replace everything blindly, it will sometimes "fix" the orange hero card by changing its text color, which then makes it unreadable on the orange background. The audit step lets you (and the agent) verify each replacement is contextually correct.
+On what you'll likely find — based on what's normal for AI-generated code, expect 30-80 hardcoded white instances across the codebase. The biggest concentrations are usually:
+
+Modal dialogs (heavy use of text-white because the original design was dark)
+Card titles in the dashboard
+Stat numbers and KPI cards
+Form labels in dark-themed forms
+Dropdown menu items
+Toast notifications
+
+On testing — after the fix, the fastest way to find anything still broken is to switch to light mode, then scroll through every screen. Anything that looks "weird" or has missing text is a remaining hardcoded color. Don't trust the agent's claim of "all fixed" — actually walk through the app yourself for 5 minutes.
+One specific thing to verify — the team header card from your earlier screenshot (the orange gradient one). The team name "LIGHTNING FC" is white text on orange — that should stay white in both themes. If the agent breaks that and makes it dark navy in light mode, the orange card will look terrible. Push back with: "The text inside the orange gradient hero card must stay white in both themes — it's text on a colored brand surface, not on the page background."
