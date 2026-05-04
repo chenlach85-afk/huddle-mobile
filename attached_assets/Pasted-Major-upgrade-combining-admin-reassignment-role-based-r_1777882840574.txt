@@ -1,0 +1,771 @@
+Major upgrade combining admin reassignment, role-based registration, multi-coach teams, multi-team coaches, and a full-featured admin dashboard. This is a single coordinated change. Read it through before starting. Do NOT skip steps and execute them in the order specified.
+Conceptual model — the hierarchy
+Platform Admin (limited number — me + 1-2 trusted others)
+    │
+    │ invites coaches via email (auto-approved on registration)
+    ▼
+Coach (can manage multiple teams)
+    │
+    │ invites players via team invite codes
+    ▼
+Player / Parent / Team Member
+Strict rule: only platform admins can invite coaches and other admins. Only coaches can invite players (to their own teams via team invite codes). Players cannot be invited at the platform level. There is no other path to account creation.
+Step 0 — Verify current state and gather info
+Before any changes, run these diagnostic queries and show me the results:
+sql-- Show current admins
+select id, email, full_name, is_platform_admin, account_status
+from public.profiles
+where email in ('chen.lach@gmail.com', 'chen.lach85@gmail.com', 'liraneldar@gmail.com')
+   or is_platform_admin = true;
+
+-- Show invitation table state
+select count(*) as total,
+       count(*) filter (where status = 'pending') as pending,
+       count(*) filter (where status = 'accepted') as accepted,
+       count(*) filter (where status = 'expired') as expired,
+       count(*) filter (where invited_role = 'coach') as for_coach,
+       count(*) filter (where invited_role = 'admin') as for_admin,
+       count(*) filter (where invited_role in ('player', 'team_member')) as for_player
+from public.platform_invitations;
+
+-- Show team count and ownership
+select count(*) as total_teams,
+       count(distinct created_by) as unique_owners
+from public.teams
+where archived_at is null;
+
+-- Show RLS policies on key tables
+select tablename, policyname, cmd from pg_policies
+where tablename in ('profiles', 'teams', 'team_members', 'platform_invitations')
+order by tablename, policyname;
+Show me the results before proceeding to step 1.
+Step 1 — Admin reassignment
+Replace chen.lach@gmail.com with chen.lach85@gmail.com and liraneldar@gmail.com as platform admins.
+Logic
+
+For chen.lach85@gmail.com:
+
+If a profile row exists for this email AND the user is registered → just set is_platform_admin = true, account_status = 'active'
+If no profile exists → create a platform_invitations row with invited_role = 'admin' and send the invitation email. The user becomes admin automatically when they accept.
+
+
+Same logic for liraneldar@gmail.com.
+Demote chen.lach@gmail.com LAST — only after at least one new admin is verified working. Show me the final admin list before demotion and ask for confirmation.
+Log all changes in admin_audit_log.
+
+SQL
+sql-- Promote any existing accounts
+update public.profiles
+set is_platform_admin = true, account_status = 'active'
+where id in (
+  select id from auth.users
+  where email in ('chen.lach85@gmail.com', 'liraneldar@gmail.com')
+);
+
+-- For emails without accounts, create platform_invitations rows
+-- Use the existing email-based invitation flow with invited_role = 'admin'
+-- (this is the same flow that's used for coach invitations — just different role)
+
+-- Audit log entries (run only after promotions actually happen)
+insert into public.admin_audit_log (admin_id, action, target_user_id, metadata)
+select
+  (select id from auth.users where email = 'chen.lach@gmail.com' limit 1),
+  'user_promoted_admin',
+  p.id,
+  jsonb_build_object('email', p.email, 'reason', 'Initial admin reassignment to chen.lach85@gmail.com and liraneldar@gmail.com')
+from profiles p
+where p.email in ('chen.lach85@gmail.com', 'liraneldar@gmail.com')
+  and p.is_platform_admin = true;
+Demotion (run AFTER confirming at least one new admin works):
+sqlupdate public.profiles
+set is_platform_admin = false
+where email = 'chen.lach@gmail.com';
+
+insert into public.admin_audit_log (admin_id, action, target_user_id, metadata)
+select
+  (select id from profiles where email in ('chen.lach85@gmail.com', 'liraneldar@gmail.com') and is_platform_admin = true limit 1),
+  'user_demoted_admin',
+  id,
+  jsonb_build_object('email', email, 'reason', 'Replaced by chen.lach85 and liraneldar')
+from profiles
+where email = 'chen.lach@gmail.com';
+The "cannot demote last admin" safety rail should already exist from a previous prompt — it must remain functional and prevent accidental zero-admin states.
+Step 2 — Schema updates for new features
+sql-- Restrict platform invitations to coach and admin only (remove player option)
+alter table public.platform_invitations
+  drop constraint if exists platform_invitations_invited_role_check;
+
+alter table public.platform_invitations
+  add constraint platform_invitations_invited_role_check
+  check (invited_role in ('coach', 'admin'));
+
+-- Auto-revoke any existing pending player invitations
+update public.platform_invitations
+  set status = 'revoked',
+      notes = coalesce(notes, '') || ' [Auto-revoked: player invitations no longer supported]'
+  where invited_role in ('player', 'team_member')
+    and status = 'pending';
+
+-- Add last_team_id to profiles for multi-team coach memory
+alter table public.profiles
+  add column if not exists last_team_id uuid references teams(id) on delete set null;
+
+-- Add team owner helper if not present
+create or replace function public.is_team_owner(team_uuid uuid)
+returns boolean language sql security definer stable as $$
+  select exists(
+    select 1 from teams
+    where id = team_uuid and created_by = auth.uid()
+  );
+$$;
+
+-- Update RLS policies for teams: only owner can update/delete (not all coaches)
+drop policy if exists "coaches update team" on teams;
+create policy "owner updates team" on teams for update using (is_team_owner(id));
+
+drop policy if exists "coaches delete team" on teams;
+create policy "owner deletes team" on teams for delete using (is_team_owner(id));
+
+-- Update team_members policies to distinguish player vs coach management
+drop policy if exists "coaches manage roster" on team_members;
+
+create policy "members view roster" on team_members for select using (is_team_member(team_id));
+
+create policy "coaches manage players" on team_members for insert
+  with check (is_team_coach(team_id) and role in ('player', 'parent'));
+
+create policy "coaches update player rows" on team_members for update
+  using (is_team_coach(team_id) and role in ('player', 'parent'));
+
+create policy "coaches remove players" on team_members for delete
+  using (is_team_coach(team_id) and role in ('player', 'parent'));
+
+create policy "owner manages coaches" on team_members for all
+  using (is_team_owner(team_id) and role in ('coach', 'assistant_coach'));
+
+create policy "users join via invite" on team_members for insert
+  with check (user_id = auth.uid());
+
+-- Update the handle_new_user trigger to gate signups
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  has_platform_invite boolean;
+  has_team_code text;
+begin
+  -- Check for valid platform invitation
+  select exists(
+    select 1 from platform_invitations
+    where email = new.email and status = 'pending' and expires_at > now()
+  ) into has_platform_invite;
+
+  -- Check for team join via metadata (set during signup-via-team-code flow)
+  has_team_code := new.raw_user_meta_data->>'joining_team_id';
+
+  -- Allow if: bootstrap (no profiles yet) OR platform invite OR team code in metadata
+  if not has_platform_invite
+     and has_team_code is null
+     and (select count(*) from profiles) > 0 then
+    raise exception 'Signup requires either a platform invitation or a valid team invite code';
+  end if;
+
+  insert into public.profiles (id, email, full_name, account_status)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', ''),
+    'active'  -- auto-approved
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- New tables for system logs and notifications
+create table if not exists public.auth_events (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete set null,
+  email text,
+  event_type text not null check (event_type in (
+    'signed_in', 'signed_out', 'failed_signin', 'password_reset_requested',
+    'password_reset_completed', 'session_expired', 'email_changed'
+  )),
+  ip_address text,
+  user_agent text,
+  metadata jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists auth_events_user_idx on auth_events(user_id, created_at desc);
+create index if not exists auth_events_type_idx on auth_events(event_type, created_at desc);
+
+create table if not exists public.email_events (
+  id uuid primary key default uuid_generate_v4(),
+  resend_email_id text unique,
+  to_email text not null,
+  subject text,
+  template text,
+  status text check (status in ('sent', 'delivered', 'bounced', 'opened', 'clicked', 'complained', 'failed')),
+  metadata jsonb,
+  sent_at timestamptz,
+  delivered_at timestamptz,
+  opened_at timestamptz,
+  clicked_at timestamptz,
+  bounced_at timestamptz,
+  created_at timestamptz default now()
+);
+create index if not exists email_events_to_idx on email_events(to_email, created_at desc);
+create index if not exists email_events_status_idx on email_events(status);
+
+create table if not exists public.system_errors (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete set null,
+  error_message text not null,
+  error_stack text,
+  request_path text,
+  request_method text,
+  metadata jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists system_errors_created_idx on system_errors(created_at desc);
+
+create table if not exists public.admin_notifications (
+  id uuid primary key default uuid_generate_v4(),
+  admin_id uuid not null references auth.users(id) on delete cascade,
+  type text not null check (type in (
+    'new_coach_registered', 'invitation_expired', 'invitation_bounced',
+    'storage_threshold', 'error_spike', 'user_suspended_self_request',
+    'team_archived'
+  )),
+  title text not null,
+  body text,
+  link text,
+  read_at timestamptz,
+  created_at timestamptz default now()
+);
+create index if not exists admin_notifications_admin_idx on admin_notifications(admin_id, read_at, created_at desc);
+
+-- RLS for all new tables — admins only
+alter table public.auth_events enable row level security;
+alter table public.email_events enable row level security;
+alter table public.system_errors enable row level security;
+alter table public.admin_notifications enable row level security;
+
+create policy "admins read auth events" on auth_events for select
+  using (exists(select 1 from profiles where id = auth.uid() and is_platform_admin = true));
+
+create policy "admins read email events" on email_events for select
+  using (exists(select 1 from profiles where id = auth.uid() and is_platform_admin = true));
+
+create policy "admins read errors" on system_errors for select
+  using (exists(select 1 from profiles where id = auth.uid() and is_platform_admin = true));
+
+create policy "admins read own notifications" on admin_notifications for select
+  using (admin_id = auth.uid());
+create policy "admins update own notifications" on admin_notifications for update
+  using (admin_id = auth.uid());
+Step 3 — Coach vs. team member at registration
+When someone accepts a platform invitation at /invite/[token] and submits the form:
+
+After user is created, route them based on invitation.invited_role:
+
+'coach' → redirect to /onboarding/coach
+'admin' → redirect to /onboarding/admin then /admin
+'player' and 'team_member' no longer accepted (constraint blocks them)
+
+
+
+Players ONLY enter via team invite codes at /join/[code].
+Admin invitation form (/admin/invitations)
+The "Send invitation" form role selector becomes:
+Role:
+  ◉ Coach
+  ○ Platform admin
+Translations:
+
+Hebrew: מאמן / מנהל פלטפורמה
+English: Coach / Platform admin
+Spanish: Entrenador / Administrador
+
+Remove any "pre-fill team code" field if present.
+Auto-approve confirmation
+When a coach accepts the invitation:
+
+Account created via supabase.auth.admin.createUser with email_confirm: true
+Profile row gets account_status = 'active' immediately (no pending state)
+Invitation marked status = 'accepted'
+Audit log: user_registered_via_invitation
+In-app notification fired to all admins: "{coach_name} ({email}) just completed registration"
+User auto-logged in, redirected to /onboarding/coach
+
+Onboarding pages
+/onboarding/coach
+
+Welcome heading: "ברוך הבא, מאמן!" / "Welcome, coach!" / "¡Bienvenido, entrenador!"
+Form to create first team:
+
+Team name (required)
+Sport (required dropdown)
+Age group (optional)
+Season (optional)
+Primary color (8 chips + custom)
+Logo (upload, optional)
+
+
+"Create team" → POST /api/teams → user added to team_members with role='coach' and teams.created_by = user.id
+Update profiles.last_team_id to the new team
+Redirect to /team/[id]
+
+/onboarding/admin
+
+Welcome heading: "ברוך הבא, מנהל פלטפורמה" / similar in en, es
+Quick tour text: "מכאן אתה יכול לנהל הזמנות, משתמשים וקבוצות" / similar in en, es
+Single button: "Go to admin panel" → /admin
+
+Guard logic
+If a user lands on /onboarding/coach but already has teams → redirect to last team or /teams. If admin without teams → redirect to /admin.
+Step 4 — Multiple teams per coach
+Team switcher in header
+In the team page header, replace the static team name with a clickable team switcher:
+[Team Logo]  Team Name ▼              [Avatar] [Menu]
+            └── HUDDLE wordmark
+Click team name → dropdown:
+┌─────────────────────────────────┐
+│ MY TEAMS                         │
+├─────────────────────────────────┤
+│ ✓ הפועל ירושלים נוער    [Owner] │
+│   מכבי תל אביב           [Coach] │
+│   ────────────────────────       │
+│   + Create new team               │
+│   ⚙ Manage all teams              │
+└─────────────────────────────────┘
+
+Current team marked with checkmark
+Each team shows role badge (Owner / Coach / Assistant)
+"+ Create new team" → /teams/new
+"⚙ Manage all teams" → /teams
+
+/teams/new page
+Reusable team creation form (same fields as coach onboarding). On submit:
+
+Insert teams row with created_by = auth.uid()
+Insert team_members row with role = 'coach', status = 'active'
+Update profiles.last_team_id
+Redirect to /team/[new-id]
+
+If account_status != 'active', reject with 403.
+/teams page
+List view of all teams the user is a member of:
+┌─────────────────────────────────────────────────────┐
+│  MY TEAMS                              + New team   │
+├─────────────────────────────────────────────────────┤
+│  [Logo]  הפועל ירושלים נוער       [Owner] [Active] │
+│          12 players · Next: Tue 17:00               │
+│          [Open] [Settings]                          │
+├─────────────────────────────────────────────────────┤
+│  [Logo]  מכבי תל אביב              [Coach] [Active] │
+│          8 players · Next: Wed 19:00                │
+│          [Open] [Settings]                          │
+└─────────────────────────────────────────────────────┘
+Each card shows team logo, name, role badge, status badge, player count, next event preview, "Open" and "Settings" buttons.
+Last-team memory on login
+When coach logs in:
+
+If last_team_id set and they still have access → redirect to /team/[that-id]
+Otherwise → if they have only one team, go there directly
+Otherwise → /teams
+
+Step 5 — Multi-coach support per team
+Schema already allows it. Add UI and permission boundaries.
+Permission model
+ActionOwnerCoachAssistant CoachPlayerRead team data✅✅✅✅Create/edit/delete events✅✅✅❌Send announcements✅✅✅❌Create/assign tasks✅✅✅❌Add/remove players✅✅✅❌Edit team info (name, color, logo)✅❌❌❌Invite another coach✅❌❌❌Remove a coach from team✅❌❌❌Delete the entire team✅❌❌❌Transfer ownership✅❌❌❌
+The "owner" is teams.created_by. RLS policies from Step 2 enforce these rules at the database level.
+UI — invite second coach
+In /team/[id]/squad (or /team/[id]/settings), add an "Coaching staff" section visible only to the owner:
+COACHING STAFF
+─────────────────────────────────────
+[Avatar]  Yossi Cohen          OWNER
+          yossi@example.com
+
+[Avatar]  Liran Eldar          COACH
+          liran@example.com    [Remove]
+
+[+ Invite another coach]
+"Invite another coach" button opens a form:
+Email address: [____________]
+Role:
+  ◉ Coach (full management rights)
+  ○ Assistant coach (same as coach but can't change team settings)
+Send via:
+  ◉ Email invitation
+  ○ Generate a link to share manually
+[Cancel]  [Send invitation]
+On submit:
+
+Create platform_invitations row with invited_role = 'coach' and notes containing JSON {"prefill_team_id": "<this-team-id>", "prefill_role": "coach"|"assistant_coach"}
+Send invitation email
+After they register and accept, the accept-invite flow checks for prefill_team_id and auto-adds them to the team
+
+Update accept-invite to handle prefill_team_id
+In /api/auth/accept-invite, after creating the user and profile:
+typescriptconst notes = invitation.notes ? JSON.parse(invitation.notes) : {};
+
+if (notes.prefill_team_id && invitation.invited_role === 'coach') {
+  await supabaseAdmin.from('team_members').insert({
+    team_id: notes.prefill_team_id,
+    user_id: newUser.id,
+    role: notes.prefill_role || 'coach',
+    status: 'active'
+  });
+
+  // Set last_team_id so they land in this team after onboarding
+  await supabaseAdmin.from('profiles').update({
+    last_team_id: notes.prefill_team_id
+  }).eq('id', newUser.id);
+}
+If they were invited TO a team via this flow, skip the /onboarding/coach "create team" step and redirect them straight to the team they were invited to.
+Coach removal flow (owner only)
+In /team/[id]/settings → Coaching staff:
+
+"Remove" button next to each non-owner coach
+Modal: "Remove [Name] as coach? They lose all access but historical actions stay."
+Confirm → DELETE from team_members where team_id and user_id match
+Notification email sent to removed coach
+Audit log entry
+
+Ownership transfer (owner only)
+In /team/[id]/settings → Danger zone:
+DANGER ZONE
+─────────────────────────────────────
+Transfer ownership
+  Pass team ownership to another coach. You become a regular coach.
+  [Transfer ownership]
+
+Delete team
+  Permanently delete this team and all its data.
+  [Delete team]
+Transfer flow:
+
+Modal with dropdown of current coaches (excluding self)
+"I understand this is permanent" checkbox
+On confirm: UPDATE teams SET created_by = new_user_id
+Email both old and new owner
+Audit log entry
+
+Step 6 — Major admin dashboard upgrade
+Replace the basic /admin dashboard with a full metrics-driven control panel.
+/admin (dashboard)
+Top KPI strip
+┌────────────────┬────────────────┬────────────────┬────────────────┐
+│  COACHES       │  TEAMS         │  PLAYERS       │  ACTIVE 7D     │
+│      47        │      52        │     412        │      89        │
+│  +3 this week  │  +2 this week  │  +18 this week │  ↑ 12 vs prev  │
+└────────────────┴────────────────┴────────────────┴────────────────┘
+Each card click-throughs to a filtered detail view.
+Activity chart
+Recharts line chart of daily active users over last 30 days. Two lines: coaches (gold), players (blue). Active = signed in OR sent message OR RSVP'd OR completed task on that day.
+Sub-section: Invitations summary
+INVITATIONS
+─────────────────────────────────────
+Pending:    8    Accepted:  41   Expired: 3   Revoked: 1
+[View all] [Send new]
+
+Recent activity:
+  • Sent to liran@example.com  (Coach)  · 2 hours ago
+  • Accepted by yossi@... (Coach)         · yesterday
+  • Expired: alon@example.com (Coach)    · 3 days ago
+Sub-section: System health
+SYSTEM HEALTH
+─────────────────────────────────────
+Storage used:        1.2 GB / 5 GB free tier   [████░░░░░░] 24%
+DB rows:             47 coaches · 52 teams · 412 players · 8,143 events
+Auth users:          453 total
+Last backup:         2 hours ago (Supabase auto)
+
+Email delivery (last 7 days):
+  Sent: 23   Delivered: 22   Bounced: 1   Opened: 18 (78%)
+Email delivery requires Resend webhooks (see Step 7).
+Sub-section: Top performers
+TOP COACHES (last 30 days, by activity)
+─────────────────────────────────────
+1. יוסי כהן       12 events · 87 messages · 2 teams
+2. דניאל לוי      9 events · 64 messages · 1 team
+3. אבי ישראלי     7 events · 41 messages · 1 team
+
+LARGEST TEAMS
+─────────────────────────────────────
+1. הפועל ירושלים נוער         24 players
+2. מכבי תל אביב                19 players
+Sub-section: Recent admin activity
+RECENT ADMIN ACTIVITY
+─────────────────────────────────────
+- You promoted liran@example.com to admin              · 30 min ago
+- You sent invitation to dan@example.com (Coach)       · 2 hours ago
+- You suspended user spam@example.com                  · yesterday
+[View full audit log]
+/admin/kpis (detailed analytics)
+Date range picker (default last 30 days).
+Growth: new coach signups per day, new player signups per day, new teams per day, net coach growth.
+Engagement: DAU/WAU/MAU, stickiness ratio (DAU/MAU), events per coach per week histogram, task completion %, RSVP %.
+Retention: cohort table (signups by week, % active in week N).
+Funnel: invitations sent → opened → accepted → first team created → first event scheduled. Drop-off % at each step.
+Export CSV button for the date range's raw data.
+/admin/system-logs
+Renamed from audit-log. Tabbed view:
+Tab 1: Admin actions
+Existing admin_audit_log content. Searchable, filterable by action type, admin, date range.
+Tab 2: Auth events
+From auth_events table. Wire up logging in:
+
+Sign-in success → insert signed_in with IP and user agent
+Sign-in failure → insert failed_signin (capture attempted email, IP, user agent)
+Password reset request → insert password_reset_requested
+Sign out → insert signed_out
+
+Tab 3: Email events
+From email_events table. When sending invitation email via Resend, insert row with status sent and Resend email ID. Webhook updates the row through delivery → opened → clicked etc.
+Tab 4: System errors
+From system_errors table. Wrap every API route's main handler in try/catch:
+typescript// lib/log-error.ts
+export async function logError(error: Error, context: { userId?: string; path?: string; method?: string; metadata?: any }) {
+  try {
+    await supabaseAdmin.from('system_errors').insert({
+      user_id: context.userId,
+      error_message: error.message,
+      error_stack: error.stack,
+      request_path: context.path,
+      request_method: context.method,
+      metadata: context.metadata
+    });
+  } catch (e) {
+    console.error('Failed to log error:', e, 'Original error:', error);
+  }
+}
+/admin/notifications
+Inbox-style page showing admin notifications.
+Triggers that create notifications:
+
+New coach completes registration → notify all admins
+Invitation expires unused → notify the admin who sent it
+Email bounces (from Resend webhook) → notify the admin who sent it
+Storage > 80% of free tier → notify all admins
+Error spike (>10 errors in 5 minutes) → notify all admins
+
+Header bell icon with unread count badge. Click → dropdown of recent. "View all" → /admin/notifications page.
+"Mark all read" button.
+/admin/users (already exists from previous prompt)
+Make sure all the admin user management features (suspend, soft delete, hard delete, password reset, edit) still work as previously specified.
+/admin/teams (new)
+Full list of all teams across all coaches:
+
+Filter: All / Active / Archived
+Columns: Logo, Name, Owner, Coach count, Player count, Created date, Status
+Click row → team detail with member list, recent events, activity, admin actions:
+
+Archive team
+Transfer ownership
+Hard-delete team
+
+
+
+/admin/data-export
+
+"Export full database snapshot" → JSON dump
+"Export coaches CSV" / "Export teams CSV" / "Export usage CSV"
+Audit log entry on export
+This is your disaster-recovery backup.
+
+Bonus admin features
+Impersonate user
+In /admin/users/[id], button: "Impersonate user (debug)"
+Modal: "View the app as {user_name}? Your actions will be logged. Read-only — destructive actions blocked."
+Confirm → server-side:
+
+Audit log: admin_impersonated_user
+Generate impersonation JWT via Supabase admin API
+Store original admin user ID in impersonating_from cookie
+Redirect to /
+
+While impersonating, persistent banner at top of every page:
+🛡 You're viewing as {user_name} ({email}). [Stop impersonating]
+While impersonating: block destructive actions (deletions, sending messages, password changes). Add request context flag is_impersonating = true.
+"Stop impersonating" → clear cookie, sign out, sign back in as admin.
+Bulk invite
+In /admin/invitations, "Bulk invite" button → modal:
+Bulk invitation
+─────────────────────────────────
+Paste emails (one per line):
+
+  coach1@example.com
+  coach2@example.com
+  ...
+
+Role: ◉ Coach   ○ Admin
+Language: ◉ Hebrew  ○ English  ○ Spanish
+[Cancel] [Send 12 invitations]
+Rate-limit 50 per submission. Show progress.
+Test invitation
+Dashboard button "Send test invitation to myself" — sends real invitation to admin's email so you can verify delivery without using up a real coach slot.
+Step 7 — Resend webhook integration
+Add /api/webhooks/resend:
+
+Receives webhooks from Resend
+Verifies signature using RESEND_WEBHOOK_SECRET env var
+Updates corresponding email_events row
+Returns 200 OK
+
+Document for me at the end:
+
+I need to set up the webhook in Resend dashboard pointing at https://[my-app]/api/webhooks/resend
+Copy the signing secret to RESEND_WEBHOOK_SECRET in Replit Secrets
+Select events: email.sent, email.delivered, email.bounced, email.opened, email.clicked, email.complained
+
+If skipped, email tracking stays at "sent" status only — not a blocker.
+Step 8 — Translations
+Add to he.json:
+json{
+  "admin": {
+    "dashboard": "לוח בקרה",
+    "kpis": "מדדים וביצועים",
+    "system_logs": "לוגי מערכת",
+    "notifications": "התראות",
+    "kpi_coaches": "מאמנים",
+    "kpi_teams": "קבוצות",
+    "kpi_players": "שחקנים",
+    "kpi_active_7d": "פעילים השבוע",
+    "kpi_change_week": "{n} השבוע",
+    "tab_admin_actions": "פעולות מנהל",
+    "tab_auth_events": "אירועי התחברות",
+    "tab_email_events": "מיילים",
+    "tab_system_errors": "שגיאות מערכת",
+    "system_health": "בריאות המערכת",
+    "storage_used": "אחסון בשימוש",
+    "top_coaches": "מאמנים פעילים",
+    "largest_teams": "קבוצות גדולות",
+    "recent_activity": "פעילות אחרונה",
+    "view_all": "הצג הכל",
+    "send_invitation": "שלח הזמנה",
+    "bulk_invite": "הזמנה מרובה",
+    "send_test": "שלח הזמנה לבדיקה (לעצמי)",
+    "impersonate": "התחזה למשתמש (לדיבוג)",
+    "stop_impersonating": "סיים התחזות",
+    "impersonating_banner": "אתה צופה כ-{name} · {email}",
+    "data_export": "ייצוא נתונים",
+    "export_database": "ייצוא בסיס נתונים מלא",
+    "export_coaches_csv": "ייצוא מאמנים (CSV)",
+    "export_teams_csv": "ייצוא קבוצות (CSV)",
+    "team_switcher_my_teams": "הקבוצות שלי",
+    "team_switcher_create_new": "צור קבוצה חדשה",
+    "team_switcher_manage_all": "נהל את כל הקבוצות",
+    "role_owner": "בעלים",
+    "role_coach": "מאמן",
+    "role_assistant": "מאמן עוזר",
+    "team_status_active": "פעילה",
+    "team_status_archived": "בארכיון",
+    "coaching_staff": "צוות אימון",
+    "invite_another_coach": "הזמן מאמן נוסף",
+    "remove_coach_confirm": "להסיר את {name} כמאמן?",
+    "transfer_ownership": "העבר בעלות",
+    "transfer_ownership_confirm": "העבר את הבעלות על {team}?",
+    "delete_team": "מחק קבוצה",
+    "danger_zone": "אזור מסוכן"
+  },
+  "notifications": {
+    "new_coach_registered": "{name} השלים הרשמה",
+    "invitation_expired": "הזמנה פגה: {email}",
+    "invitation_bounced": "מייל לא נמסר: {email}",
+    "storage_threshold": "השימוש באחסון מעל {pct}%",
+    "error_spike": "זוהתה עליה בשגיאות מערכת",
+    "mark_all_read": "סמן הכל כנקרא"
+  }
+}
+Add equivalent keys to en.json and es.json.
+Acceptance criteria — test all of these
+Admin reassignment:
+
+✓ Diagnostic queries returned and shown
+✓ chen.lach85@gmail.com is a platform admin (either directly or via accepted invitation)
+✓ liraneldar@gmail.com is a platform admin (either directly or via accepted invitation)
+✓ chen.lach@gmail.com no longer admin (demoted LAST, after new admins verified)
+✓ Audit log shows promotion and demotion entries
+✓ Platform never had zero admins during migration
+✓ "Cannot demote last admin" safety still works
+
+Schema and gates:
+8. ✓ platform_invitations constraint allows only coach and admin
+9. ✓ Pending player invitations auto-revoked
+10. ✓ handle_new_user trigger blocks signups without invitation OR team code
+11. ✓ Direct /auth/signup shows invitation-only message
+12. ✓ Direct API attacks fail with trigger error
+Coach-only platform invitations:
+13. ✓ Admin invitation form shows only "Coach" and "Platform admin"
+14. ✓ Coach completes registration → immediately active → lands on /onboarding/coach
+15. ✓ All admins receive in-app notification when coach finishes registration
+16. ✓ No "pre-fill team code" field in admin invitation form
+Multi-team coach:
+17. ✓ Coach can create a second team via "+ Create new team"
+18. ✓ Header team switcher shows all coach's teams with role badges
+19. ✓ /teams page lists all teams, "Owner" badge shown for owned teams
+20. ✓ Last visited team remembered across sessions
+21. ✓ Single-team coach goes directly to that team; multi-team coach lands on /teams
+Multi-coach teams:
+22. ✓ Team owner can invite another coach via email from settings
+23. ✓ Invited coach receives email, registers, and is auto-added to team with role 'coach'
+24. ✓ Second coach can create events, send messages, manage tasks, add players
+25. ✓ Second coach CANNOT change team name/color, delete team, remove owner, or invite/remove other coaches
+26. ✓ Owner can remove a non-owner coach
+27. ✓ Owner can transfer ownership; afterward they become a regular coach
+28. ✓ Settings page shows "Owner" badge clearly
+Admin dashboard:
+29. ✓ /admin shows 4 KPI cards with weekly deltas
+30. ✓ Activity chart renders correctly
+31. ✓ Invitations, system health, top performers, recent activity sections all populate
+32. ✓ /admin/kpis shows growth, engagement, retention, funnel
+33. ✓ /admin/system-logs has 4 working tabs
+34. ✓ Auth events captured (sign-ins and failures with IP/UA)
+35. ✓ Email events flow in via Resend webhook (after wired)
+36. ✓ System errors caught and logged
+37. ✓ Admin notification bell shows unread count
+38. ✓ "Mark all read" works
+39. ✓ Impersonate user works with banner and audit log; destructive actions blocked
+40. ✓ Bulk invite sends multiple invitations
+41. ✓ Test invitation sends to admin's own email
+42. ✓ Data export downloads JSON snapshot
+43. ✓ /admin/teams shows all teams across coaches
+44. ✓ Translations work across Hebrew, English, Spanish
+Build sequence — STRICTLY in this order
+Don't run these in parallel. After each step, summarize what works and ask before continuing.
+
+Step 0 — Run diagnostic queries, show results
+Step 1 — Admin reassignment (with new admin verification before old admin demotion)
+Step 2 — All schema updates (platform_invitations constraint, RLS policies, trigger, new tables)
+Step 3 — Restrict invitations to coach/admin only + auto-approve flow
+Step 4 — Multi-team coach UI (team switcher, /teams page, /teams/new, last_team_id memory)
+Step 5 — Multi-coach teams (invite coach, remove coach, ownership transfer, permission boundaries)
+Step 6 part A — Admin dashboard KPI cards and activity chart
+Step 6 part B — Admin dashboard sub-sections (invitations, health, top performers, activity)
+Step 6 part C — /admin/kpis analytics page
+Step 6 part D — /admin/system-logs with all 4 tabs
+Step 6 part E — Admin notifications system + bell
+Step 6 part F — /admin/teams and /admin/data-export
+Step 6 part G — Bonus features: impersonate, bulk invite, test invitation
+Step 7 — Resend webhook
+Step 8 — Verify all translations across he/en/es
+
+After step 1 finishes, PAUSE and let me confirm the new admins work before demoting chen.lach@gmail.com. Don't proceed to step 2 until I confirm.
+After step 4 finishes, PAUSE and let me test multi-team flow before continuing.
+After step 6 part C finishes, PAUSE for me to verify dashboard renders correctly.
+Don't break any existing features. The team invite codes (used by coaches to invite players) keep working unchanged — those are separate from platform-level admin invitations.
+
+That's the complete combined prompt. A few final notes:
+On the size of this build — this is genuinely large. Realistic time estimate: 60-120 minutes of agent work, possibly across 2-3 sessions if you hit credit limits. The mandatory pauses at steps 1, 4, and 6C are there so you can verify before letting it run further. If you skip the pauses and the agent makes a mistake, you'll spend more time un-doing than the pause would have cost.
+On the admin reassignment specifically — when the agent reaches step 1, it will show you the diagnostic SQL output. Look at it carefully. If chen.lach85@gmail.com and liraneldar@gmail.com already have profile rows, promotion is instant. If not, they get invitation emails and you'll need to actually click those links from the inboxes of those email addresses to complete the promotion. Make sure you have access to both before starting.
+On the order being non-negotiable — admin reassignment first, then schema updates, then features. If you let the agent reorder these (e.g., do features first), you might end up locked out of admin or with broken signups halfway through. The dependencies cascade.
+On things that might fail — Resend webhooks depend on you having a paid Resend plan or having domain verification set up. If the webhook setup fails, that's not blocking — the system just won't track delivery/open/click events automatically. Email sending still works.
+One more thing to check after — once the agent finishes step 5, log in as a non-owner coach (have a friend test, or create a test coach account via invitation) and verify the permission rules. If a non-owner coach can change team color, the RLS policies didn't apply correctly. That's the easiest place for things to silently break.
