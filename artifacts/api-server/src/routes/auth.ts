@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getAuth } from "@clerk/express";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import type { Request, Response } from "express";
 
 const router = Router();
@@ -32,17 +32,34 @@ router.post("/auth/sync", async (req: Request, res: Response): Promise<void> => 
     .limit(1);
 
   if (existing[0]) {
-    res.json(existing[0]);
+    // Update name/email in case they changed in Clerk, but never downgrade role
+    const [updated] = await db
+      .update(usersTable)
+      .set({ email, name })
+      .where(eq(usersTable.clerkId, clerkId))
+      .returning();
+    res.json(updated);
     return;
   }
 
+  // New user — only allow if no users exist yet (first-ever admin bootstrap)
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(usersTable);
+
+  if (Number(total) > 0) {
+    res.status(403).json({ error: "Registration is by invitation only. Contact the platform administrator." });
+    return;
+  }
+
+  // First user ever — bootstrap as admin
   const [user] = await db
     .insert(usersTable)
     .values({
       clerkId,
       email,
       name,
-      role: role as "coach" | "player" | "admin",
+      role: "admin",
     })
     .returning();
 

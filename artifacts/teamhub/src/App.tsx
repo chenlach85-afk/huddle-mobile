@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
-import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useLocation, Link } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
-import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
+import { ClerkProvider, SignIn, Show, useClerk, useUser } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
+import { Lock, ShieldOff } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/layout";
-import { I18nProvider } from "@/lib/i18n";
+import { I18nProvider, useI18n } from "@/lib/i18n";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { UserSync } from "@/components/user-sync";
 import Dashboard from "@/pages/dashboard";
 import TeamsPage from "@/pages/teams";
@@ -103,10 +105,25 @@ function SignInPage() {
 }
 
 function SignUpPage() {
+  const { t } = useI18n();
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4"
       style={{ backgroundImage: "radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,107,53,0.1) 0%, transparent 60%)" }}>
-      <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} appearance={clerkAppearance} />
+      <div className="w-full max-w-sm text-center space-y-6">
+        <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center"
+          style={{ background: "rgba(255,107,53,0.15)", border: "1px solid rgba(255,107,53,0.3)" }}>
+          <Lock className="h-8 w-8 text-primary" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-3xl text-white">{t.auth.invitationOnly}</h1>
+          <p className="text-sm text-white/50 leading-relaxed">{t.auth.invitationOnlyDesc}</p>
+        </div>
+        <Link href="/sign-in">
+          <button className="mt-2 text-sm text-primary hover:text-primary/80 underline underline-offset-4">
+            {t.auth.backToSignIn}
+          </button>
+        </Link>
+      </div>
     </div>
   );
 }
@@ -139,12 +156,47 @@ function HomeRedirect() {
   );
 }
 
+function NotActivatedScreen() {
+  const { t } = useI18n();
+  const { signOut } = useClerk();
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="w-full max-w-sm text-center space-y-6">
+        <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center"
+          style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)" }}>
+          <ShieldOff className="h-8 w-8 text-red-400" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="font-display text-3xl text-white">{t.auth.accountNotActivated}</h1>
+          <p className="text-sm text-white/50 leading-relaxed">{t.auth.accountNotActivatedDesc}</p>
+        </div>
+        <button onClick={() => signOut()}
+          className="text-sm text-primary hover:text-primary/80 underline underline-offset-4">
+          {t.common.signOut}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProtectedRouteInner({ children }: { children: React.ReactNode }) {
+  const { user } = useUser();
+  const { appUser, isLoading, error } = useCurrentUser();
+
+  // Sync tried (user loaded) but got a 403/404 — account not set up
+  if (!isLoading && user && (error || (!appUser && !isLoading))) {
+    return <NotActivatedScreen />;
+  }
+
+  return <AppLayout>{children}</AppLayout>;
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Show when="signed-in">
         <UserSync />
-        <AppLayout>{children}</AppLayout>
+        <ProtectedRouteInner>{children}</ProtectedRouteInner>
       </Show>
       <Show when="signed-out"><Redirect to="/sign-in" /></Show>
     </>

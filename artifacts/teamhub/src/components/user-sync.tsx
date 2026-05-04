@@ -24,7 +24,11 @@ export function UserSync() {
           setLanguage(appUser.language as "en" | "he" | "es");
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // Sync failed (e.g. 403 invitation-only) — invalidate so useCurrentUser
+        // picks up the 404/error from /api/auth/me and shows the not-activated screen
+        queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      });
   }, [isLoaded, user, queryClient, setLanguage]);
 
   return null;

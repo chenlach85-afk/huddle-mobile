@@ -6,17 +6,21 @@ import { useState } from "react";
 import { NotificationBell } from "@/components/notification-bell";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 
 function NavItems({ onClose }: { onClose?: () => void }) {
   const { t } = useI18n();
   const [location] = useLocation();
+  const { appUser } = useCurrentUser();
 
   const NAV_ITEMS = [
     { href: "/dashboard", label: t.nav.huddle, icon: LayoutDashboard, exact: true },
     { href: "/teams", label: t.nav.squads, icon: Users, exact: false },
     { href: "/calendar", label: t.nav.calendar, icon: Calendar, exact: false },
     { href: "/settings", label: t.nav.settings, icon: Settings, exact: false },
-    { href: "/admin", label: t.nav.admin, icon: ShieldCheck, exact: false },
+    ...(appUser?.role === "admin"
+      ? [{ href: "/admin", label: t.nav.admin, icon: ShieldCheck, exact: false }]
+      : []),
   ];
 
   return (

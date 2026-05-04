@@ -1,0 +1,201 @@
+Two bugs to fix:
+
+The admin user (me) is not recognized as a platform admin. The /admin routes are blocked for me even though I should have access.
+The invitation-only signup gate is not enforced. Anyone visiting /auth/signup can create an account without an invitation.
+
+Diagnose both, fix both. Don't add new features.
+Bug 1 — Admin not recognized
+Diagnostic steps (do these first, report back what you find)
+
+Show me the schema of the profiles table. Confirm is_platform_admin column exists and is boolean default false.
+Run this query (using service role) and show me the result:
+
+sql   select id, email, full_name, is_platform_admin, account_status
+   from public.profiles
+   order by created_at asc
+   limit 10;
+
+Run this:
+
+sql   select id, email, created_at from auth.users order by created_at asc limit 5;
+
+Show me the code that checks for admin status — find every place in the codebase that reads is_platform_admin. Likely paths: lib/admin.ts, middleware, admin layout, admin API routes.
+Tell me exactly which user ID and email is mine (the first user created — I created it during initial signup).
+
+Fix
+After diagnosing, do the following:
+
+Promote my account to admin. Use this SQL (the agent should figure out which row is mine — the oldest profile, or the one matching the email I'll provide if asked):
+
+sql   update public.profiles
+   set is_platform_admin = true,
+       account_status = 'active'
+   where id = (select id from auth.users order by created_at asc limit 1);
+If multiple users could be the admin, ask me which email to promote BEFORE running.
+
+Verify admin check works. Show me the exact code path that gates /admin routes. The check must:
+
+Read the current user's session via Supabase client
+Look up profiles.is_platform_admin for that user ID
+Return 403/redirect if false, allow if true
+Use the server-side Supabase client with the user's JWT, not the anon client
+
+If the check uses the anon client, RLS will hide other users' rows but should still let the user read their own row. Verify the SELECT policy on profiles allows users to read their own row:
+
+sql   select policyname, cmd, qual from pg_policies where tablename = 'profiles';
+There must be a policy like:
+sql   create policy "users read own profile" on public.profiles
+     for select using (auth.uid() = id);
+
+Verify in the running app:
+
+Sign me out and back in (forces a fresh session)
+Navigate to /admin — should NOT be 403 anymore
+Show a screenshot or describe what loads
+
+
+Make sure the admin link appears in the user menu. Find the user menu component (top-right of dashboard usually) and ensure it conditionally renders an "Admin" link when profile.is_platform_admin === true. If the check is missing or broken, fix it.
+
+Common bugs to specifically check
+
+Some implementations cache the profile in a React context loaded once at app boot. If the admin flag was flipped after I logged in, the cached context still says false. Force a profile refetch on mount, or clear the cache when the profile is updated.
+The middleware might use a stale JWT. If you're using Next.js middleware to gate /admin, make sure it calls supabase.auth.getUser() (which validates fresh) rather than reading session metadata.
+The admin check might be running with the wrong Supabase client. Server components should use a server client created per-request from cookies; client components should use the browser client.
+
+Bug 2 — Anyone can register without invitation
+Diagnostic steps
+
+Show me the current /auth/signup page code — frontend component AND the API route or server action it submits to.
+Show me the code that creates the user. Identify if it calls:
+
+supabase.auth.signUp() directly from the client (BAD — bypasses any backend check)
+A server-side API route that validates an invitation first (GOOD)
+
+
+Show me the platform_invitations table — confirm it exists and has a few rows. If empty, that's a sign no invitations were ever issued.
+Search the codebase for any reference to signUp and list every path. There should be ONLY ONE path to user creation — and it must be guarded by invitation validation.
+
+Fix
+The signup flow must work like this:
+USER ACTION                                     RESULT
+────────────────────────────────────────────────────────────────
+1. Visit /auth/signup directly                  → Show "By invitation only" gate
+2. Visit /invite/[token] with valid token       → Show pre-filled signup form
+3. Submit form from /invite/[token]             → POST /api/auth/accept-invite
+4. POST /api/auth/accept-invite                 → Validates token server-side,
+                                                   uses supabase.auth.admin.createUser,
+                                                   marks invitation accepted
+5. Direct POST to anything else creating user   → 403 Forbidden
+Required changes
+
+Disable client-side supabase.auth.signUp everywhere. The browser-side Supabase client must NOT be used to create users. Search for auth.signUp and replace any client-side calls with server-side API calls.
+Update /auth/signup page to show ONLY the "invitation only" gate. Remove the form fields entirely. Show:
+
+In Hebrew: "ההרשמה היא בהזמנה בלבד. אם קיבלת הזמנה, בדוק את המייל שלך לקישור."
+In English: "Sign-ups are by invitation only. If you have an invitation, check your email for the link."
+In Spanish: "Los registros son solo por invitación. Si tienes una invitación, revisa tu correo para el enlace."
+With a link to /auth/signin for existing users.
+
+
+The ONLY working signup path is /invite/[token] → submits to POST /api/auth/accept-invite. Verify this API route:
+
+Reads the token from the request
+Looks up the invitation in platform_invitations using a server-side admin Supabase client
+Returns 400 if status != 'pending' OR expires_at < now()
+Calls supabase.auth.admin.createUser({ email: invitation.email, password, email_confirm: true })
+Updates the new profile: account_status='active', sets is_platform_admin if invitation.invited_role === 'admin'
+Updates the invitation: status='accepted', accepted_by_user_id, accepted_at
+Signs the user in (returns a session)
+
+
+Check Supabase Auth settings. In the Supabase dashboard:
+
+Authentication → Providers → Email: confirm "Enable Email Signups" is ON (we still need it ON because the admin API uses it; we just block client-side signup at the application layer)
+Authentication → URL Configuration → Site URL: must be your Replit deployment URL
+If "Confirm email" is enabled, you might want to disable it for invited users since they came from a verified email link (we use email_confirm: true in the admin API call which bypasses verification)
+
+
+Disable Supabase's hosted auth UI if exposed. Some templates leave /auth/v1/... accessible. Confirm there's no public hosted auth page that bypasses your app logic. Usually the way to enforce this is at the application layer (your custom signup page), not Supabase config — Supabase auth itself can't be "disabled" without breaking everything. The protection comes from your app rejecting all signup paths except the invite flow.
+
+Test cases — verify each
+After the fix, test these in order. The agent should run through them and report results:
+
+Direct signup attempt: Open an incognito window, go to /auth/signup. Should see the "invitation only" message and NO form. ✓
+Direct API attack: From an incognito window, run:
+
+bash   curl -X POST https://YOUR-APP-URL/api/auth/signup \
+     -H "Content-Type: application/json" \
+     -d '{"email":"hacker@test.com","password":"test1234"}'
+Should return 403 or 404. The endpoint should not exist or should reject. ✓
+3. Direct Supabase client signup attempt: From the browser console on the app:
+js   const { data, error } = await window.supabase.auth.signUp({ email: 'hacker2@test.com', password: 'test1234' })
+This will likely succeed at the Supabase level (we can't fully block it) but the user should land in auth.users with NO profiles row, NO active session that works in the app, and the trigger should NOT activate them. Verify by checking Supabase: the row exists in auth.users but is essentially orphaned. The user can't actually use the app. To make this even more secure, add a profile creation trigger that requires an invitation — see below.
+4. Valid invitation flow:
+
+From admin panel, send invitation to your alt email
+Receive email, click link
+Land on /invite/[token] with email pre-filled
+Set password, submit
+Account created, auto-logged in, lands on /onboarding ✓
+
+
+Reused invitation: Click the same link again. Should show "already used". ✓
+Expired invitation: Manually update an invitation in DB to set expires_at to yesterday. Click its link. Should show "expired". ✓
+
+Hardening (recommended): block orphan profiles
+Even with all the above, technically someone could call Supabase's auth REST API directly with the anon key and create an auth.users row. They wouldn't have a profile so they couldn't really use the app, but it's untidy.
+Add this trigger to make it bulletproof:
+sql-- Replace the existing handle_new_user trigger
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  invitation_exists boolean;
+begin
+  -- Check if there's a pending invitation for this email
+  select exists(
+    select 1 from platform_invitations
+    where email = new.email
+      and status = 'pending'
+      and expires_at > now()
+  ) into invitation_exists;
+
+  -- Allow if invitation exists OR if this is the first user (initial admin)
+  if not invitation_exists and (select count(*) from profiles) > 0 then
+    raise exception 'Signup requires a valid invitation';
+  end if;
+
+  insert into public.profiles (id, email, full_name)
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', ''));
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+Now even direct Supabase API attacks will fail at the database level — the trigger raises an exception and the user creation is rolled back.
+Note: this means /api/auth/accept-invite must keep the invitation in pending status until AFTER supabase.auth.admin.createUser succeeds, then mark it accepted. Don't update the invitation first.
+Acceptance criteria
+After this fix:
+
+✓ I log in with my admin email and see an "Admin" link in my user menu
+✓ Clicking "Admin" loads the admin panel without errors (no 403, no redirect)
+✓ Visiting /auth/signup directly shows ONLY the "invitation only" message — no form
+✓ Sending myself a test invitation from the admin panel results in an email I can click through to register a NEW account
+✓ The invitation can only be used once
+✓ Direct attempts to call any signup API without an invitation are rejected
+✓ Database trigger prevents orphan auth.users rows from being created without a valid invitation (except for the very first user)
+✓ Existing users I've already approved keep working normally
+
+Run the diagnostic queries first, show me what you find, then apply the fixes. If anything is unclear about my user identity or which account is mine, ask before making changes.
+
+That's the prompt. Some practical notes:
+On finding your admin row — when the agent runs the diagnostic SQL, look at the result. The first user created (order by created_at asc limit 1) is almost certainly you. If you signed up multiple times during testing, look for the row with the email you actually use. Tell the agent which email is yours when it asks.
+On the "first user is admin" rule — the trigger I added has a clever escape hatch: (select count(*) from profiles) > 0. This means the very first signup ever (when profiles is empty) bypasses the invitation requirement. After that, every signup requires an invitation. That's how you'll bootstrap if you ever wipe the database and start over.
+On the test that uses incognito — actually do this. Open Chrome incognito, visit your app's signup URL, try to register. If you see a form, the gate isn't working. If you see the "invitation only" message, you're good. This is the single most important test.
+On Supabase Auth settings — go to your Supabase dashboard → Authentication → Email Templates and customize the password recovery email if you haven't. The default English template won't make sense for Hebrew users. You can leave the auth signup template alone since you're not using it.
+If the agent gets stuck — the most common failure is admin cookies/sessions caching old profile data. If after the fix you still see "not authorized," do a hard browser refresh, clear cookies for the app domain, and log in fresh. That solves about 70% of "I should be admin but I'm not" issues.
