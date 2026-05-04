@@ -198,6 +198,12 @@ router.post("/invitations/:token/accept", async (req: Request, res: Response): P
   res.status(201).json({ user: newUser, alreadyRegistered: false });
 });
 
+/* ─── Admin: email config check ─────────────────────────── */
+
+router.get("/admin/invitations/email-status", requireAuth, requireAdminMiddleware, async (_req, res): Promise<void> => {
+  res.json({ emailConfigured: !!process.env.RESEND_API_KEY });
+});
+
 /* ─── Admin: list invitations ───────────────────────────── */
 
 router.get("/admin/invitations", requireAuth, requireAdminMiddleware, async (req, res): Promise<void> => {

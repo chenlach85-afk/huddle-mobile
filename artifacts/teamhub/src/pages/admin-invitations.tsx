@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Mail, Copy, Check, Send, Trash2, Clock, CheckCircle2, XCircle, AlertCircle,
-  ShieldCheck, Users, ArrowLeft, Plus,
+  ShieldCheck, Users, ArrowLeft, Plus, TriangleAlert, Link2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
@@ -222,14 +222,26 @@ function InvitationRow({ inv: invitation, onRevoke }: { inv: Invitation; onRevok
               <span className="text-[10px] text-green-400/60 flex items-center gap-0.5">
                 <Check className="h-2.5 w-2.5" /> {inv.emailSent}
               </span>
-            ) : (
-              <span className="text-[10px] text-white/25">{inv.noEmail}</span>
-            )}
+            ) : invitation.status === "pending" ? (
+              <span className="text-[10px] text-yellow-400/70 flex items-center gap-0.5">
+                <TriangleAlert className="h-2.5 w-2.5" /> {inv.linkNotSent}
+              </span>
+            ) : null}
           </div>
+
+          {/* Expanded link row for un-emailed pending invitations */}
+          {invitation.status === "pending" && !invitation.emailSentAt && (
+            <div className="mt-2 flex items-center gap-2 rounded-lg px-3 py-1.5"
+              style={{ background: "rgba(247,181,56,0.06)", border: "1px solid rgba(247,181,56,0.15)" }}>
+              <Link2 className="h-3 w-3 text-yellow-400/60 shrink-0" />
+              <code className="flex-1 text-[11px] text-yellow-300/70 truncate font-mono">{getInviteLink(invitation.token)}</code>
+              <CopyButton text={getInviteLink(invitation.token)} />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {invitation.status === "pending" && (
+          {invitation.status === "pending" && invitation.emailSentAt && (
             <CopyButton text={getInviteLink(invitation.token)} />
           )}
           {invitation.status === "pending" && (
@@ -273,6 +285,14 @@ export default function AdminInvitationsPage() {
     queryFn: () => apiFetch("/api/admin/invitations") as Promise<Invitation[]>,
   });
 
+  const { data: emailStatus } = useQuery<{ emailConfigured: boolean }>({
+    queryKey: ["admin-invitations-email-status"],
+    queryFn: () => apiFetch("/api/admin/invitations/email-status") as Promise<{ emailConfigured: boolean }>,
+    staleTime: 60_000,
+  });
+
+  const emailConfigured = emailStatus?.emailConfigured ?? true;
+
   function refresh() { qc.invalidateQueries({ queryKey: ["admin-invitations"] }); }
 
   const stats = {
@@ -311,6 +331,15 @@ export default function AdminInvitationsPage() {
           </div>
         ))}
       </div>
+
+      {/* Email not configured warning */}
+      {emailStatus && !emailConfigured && (
+        <div className="rounded-xl px-4 py-3 flex items-start gap-3"
+          style={{ background: "rgba(247,181,56,0.08)", border: "1px solid rgba(247,181,56,0.25)" }}>
+          <TriangleAlert className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-yellow-300/80 leading-relaxed">{inv.emailNotConfigured}</p>
+        </div>
+      )}
 
       {/* Send form */}
       <SendInvitationForm onSent={refresh} />
