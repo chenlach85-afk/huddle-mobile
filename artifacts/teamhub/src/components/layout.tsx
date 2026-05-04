@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, Calendar, Menu, Zap, Settings, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Users, Calendar, Menu, Zap, Settings, ShieldCheck, Sun, Moon, Monitor } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
@@ -7,6 +7,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { useTheme } from "@/lib/useTheme";
 
 function NavItems({ onClose }: { onClose?: () => void }) {
   const { t } = useI18n();
@@ -49,6 +50,23 @@ function NavItems({ onClose }: { onClose?: () => void }) {
   );
 }
 
+function ThemeToggleButton({ className }: { className?: string }) {
+  const { theme, cycleTheme } = useTheme();
+  const Icon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={cycleTheme}
+      className={cn("text-white/60 hover:text-white hover:bg-white/8", className)}
+      title={`Theme: ${theme}`}
+      data-testid="button-theme-toggle"
+    >
+      <Icon className="h-4 w-4" />
+    </Button>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { t, isRTL } = useI18n();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -59,18 +77,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <aside
         className="hidden md:flex w-60 flex-col shrink-0"
         style={{
-          background: "rgba(10,14,26,0.95)",
-          borderRight: isRTL ? "none" : "1px solid rgba(255,255,255,0.06)",
-          borderLeft: isRTL ? "1px solid rgba(255,255,255,0.06)" : "none",
+          background: "var(--surface-sidebar)",
+          borderRight: isRTL ? "none" : "1px solid var(--border-subtle)",
+          borderLeft: isRTL ? "1px solid var(--border-subtle)" : "none",
         }}
       >
-        <div className="px-5 py-4 h-16 flex items-center border-b border-white/6">
+        <div className="px-5 py-4 h-16 flex items-center border-b" style={{ borderColor: "var(--border-subtle)" }}>
           <Link href="/dashboard">
             <div className="flex items-center gap-2.5 cursor-pointer group">
               <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30 group-hover:scale-105 transition-transform">
                 <Zap className="h-5 w-5 text-white" fill="white" />
               </div>
-              <span className="font-wordmark text-xl text-white">TEAMHUB</span>
+              <span className="font-wordmark text-xl text-foreground">HUDDLE</span>
             </div>
           </Link>
         </div>
@@ -84,18 +102,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile Header */}
         <header
-          className="md:hidden h-14 flex items-center justify-between px-4 sticky top-0 z-20 border-b border-white/6"
-          style={{ background: "rgba(10,14,26,0.95)", backdropFilter: "blur(12px)" }}
+          className="md:hidden h-14 flex items-center justify-between px-4 sticky top-0 z-20 border-b"
+          style={{ background: "var(--surface-sidebar)", backdropFilter: "blur(12px)", borderColor: "var(--border-subtle)" }}
         >
           <Link href="/dashboard">
             <div className="flex items-center gap-2 cursor-pointer">
               <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/30">
                 <Zap className="h-4 w-4 text-white" fill="white" />
               </div>
-              <span className="font-wordmark text-lg text-white">TEAMHUB</span>
+              <span className="font-wordmark text-lg text-foreground">HUDDLE</span>
             </div>
           </Link>
           <div className="flex items-center gap-1">
+            <ThemeToggleButton />
             <NotificationBell />
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
@@ -103,10 +122,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side={isRTL ? "right" : "left"} className="w-56 p-0 border-white/8"
-                style={{ background: "rgba(10,14,26,0.98)" }}>
-                <div className="p-4 border-b border-white/6 h-14 flex items-center">
-                  <span className="font-wordmark text-lg text-white">TEAMHUB</span>
+              <SheetContent side={isRTL ? "right" : "left"} className="w-56 p-0"
+                style={{ background: "var(--surface-overlay)", borderColor: "var(--border-subtle)" }}>
+                <div className="p-4 h-14 flex items-center border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                  <span className="font-wordmark text-lg text-foreground">HUDDLE</span>
                 </div>
                 <nav className="p-3 pt-4">
                   <NavItems onClose={() => setMobileOpen(false)} />
@@ -117,8 +136,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Desktop top-right notification bar */}
-        <div className="hidden md:flex h-12 items-center justify-end px-5 border-b border-white/4"
-          style={{ background: "rgba(10,14,26,0.6)" }}>
+        <div className="hidden md:flex h-12 items-center justify-end gap-1 px-5 border-b"
+          style={{ background: "var(--surface-topbar)", borderColor: "var(--border-faint)" }}>
+          <ThemeToggleButton />
           <NotificationBell />
         </div>
 

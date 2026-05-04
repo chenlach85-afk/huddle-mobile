@@ -1,4 +1,4 @@
-# TeamHub
+# HUDDLE (formerly TeamHub)
 
 A full-stack sports team management app for coaches, built with React+Vite and Express.
 
@@ -11,6 +11,7 @@ A full-stack sports team management app for coaches, built with React+Vite and E
 - `lib/api-spec` — OpenAPI spec + Orval codegen config (`@workspace/api-spec`)
 - `lib/api-client-react` — Generated React Query hooks (`@workspace/api-client-react`)
 - `lib/api-zod` — Generated Zod validation schemas (`@workspace/api-zod`)
+- `lib/object-storage-web` — Object storage upload client lib (`@workspace/object-storage-web`)
 
 ## Authentication
 

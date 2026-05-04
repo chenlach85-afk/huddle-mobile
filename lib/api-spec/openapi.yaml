@@ -26,6 +26,8 @@ tags:
     description: Team photo albums
   - name: admin
     description: Admin management
+  - name: storage
+    description: Object storage operations
 
 paths:
   /healthz:
@@ -890,6 +892,43 @@ paths:
                 items:
                   $ref: "#/components/schemas/ActivityItem"
 
+  /storage/uploads/request-url:
+    post:
+      tags: [storage]
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlBody"
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestUploadUrlResponse"
+
+  /storage/objects/{filePath}:
+    get:
+      tags: [storage]
+      summary: Serve a stored object
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
 components:
   schemas:
     HealthStatus:
@@ -1564,6 +1603,46 @@ components:
         role:
           type: string
           enum: [coach, player, admin]
+
+    # ── Storage ──
+    RequestUploadUrlBody:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required:
+        - name
+        - size
+        - contentType
+
+    RequestUploadUrlResponse:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          type: object
+          properties:
+            name:
+              type: string
+            size:
+              type: integer
+            contentType:
+              type: string
+          required:
+            - name
+            - size
+            - contentType
+      required:
+        - uploadURL
+        - objectPath
+        - metadata
 
     AdminKpis:
       type: object

@@ -380,7 +380,7 @@ export default function MemberView() {
 
         <div className="text-center py-4">
           <p className="text-xs text-white/20">
-            Powered by <span className="font-semibold text-white/35">TeamHub</span> — read-only member view
+            Powered by <span className="font-semibold text-white/35">Huddle</span> — read-only member view
           </p>
         </div>
       </main>

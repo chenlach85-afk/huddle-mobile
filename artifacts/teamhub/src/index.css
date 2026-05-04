@@ -70,6 +70,15 @@
 }
 
 :root {
+  /* Named surface vars used by layout and components */
+  --surface-sidebar: rgba(10,14,26,0.95);
+  --surface-card: rgb(22,27,46);
+  --surface-elevated: rgb(31,39,66);
+  --surface-topbar: rgba(10,14,26,0.6);
+  --surface-overlay: rgba(10,14,26,0.98);
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-faint: rgba(255,255,255,0.04);
+
   --button-outline: rgba(255,255,255, .12);
   --badge-outline: rgba(255,255,255, .06);
   --opaque-button-border-intensity: 9;
@@ -279,4 +288,68 @@
   direction: ltr;
   unicode-bidi: embed;
   display: inline-block;
+}
+
+/* ── Light mode theme ────────────────────────────────────────────────────── */
+
+[data-theme="light"] {
+  /* Shadcn/Tailwind HSL tokens */
+  --background: 48 25% 96%;
+  --foreground: 226 40% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 226 40% 12%;
+  --card-border: 220 13% 88%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 226 40% 12%;
+  --popover-border: 220 13% 88%;
+  --secondary: 220 14% 92%;
+  --secondary-foreground: 226 40% 20%;
+  --muted: 220 14% 92%;
+  --muted-foreground: 220 14% 42%;
+  --accent: 220 14% 91%;
+  --accent-foreground: 226 40% 12%;
+  --border: 220 13% 87%;
+  --input: 220 13% 91%;
+  --sidebar: 220 14% 97%;
+  --sidebar-foreground: 226 40% 12%;
+  --sidebar-border: 220 13% 88%;
+  --sidebar-accent: 220 14% 91%;
+  --sidebar-accent-foreground: 226 40% 12%;
+
+  /* Surface vars for layout */
+  --surface-sidebar: rgba(248,247,245,0.97);
+  --surface-card: rgb(255,255,255);
+  --surface-elevated: rgb(242,241,238);
+  --surface-topbar: rgba(248,247,245,0.75);
+  --surface-overlay: rgba(248,247,245,0.99);
+  --border-subtle: rgba(0,0,0,0.07);
+  --border-faint: rgba(0,0,0,0.04);
+
+  /* Button / badge tweaks */
+  --button-outline: rgba(0,0,0,0.10);
+  --badge-outline: rgba(0,0,0,0.06);
+  --elevate-1: rgba(0,0,0,0.03);
+  --elevate-2: rgba(0,0,0,0.06);
+}
+
+[data-theme="light"] body {
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,107,53,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(74,144,226,0.03) 0%, transparent 60%);
+}
+
+/* Scrollbar in light mode */
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.2);
+}
+
+/* stat/section label text in light mode */
+[data-theme="light"] .stat-label {
+  color: rgba(10,14,26,0.45);
+}
+[data-theme="light"] .section-label {
+  color: rgba(10,14,26,0.4);
 }

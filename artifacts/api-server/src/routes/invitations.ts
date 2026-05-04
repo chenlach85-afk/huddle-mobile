@@ -27,11 +27,11 @@ async function sendInvitationEmail(to: string, inviterName: string, role: string
   const link = `https://${domain}${basePath}/invite/${token}`;
 
   const roleLabel = role === "admin" ? "Platform Admin" : "Coach";
-  const subject = `You've been invited to TeamHub as a ${roleLabel}`;
+  const subject = `You've been invited to Huddle as a ${roleLabel}`;
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;">
-      <h2 style="color:#FF6B35;">Welcome to TeamHub</h2>
-      <p><strong>${inviterName}</strong> has invited you to join TeamHub as a <strong>${roleLabel}</strong>.</p>
+      <h2 style="color:#FF6B35;">Welcome to Huddle</h2>
+      <p><strong>${inviterName}</strong> has invited you to join Huddle as a <strong>${roleLabel}</strong>.</p>
       <a href="${link}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#FF6B35;color:white;border-radius:8px;text-decoration:none;font-weight:bold;">
         Accept Invitation
       </a>
@@ -46,7 +46,7 @@ async function sendInvitationEmail(to: string, inviterName: string, role: string
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: "TeamHub <noreply@teamhub.app>", to, subject, html }),
+      body: JSON.stringify({ from: "Huddle <noreply@huddle.app>", to, subject, html }),
     });
     return res.ok;
   } catch {

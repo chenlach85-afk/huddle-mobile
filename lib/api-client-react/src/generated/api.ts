@@ -36,6 +36,8 @@ import type {
   HealthStatus,
   Message,
   Player,
+  RequestUploadUrlBody,
+  RequestUploadUrlResponse,
   Task,
   Team,
   TeamDoc,
@@ -3320,6 +3322,188 @@ export function useGetTeamActivity<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetTeamActivityQueryOptions(teamId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+export const getPostStorageUploadsRequestUrlUrl = () => {
+  return `/api/storage/uploads/request-url`;
+};
+
+export const postStorageUploadsRequestUrl = async (
+  requestUploadUrlBody: RequestUploadUrlBody,
+  options?: RequestInit,
+): Promise<RequestUploadUrlResponse> => {
+  return customFetch<RequestUploadUrlResponse>(
+    getPostStorageUploadsRequestUrlUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(requestUploadUrlBody),
+    },
+  );
+};
+
+export const getPostStorageUploadsRequestUrlMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postStorageUploadsRequestUrl>>,
+    TError,
+    { data: BodyType<RequestUploadUrlBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postStorageUploadsRequestUrl>>,
+  TError,
+  { data: BodyType<RequestUploadUrlBody> },
+  TContext
+> => {
+  const mutationKey = ["postStorageUploadsRequestUrl"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postStorageUploadsRequestUrl>>,
+    { data: BodyType<RequestUploadUrlBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return postStorageUploadsRequestUrl(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostStorageUploadsRequestUrlMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postStorageUploadsRequestUrl>>
+>;
+export type PostStorageUploadsRequestUrlMutationBody =
+  BodyType<RequestUploadUrlBody>;
+export type PostStorageUploadsRequestUrlMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+export const usePostStorageUploadsRequestUrl = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postStorageUploadsRequestUrl>>,
+    TError,
+    { data: BodyType<RequestUploadUrlBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postStorageUploadsRequestUrl>>,
+  TError,
+  { data: BodyType<RequestUploadUrlBody> },
+  TContext
+> => {
+  return useMutation(getPostStorageUploadsRequestUrlMutationOptions(options));
+};
+
+/**
+ * @summary Serve a stored object
+ */
+export const getGetStorageObjectsFilePathUrl = (filePath: string) => {
+  return `/api/storage/objects/${filePath}`;
+};
+
+export const getStorageObjectsFilePath = async (
+  filePath: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetStorageObjectsFilePathUrl(filePath), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetStorageObjectsFilePathQueryKey = (filePath: string) => {
+  return [`/api/storage/objects/${filePath}`] as const;
+};
+
+export const getGetStorageObjectsFilePathQueryOptions = <
+  TData = Awaited<ReturnType<typeof getStorageObjectsFilePath>>,
+  TError = ErrorType<unknown>,
+>(
+  filePath: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStorageObjectsFilePath>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetStorageObjectsFilePathQueryKey(filePath);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getStorageObjectsFilePath>>
+  > = ({ signal }) =>
+    getStorageObjectsFilePath(filePath, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!filePath,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getStorageObjectsFilePath>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetStorageObjectsFilePathQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getStorageObjectsFilePath>>
+>;
+export type GetStorageObjectsFilePathQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Serve a stored object
+ */
+
+export function useGetStorageObjectsFilePath<
+  TData = Awaited<ReturnType<typeof getStorageObjectsFilePath>>,
+  TError = ErrorType<unknown>,
+>(
+  filePath: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getStorageObjectsFilePath>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetStorageObjectsFilePathQueryOptions(
+    filePath,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -52,12 +52,97 @@ import AlbumsTab from "@/components/team/albums-tab";
 import DocsTab from "@/components/team/docs-tab";
 import { formatDistanceToNow } from "date-fns";
 import { he, es, enUS } from "date-fns/locale";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
+import { Upload, X } from "lucide-react";
+
+function LogoUploadField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (url: string) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+      });
+      if (!res.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await res.json() as { uploadURL: string; objectPath: string };
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+      });
+      if (!putRes.ok) throw new Error("Upload failed");
+      const filename = objectPath.replace(/^\/objects\//, "");
+      const serveUrl = `/api/storage/objects/${filename}`;
+      onChange(serveUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      {value ? (
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 rounded-xl overflow-hidden border border-white/15 bg-white/5 shrink-0">
+            <img src={value} alt="logo" className="w-full h-full object-cover" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="text-xs text-primary hover:text-primary/80 font-semibold text-start"
+            >
+              {uploading ? "Uploading…" : "Change logo"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70"
+            >
+              <X className="h-3 w-3" />
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2 w-full p-3 rounded-xl border border-dashed border-white/15 bg-white/3 hover:bg-white/6 hover:border-white/25 text-white/50 hover:text-white/80 transition-all text-sm"
+        >
+          <Upload className="h-4 w-4 shrink-0" />
+          {uploading ? "Uploading…" : "Upload team logo"}
+        </button>
+      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  );
+}
 
 const SPORTS = ["Soccer", "Basketball", "Baseball", "Softball", "Football", "Volleyball", "Tennis", "Swimming", "Track", "Other"];
 const TEAM_COLORS = [
@@ -278,7 +363,9 @@ export default function TeamDetailPage() {
               <FormField control={editForm.control} name="imageUrl" render={({ field }) => (
                 <FormItem>
                   <FormLabel className="stat-label text-white/50">{sq.teamImageOptional}</FormLabel>
-                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" placeholder="https://..." {...field} /></FormControl>
+                  <FormControl>
+                    <LogoUploadField value={field.value ?? ""} onChange={field.onChange} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -315,78 +402,109 @@ export default function TeamDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="hero-card p-5 flex items-center gap-4" style={{
+      <div className="hero-card p-5" style={{
         background: `linear-gradient(135deg, ${teamColor}cc 0%, ${teamColor}55 100%)`,
         borderColor: `${teamColor}33`,
         border: `1px solid ${teamColor}33`,
       }}>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setLocation("/teams")}
-          className="text-white/70 hover:text-white hover:bg-white/10 shrink-0"
-          data-testid="button-back"
-        >
-          <ArrowLeft className="h-5 w-5 flip-rtl" />
-        </Button>
+        {/* Top row: back + logo + name/meta */}
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/teams")}
+            className="text-white/70 hover:text-white hover:bg-white/10 shrink-0"
+            data-testid="button-back"
+          >
+            <ArrowLeft className="h-5 w-5 flip-rtl" />
+          </Button>
 
-        <div
-          className="jersey-tile text-2xl shadow-lg shrink-0 overflow-hidden"
-          style={{ background: teamImage ? "transparent" : `linear-gradient(135deg, white 0%, rgba(255,255,255,0.7) 100%)`, color: teamColor }}
-        >
-          {teamImage ? (
-            <img src={teamImage} alt={team.name} className="w-full h-full object-cover" />
-          ) : (
-            team.name.charAt(0).toUpperCase()
-          )}
+          <div
+            className="jersey-tile text-2xl shadow-lg shrink-0 overflow-hidden"
+            style={{ background: teamImage ? "transparent" : `linear-gradient(135deg, white 0%, rgba(255,255,255,0.7) 100%)`, color: teamColor }}
+          >
+            {teamImage ? (
+              <img src={teamImage} alt={team.name} className="w-full h-full object-cover" />
+            ) : (
+              team.name.charAt(0).toUpperCase()
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <h1 className="font-display text-2xl md:text-3xl text-white tracking-wide leading-none" data-testid="text-team-name">
+              {team.name.toUpperCase()}
+            </h1>
+            <p className="text-white/60 text-sm font-medium mt-1 truncate">
+              {(team as any).sport} · {td.coachLabel} {(team as any).coachName}{(team as any).season ? ` · ${(team as any).season}` : ""}
+            </p>
+            {teamLocation && (
+              <div className="flex items-center gap-1 mt-1">
+                <MapPin className="h-3 w-3 text-white/40" />
+                <p className="text-xs text-white/40">{teamLocation}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop action buttons — hidden on mobile */}
+          <div className="hidden md:flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              onClick={openEditDialog}
+              className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
+              style={{ background: "rgba(255,255,255,0.12)" }}
+              data-testid="button-edit-team"
+            >
+              <Pencil className="h-3.5 w-3.5 me-1.5" />
+              {td.editTeam}
+            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  onClick={copyMemberLink}
+                  className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
+                  style={{ background: "rgba(255,255,255,0.12)" }}
+                  data-testid="button-share-member-link"
+                >
+                  {copied ? (
+                    <><Check className="h-4 w-4 me-1.5 text-green-400" />{td.copied}</>
+                  ) : (
+                    <><Link2 className="h-4 w-4 me-1.5" />{td.shareLink}</>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">{td.copyLinkTooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
-        <div className="flex-1 min-w-0">
-          <h1 className="font-display text-3xl text-white tracking-wide leading-none" data-testid="text-team-name">
-            {team.name.toUpperCase()}
-          </h1>
-          <p className="text-white/60 text-sm font-medium mt-1">
-            {(team as any).sport} · {td.coachLabel} {(team as any).coachName}{(team as any).season ? ` · ${(team as any).season}` : ""}
-          </p>
-          {teamLocation && (
-            <div className="flex items-center gap-1 mt-1">
-              <MapPin className="h-3 w-3 text-white/40" />
-              <p className="text-xs text-white/40">{teamLocation}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Mobile action buttons — shown below on small screens */}
+        <div className="flex md:hidden items-center gap-2 mt-3 ps-12">
           <Button
             size="sm"
             onClick={openEditDialog}
             className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
             style={{ background: "rgba(255,255,255,0.12)" }}
-            data-testid="button-edit-team"
+            data-testid="button-edit-team-mobile"
           >
             <Pencil className="h-3.5 w-3.5 me-1.5" />
             {td.editTeam}
           </Button>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="sm"
-                onClick={copyMemberLink}
-                className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
-                style={{ background: "rgba(255,255,255,0.12)" }}
-                data-testid="button-share-member-link"
-              >
-                {copied ? (
-                  <><Check className="h-4 w-4 me-1.5 text-green-400" />{td.copied}</>
-                ) : (
-                  <><Link2 className="h-4 w-4 me-1.5" />{td.shareLink}</>
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p className="text-xs">{td.copyLinkTooltip}</p>
-            </TooltipContent>
-          </Tooltip>
+          <Button
+            size="sm"
+            onClick={copyMemberLink}
+            className="font-semibold rounded-xl text-white border border-white/20 hover:border-white/40"
+            style={{ background: "rgba(255,255,255,0.12)" }}
+            data-testid="button-share-member-link-mobile"
+          >
+            {copied ? (
+              <><Check className="h-4 w-4 me-1.5 text-green-400" />{td.copied}</>
+            ) : (
+              <><Link2 className="h-4 w-4 me-1.5" />{td.shareLink}</>
+            )}
+          </Button>
         </div>
       </div>
 

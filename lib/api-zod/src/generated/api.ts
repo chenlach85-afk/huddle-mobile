@@ -704,3 +704,29 @@ export const GetTeamActivityResponseItem = zod.object({
   entityId: zod.number().nullish(),
 });
 export const GetTeamActivityResponse = zod.array(GetTeamActivityResponseItem);
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+export const PostStorageUploadsRequestUrlBody = zod.object({
+  name: zod.string(),
+  size: zod.number(),
+  contentType: zod.string(),
+});
+
+export const PostStorageUploadsRequestUrlResponse = zod.object({
+  uploadURL: zod.string(),
+  objectPath: zod.string(),
+  metadata: zod.object({
+    name: zod.string(),
+    size: zod.number(),
+    contentType: zod.string(),
+  }),
+});
+
+/**
+ * @summary Serve a stored object
+ */
+export const GetStorageObjectsFilePathParams = zod.object({
+  filePath: zod.coerce.string(),
+});

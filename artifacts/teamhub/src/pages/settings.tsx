@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { useUser } from "@clerk/react";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useCurrentUser, useUpdateSettings } from "@/lib/useCurrentUser";
+import { useTheme, type Theme } from "@/lib/useTheme";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { LogOut, Bell, Globe, Shield, User, Camera, Eye, EyeOff } from "lucide-react";
+import { LogOut, Bell, Globe, Shield, User, Camera, Eye, EyeOff, Sun, Moon, Monitor } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LANGUAGES: { value: Language; flag: string; native: string }[] = [
@@ -133,6 +134,8 @@ export default function SettingsPage() {
   // Connected OAuth providers
   const oauthAccounts = clerkUser?.externalAccounts ?? [];
 
+  const { theme, setTheme } = useTheme();
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
 
@@ -207,6 +210,31 @@ export default function SettingsPage() {
             >
               <span className="text-2xl">{lang.flag}</span>
               <span className="text-sm font-bold">{lang.native}</span>
+            </button>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* ── APPEARANCE ── */}
+      <SectionCard icon={<Monitor className="h-4 w-4 text-primary" />} title={s.appearance}>
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            { value: "dark" as Theme, label: s.themeDark, icon: Moon },
+            { value: "light" as Theme, label: s.themeLight, icon: Sun },
+            { value: "system" as Theme, label: s.themeSystem, icon: Monitor },
+          ] as { value: Theme; label: string; icon: React.ElementType }[]).map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => setTheme(value)}
+              className={cn(
+                "flex flex-col items-center gap-1.5 p-4 rounded-xl border transition-all",
+                theme === value
+                  ? "border-primary/60 bg-primary/12 text-primary shadow-sm shadow-primary/20"
+                  : "border-white/8 bg-white/3 text-white/50 hover:border-white/20 hover:bg-white/5 hover:text-white/80"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="text-sm font-bold">{label}</span>
             </button>
           ))}
         </div>
