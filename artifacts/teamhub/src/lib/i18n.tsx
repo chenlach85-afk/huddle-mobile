@@ -50,7 +50,8 @@ const translations = {
       invitationOnlyDesc: "If you have an invitation, check your email for the link.",
       backToSignIn: "Back to Sign In",
       accountNotActivated: "Your account hasn't been activated yet.",
-      accountNotActivatedDesc: "Contact the platform administrator to get access.",
+      accountNotActivatedDesc: "You signed in, but haven't accepted your invitation yet. Find the invitation email and click the \"Accept Invitation\" button inside it. If you don't have one, contact your administrator.",
+      checkInviteEmail: "Check your invitation email",
     },
     dashboard: {
       title: "Dashboard",
@@ -493,7 +494,8 @@ const translations = {
       invitationOnlyDesc: "אם קיבלת הזמנה, בדוק את המייל שלך לקישור.",
       backToSignIn: "חזרה להתחברות",
       accountNotActivated: "החשבון שלך טרם הופעל.",
-      accountNotActivatedDesc: "פנה למנהל הפלטפורמה כדי לקבל גישה.",
+      accountNotActivatedDesc: "נכנסת לאפליקציה, אך עדיין לא קיבלת את ההזמנה. מצא את מייל ההזמנה ולחץ על \"קבל הזמנה\". אם אין לך כזה, פנה למנהל.",
+      checkInviteEmail: "בדוק את מייל ההזמנה",
     },
     dashboard: {
       title: "ראשי",
@@ -936,7 +938,8 @@ const translations = {
       invitationOnlyDesc: "Si tienes una invitación, revisa tu correo para el enlace.",
       backToSignIn: "Volver a iniciar sesión",
       accountNotActivated: "Tu cuenta aún no ha sido activada.",
-      accountNotActivatedDesc: "Contacta al administrador de la plataforma para obtener acceso.",
+      accountNotActivatedDesc: "Iniciaste sesión, pero aún no aceptaste tu invitación. Busca el correo de invitación y haz clic en \"Aceptar Invitación\". Si no tienes uno, contacta al administrador.",
+      checkInviteEmail: "Revisa tu correo de invitación",
     },
     dashboard: {
       title: "Inicio",

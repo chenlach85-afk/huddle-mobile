@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { ClerkProvider, SignIn, Show, useClerk, useUser } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
-import { Lock, ShieldOff } from "lucide-react";
+import { Lock, ShieldOff, Mail } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/layout";
@@ -171,6 +171,11 @@ function NotActivatedScreen() {
         <div className="space-y-2">
           <h1 className="font-display text-3xl text-white">{t.auth.accountNotActivated}</h1>
           <p className="text-sm text-white/50 leading-relaxed">{t.auth.accountNotActivatedDesc}</p>
+        </div>
+        <div className="flex items-start gap-3 rounded-xl px-4 py-3 text-start"
+          style={{ background: "rgba(255,107,53,0.08)", border: "1px solid rgba(255,107,53,0.2)" }}>
+          <Mail className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+          <p className="text-xs text-white/60 leading-relaxed">{t.auth.checkInviteEmail}</p>
         </div>
         <button onClick={() => signOut()}
           className="text-sm text-primary hover:text-primary/80 underline underline-offset-4">
