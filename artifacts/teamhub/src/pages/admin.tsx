@@ -17,7 +17,7 @@ import {
 import {
   Users, BarChart3, ShieldCheck, AlertCircle, TrendingUp, Calendar,
   CheckSquare, MessageSquare, MoreVertical, Search, UserX, UserCheck,
-  Trash2, Edit3, ClipboardList, Shield, Activity,
+  Trash2, Edit3, ClipboardList, Shield, Activity, Mail,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
@@ -634,6 +634,12 @@ export default function AdminPage() {
           <h1 className="font-display text-4xl text-white tracking-wide">{ad.title.toUpperCase()}</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/invitations">
+            <Button variant="ghost" className="text-white/50 hover:text-white border border-white/10 rounded-xl h-9 px-3 text-xs">
+              <Mail className="h-3.5 w-3.5 me-1.5" />
+              Invitations
+            </Button>
+          </Link>
           <Link href="/admin/audit-log">
             <Button variant="ghost" className="text-white/50 hover:text-white border border-white/10 rounded-xl h-9 px-3 text-xs">
               <ClipboardList className="h-3.5 w-3.5 me-1.5" />

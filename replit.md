@@ -33,7 +33,8 @@ Tables:
 - `tasks` — id, team_id (FK→teams), title, description, assigned_to_player_id, due_date, status, priority, timestamps
 - `messages` — id, team_id (FK→teams), sender_name, sender_role, content, pinned, created_at
 - `users` — id, clerk_id (unique), email, name, role, language, account_status (active/suspended/deleted), deleted_at, deleted_by, deletion_reason, suspended_at, suspended_by, suspension_reason, notifications prefs, timestamps
-- `admin_audit_log` — id, admin_id, action, target_user_id, target_team_id, metadata (jsonb), created_at
+- `admin_audit_log` — id, admin_id, action (enum includes invitation_created/revoked/user_registered_via_invitation/promoted/demoted), target_user_id, target_team_id, metadata (jsonb), created_at
+- `platform_invitations` — id, token (UUID, unique), email, invited_role (coach/admin), invited_by_user_id (FK→users), status (pending/accepted/revoked/expired), notes, expires_at, accepted_at, accepted_by_user_id, email_sent_at, created_at
 - `notifications` — id, user_id (FK→users), type, title, body, read, related_id, related_type, created_at
 - `team_members` — id, team_id (FK→teams), user_id (FK→users), role, created_at
 - `files` — id, uploader_id, team_id, filename, original_name, mime_type, size, url, related_type, related_id, created_at
@@ -79,6 +80,11 @@ All under `/api/` base path:
 | POST | /api/admin/teams/:id/archive | Archive a team |
 | POST | /api/admin/teams/:id/transfer | Transfer team ownership |
 | GET | /api/admin/audit-log | Paginated audit log with action filter |
+| GET | /api/invitations/:token | Public — get invitation details by token |
+| POST | /api/invitations/:token/accept | Accept invitation (Clerk auth required, no DB user needed yet) |
+| GET | /api/admin/invitations | List all invitations (admin only) |
+| POST | /api/admin/invitations | Create invitation: {email, role, notes?} (admin only) |
+| DELETE | /api/admin/invitations/:id | Revoke a pending invitation (admin only) |
 
 ## Frontend Pages
 
@@ -91,6 +97,8 @@ All under `/api/` base path:
 - `/calendar` — Month grid + upcoming sidebar + day detail panel (auth required)
 - `/settings` — Profile, language switcher, notification prefs, security/change password (auth required)
 - `/member/:joinCode` — Public read-only player view (no auth)
+- `/invite/:token` — Public invitation acceptance page; shows invitation details + embedded Clerk SignIn/SignUp; on accept calls POST /api/invitations/:token/accept which creates the DB user record
+- `/admin/invitations` — Admin invitations management: send invitations, view/copy invite links, revoke pending (auth + admin required)
 
 ## i18n
 

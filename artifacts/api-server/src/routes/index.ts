@@ -13,6 +13,7 @@ import notificationsRouter from "./notifications";
 import filesRouter from "./files";
 import albumsRouter from "./albums";
 import adminRouter from "./admin";
+import invitationsRouter from "./invitations";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(memberRouter);
 router.use(calendarRouter);
 router.use(albumsRouter);
 router.use(adminRouter);
+router.use(invitationsRouter);
 
 export default router;
