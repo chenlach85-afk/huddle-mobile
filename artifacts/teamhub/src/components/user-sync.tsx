@@ -3,6 +3,23 @@ import { useUser } from "@clerk/react";
 import { syncUser } from "@/lib/useCurrentUser";
 import { useQueryClient } from "@tanstack/react-query";
 import { useI18n } from "@/lib/i18n";
+import type { AppUser } from "@/lib/useCurrentUser";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+async function autoAcceptInvitation(): Promise<AppUser | null> {
+  try {
+    const res = await fetch(`${BASE}/api/invitations/auto-accept`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { user: AppUser };
+    return data.user ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export function UserSync() {
   const { user, isLoaded } = useUser();
@@ -24,10 +41,20 @@ export function UserSync() {
           setLanguage(appUser.language as "en" | "he" | "es");
         }
       })
-      .catch(() => {
-        // Sync failed (e.g. 403 invitation-only) — invalidate so useCurrentUser
-        // picks up the 404/error from /api/auth/me and shows the not-activated screen
-        queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+      .catch(async () => {
+        // Sync failed (403 = invitation-only). Try to auto-accept any pending
+        // invitation for this user's email — handles the case where Clerk
+        // redirected them away from the /invite page before they could click Accept.
+        const appUser = await autoAcceptInvitation();
+        if (appUser) {
+          queryClient.setQueryData(["auth-me"], appUser);
+          if (appUser.language) {
+            setLanguage(appUser.language as "en" | "he" | "es");
+          }
+        } else {
+          // No pending invitation found — show not-activated screen
+          queryClient.invalidateQueries({ queryKey: ["auth-me"] });
+        }
       });
   }, [isLoaded, user, queryClient, setLanguage]);
 

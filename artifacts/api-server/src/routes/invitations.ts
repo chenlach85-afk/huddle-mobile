@@ -198,6 +198,119 @@ router.post("/invitations/:token/accept", async (req: Request, res: Response): P
   res.status(201).json({ user: newUser, alreadyRegistered: false });
 });
 
+/* ─── Auto-accept by email (for users who bypass invite page) ─ */
+
+router.post("/invitations/auto-accept", async (req: Request, res: Response): Promise<void> => {
+  const auth = getAuth(req);
+  const clerkId = auth?.userId;
+  if (!clerkId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  // Check if already in DB (e.g. race condition or double-call)
+  const [existing] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.clerkId, clerkId))
+    .limit(1);
+  if (existing) {
+    res.json({ user: existing, alreadyRegistered: true });
+    return;
+  }
+
+  // Fetch email + name from Clerk
+  const clerkKey = process.env.CLERK_SECRET_KEY;
+  if (!clerkKey) {
+    res.status(500).json({ error: "Server configuration error" });
+    return;
+  }
+
+  let email = "";
+  let name = "";
+  try {
+    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
+      headers: { Authorization: `Bearer ${clerkKey}` },
+    });
+    if (!clerkRes.ok) {
+      res.status(500).json({ error: "Failed to fetch user from Clerk" });
+      return;
+    }
+    const cu = (await clerkRes.json()) as {
+      email_addresses?: { email_address: string }[];
+      first_name?: string;
+      last_name?: string;
+    };
+    email = cu.email_addresses?.[0]?.email_address ?? "";
+    name =
+      [cu.first_name ?? "", cu.last_name ?? ""].filter(Boolean).join(" ") ||
+      email.split("@")[0] ||
+      "User";
+  } catch {
+    res.status(500).json({ error: "Failed to fetch user details from Clerk" });
+    return;
+  }
+
+  if (!email) {
+    res.status(400).json({ error: "No email found for this user" });
+    return;
+  }
+
+  // Find a pending invitation for this email
+  const [inv] = await db
+    .select()
+    .from(platformInvitationsTable)
+    .where(
+      and(
+        eq(platformInvitationsTable.email, email),
+        eq(platformInvitationsTable.status, "pending"),
+      ),
+    )
+    .limit(1);
+
+  if (!inv) {
+    res.status(404).json({ error: "No pending invitation found for this email" });
+    return;
+  }
+
+  if (new Date(inv.expiresAt) < new Date()) {
+    await db
+      .update(platformInvitationsTable)
+      .set({ status: "expired" })
+      .where(eq(platformInvitationsTable.id, inv.id));
+    res.status(400).json({ error: "Invitation has expired" });
+    return;
+  }
+
+  // Create the DB user
+  const [newUser] = await db
+    .insert(usersTable)
+    .values({
+      clerkId,
+      email,
+      name,
+      role: inv.invitedRole as "coach" | "admin",
+      accountStatus: "active",
+    })
+    .returning();
+
+  // Mark invitation accepted
+  await db
+    .update(platformInvitationsTable)
+    .set({ status: "accepted", acceptedAt: new Date(), acceptedByUserId: newUser.id })
+    .where(eq(platformInvitationsTable.id, inv.id));
+
+  // Audit log
+  await db.insert(adminAuditLogTable).values({
+    adminId: inv.invitedByUserId,
+    action: "user_registered_via_invitation",
+    targetUserId: newUser.id,
+    metadata: { email, role: inv.invitedRole, invitationId: inv.id },
+  });
+
+  res.status(201).json({ user: newUser, alreadyRegistered: false });
+});
+
 /* ─── Admin: email config check ─────────────────────────── */
 
 router.get("/admin/invitations/email-status", requireAuth, requireAdminMiddleware, async (_req, res): Promise<void> => {
