@@ -1,0 +1,384 @@
+Four bugs/improvements to fix. Don't add new features. Don't change the data model.
+Bug 1 — App is still called "TeamHub" in places
+The app name is HUDDLE (all caps in the wordmark, but written as "Huddle" in body text). Search the entire codebase for any remaining references to TeamHub, Team Hub, teamhub, team-hub, or similar variants. Replace with HUDDLE / Huddle as appropriate.
+Specifically check:
+
+package.json name
+manifest.json name and short_name
+<title> in root layout / metadata
+Email templates (subject lines, sender display name, body)
+Translation files (messages/he.json, messages/en.json, messages/es.json) — every value containing "TeamHub" or similar
+README and any docs
+Any landing page or marketing copy
+Browser tab favicon title
+iOS PWA install prompt name
+Any constants file with APP_NAME or similar
+
+Show me a list of all files where you found and fixed references.
+Bug 2 — Team profile card layout is broken
+In the team header (the orange gradient card showing team info), the team details are being rendered behind or overlapping with the "Edit Team" and "Share" action buttons. The buttons appear to float over the text causing it to wrap awkwardly.
+Find the component that renders this card. The likely cause is one of these:
+
+The action buttons are absolutely positioned on top of the text content area
+The text content doesn't reserve space for the buttons (no right padding / inline-end padding accounting for button width)
+The buttons are inside the same flex container as the text but without proper flex-shrink rules
+
+Fix it so:
+
+Team logo, name, sport, coach name, and season info display cleanly with no overlap
+Action buttons (Edit Team, Share) are clearly separated, either:
+
+Below the team info as a row of action buttons (preferred for mobile)
+Or in a separate corner area with proper spacing
+
+
+
+Suggested layout for mobile:
+┌─────────────────────────────────────┐
+│  [Logo]                              │
+│                                      │
+│  LIGHTNING FC                        │
+│  Soccer · Spring 2025                │
+│  Coach: Coach Martinez               │
+│                                      │
+│  ┌──────────┐ ┌──────────┐          │
+│  │Edit Team │ │  Share   │          │
+│  └──────────┘ └──────────┘          │
+└─────────────────────────────────────┘
+For desktop, the buttons can be top-right corner if there's space, but never overlapping.
+Use proper Tailwind layout — no absolute positioning over text. Use flex with gap, or grid with explicit areas.
+After fix, screenshot the same team page and confirm it looks correct.
+Bug 3 — Logo upload accepts only URL, no file picker
+The team logo field currently only accepts a URL. It should be a proper file upload that:
+
+Lets the user pick a file from their device (using <input type="file" accept="image/*" />)
+Shows a preview of the selected image immediately
+Uploads the file to Supabase Storage in the team-logos bucket
+Returns the public URL and saves it to teams.logo_url
+
+Implementation
+The file path in storage should be: team-logos/{team_id}/logo.{ext}
+Component flow:
+typescript// In team settings or onboarding form
+const handleLogoUpload = async (file: File) => {
+  // Validate
+  if (!file.type.startsWith('image/')) {
+    showError('Please pick an image file');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showError('Image must be smaller than 5MB');
+    return;
+  }
+
+  // Upload to Supabase Storage
+  const ext = file.name.split('.').pop();
+  const path = `${teamId}/logo.${ext}`;
+
+  const { data, error } = await supabase.storage
+    .from('team-logos')
+    .upload(path, file, { upsert: true });
+
+  if (error) {
+    showError('Upload failed: ' + error.message);
+    return;
+  }
+
+  // Get public URL
+  const { data: { publicUrl } } = supabase.storage
+    .from('team-logos')
+    .getPublicUrl(path);
+
+  // Save to team
+  await supabase.from('teams').update({ logo_url: publicUrl }).eq('id', teamId);
+
+  // Refresh UI
+  setLogoUrl(publicUrl);
+};
+UI:
+TEAM LOGO
+─────────────────────────────────────
+[ Current logo preview, 80x80 rounded ]
+
+[Choose image] [Remove logo]
+
+Supported: JPG, PNG, WEBP. Max 5MB.
+When no logo is set, show a placeholder with the team's initial letter (matching the orange gradient style).
+For a brand new team being created (during onboarding, before team_id exists), upload to a temporary path like team-logos/temp/{user_id}/{timestamp}.{ext} and after the team is created via INSERT, move/rename the file to the proper team_id path.
+Apply the same pattern for:
+
+User avatars (avatars bucket, path {user_id}/avatar.{ext})
+Any other places currently asking for a "logo URL" or "image URL"
+
+Storage bucket policies
+Verify the team-logos bucket allows:
+
+Authenticated users to upload to paths matching {team_id}/... IF they're a coach of that team
+Anyone to read (because logos are public)
+
+If the existing storage policies are too permissive (any authenticated user can upload anywhere), tighten them:
+sql-- Drop overly permissive existing policy
+drop policy if exists "authenticated upload" on storage.objects;
+
+-- Tighter: coach uploads to their team's logo path
+create policy "coaches upload team logos" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'team-logos'
+    and exists(
+      select 1 from team_members
+      where team_id::text = (storage.foldername(name))[1]
+        and user_id = auth.uid()
+        and role in ('coach', 'assistant_coach')
+        and status = 'active'
+    )
+  );
+
+-- Anyone authenticated can read team logos (they're meant to be public)
+create policy "authenticated read team logos" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'team-logos');
+
+-- Coaches can update/delete their team's logos
+create policy "coaches update team logos" on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'team-logos'
+    and exists(
+      select 1 from team_members
+      where team_id::text = (storage.foldername(name))[1]
+        and user_id = auth.uid()
+        and role in ('coach', 'assistant_coach')
+        and status = 'active'
+    )
+  );
+
+create policy "coaches delete team logos" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'team-logos'
+    and exists(
+      select 1 from team_members
+      where team_id::text = (storage.foldername(name))[1]
+        and user_id = auth.uid()
+        and role in ('coach', 'assistant_coach')
+        and status = 'active'
+    )
+  );
+
+-- For avatars: users manage their own
+create policy "users upload own avatar" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "anyone read avatars" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'avatars');
+
+create policy "users update own avatar" on storage.objects
+  for update to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "users delete own avatar" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+Note: storage.foldername(name) returns an array of path segments. [1] is the first segment after the bucket name (postgres arrays are 1-indexed).
+Bug 4 — Add dark / light mode toggle
+Currently the app is dark-only. Add a light mode and a toggle.
+Approach
+Use next-themes (or equivalent) to manage theme state with three options: system (follows OS), light, dark. Save user's choice to localStorage AND profiles.preferred_theme so it persists across devices.
+Database
+sqlalter table public.profiles
+  add column if not exists preferred_theme text default 'system'
+    check (preferred_theme in ('system', 'light', 'dark'));
+Color tokens — add light mode palette
+The current dark mode uses these tokens. Define a parallel light mode set so every component automatically supports both via CSS variables.
+In the root layout / globals.css:
+css:root {
+  /* Default = dark theme */
+  --bg: #0a0e1a;
+  --bg-elev: #161b2e;
+  --bg-elev-2: #1f2742;
+  --border: #2a3354;
+  --border-soft: #1a2138;
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.7);
+  --text-faint: rgba(255, 255, 255, 0.5);
+  --text-ghost: rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] {
+  /* Same as :root above */
+  --bg: #0a0e1a;
+  --bg-elev: #161b2e;
+  --bg-elev-2: #1f2742;
+  --border: #2a3354;
+  --border-soft: #1a2138;
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.7);
+  --text-faint: rgba(255, 255, 255, 0.5);
+  --text-ghost: rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="light"] {
+  /* Light mode palette — clean, readable, sport-friendly */
+  --bg: #f5f5f0;            /* warm off-white, not stark white */
+  --bg-elev: #ffffff;        /* pure white for cards */
+  --bg-elev-2: #ebebe5;      /* alt rows, hovers */
+  --border: #d4d4cd;         /* visible but soft */
+  --border-soft: #e6e6df;
+  --text: #0a0e1a;           /* deep navy text on light bg */
+  --text-dim: rgba(10, 14, 26, 0.7);
+  --text-faint: rgba(10, 14, 26, 0.5);
+  --text-ghost: rgba(10, 14, 26, 0.3);
+}
+
+/* Status colors stay the same in both modes — they're already vibrant */
+:root, [data-theme="dark"], [data-theme="light"] {
+  --ignition: #FF6B35;
+  --ignition-dark: #C73E1D;
+  --trophy: #F7B538;
+  --kit-green: #2ECC71;
+  --kit-red: #E74C3C;
+  --kit-blue: #4A90E2;
+}
+Update Tailwind config
+Make sure all your Tailwind classes use the CSS variables, not hardcoded colors. Replace any direct hex values in components with bg-[var(--bg)], text-[var(--text)], etc., or use a Tailwind class that reads from a custom color extending the CSS variable.
+In tailwind.config.ts:
+javascript{
+  theme: {
+    extend: {
+      colors: {
+        bg: 'var(--bg)',
+        'bg-elev': 'var(--bg-elev)',
+        'bg-elev-2': 'var(--bg-elev-2)',
+        border: 'var(--border)',
+        'border-soft': 'var(--border-soft)',
+        text: 'var(--text)',
+        'text-dim': 'var(--text-dim)',
+        'text-faint': 'var(--text-faint)',
+        'text-ghost': 'var(--text-ghost)',
+        ignition: { DEFAULT: 'var(--ignition)', dark: 'var(--ignition-dark)' },
+        trophy: 'var(--trophy)',
+        kit_green: 'var(--kit-green)',
+        kit_red: 'var(--kit-red)',
+        kit_blue: 'var(--kit-blue)',
+      }
+    }
+  }
+}
+Theme toggle UI
+In the user profile / settings page (/profile or /settings), add a theme section:
+APPEARANCE
+─────────────────────────────────────
+Theme:
+  ◉ Match system
+  ○ Light
+  ○ Dark
+Translations:
+
+Hebrew: מראה / התאם למערכת / בהיר / כהה
+English: Appearance / Match system / Light / Dark
+Spanish: Apariencia / Seguir sistema / Claro / Oscuro
+
+When user changes the option:
+
+Update localStorage immediately
+Set data-theme attribute on <html> element
+Save to profiles.preferred_theme in the background
+
+For system, listen to prefers-color-scheme media query and apply dark/light dynamically.
+Also add a quick-toggle icon in the header (a sun/moon icon) that cycles light → dark → system → light. This gives users a one-click toggle without going to settings.
+Initial load — avoid flash of wrong theme
+In the root layout, before React hydrates, set the theme synchronously:
+html<script dangerouslySetInnerHTML={{__html: `
+  (function() {
+    var stored = localStorage.getItem('theme') || 'system';
+    var theme = stored === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : stored;
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+`}} />
+This must run BEFORE the page renders, otherwise users see a flash of dark mode before light loads (or vice versa). Place it in <head> of the root layout.
+Update PWA manifest theme color
+The manifest currently has "theme_color": "#FF6B35" (the orange). Add a media query for system theme matching:
+Actually, manifests don't support media queries directly. Keep theme_color: "#FF6B35" as the brand color (it works as the address bar color on both dark and light backgrounds). But also add background_color matching the default theme:
+json{
+  "theme_color": "#FF6B35",
+  "background_color": "#0a0e1a"
+}
+The background_color is only used during the splash screen on initial load — once the app runs, the theme system takes over.
+Component-level fixes
+Some components might be hardcoded to dark mode. Common offenders:
+
+Modals with hardcoded bg-black or bg-[#0a0e1a]
+Cards with hardcoded white text
+Borders using hardcoded RGB values
+Image overlays using bg-black/50
+
+Search the codebase for hardcoded color values and replace with the CSS variable equivalents:
+
+#0a0e1a → var(--bg) or class bg-bg
+#161b2e → var(--bg-elev) or class bg-bg-elev
+#ffffff text → var(--text) or class text-text
+Hardcoded text-white should usually become text-text (which means primary text color in current theme)
+
+Status colors (orange, green, red, blue) stay the same — they look fine on both backgrounds because they're vibrant midtones.
+Testing the theme toggle
+After implementation:
+
+Set theme to "Light" — entire app should render in light mode
+Reload page — should still be light (persisted)
+Set to "Dark" — back to current dark mode
+Set to "Match system" — should follow OS preference
+Open the app on a phone with iOS Dark Mode toggled, switch theme to "system" — verify it follows the OS
+Take screenshots of the team detail page (the one in your screenshot) in BOTH modes to confirm both look good
+
+Acceptance criteria
+
+✓ No occurrences of "TeamHub" remain anywhere in the codebase or UI
+✓ Team header card layout has no text overlap with action buttons
+✓ Team logo can be uploaded as an image file (not URL); preview shown; saves to Supabase Storage
+✓ User avatar can be uploaded the same way
+✓ Storage RLS policies updated to be per-team or per-user secure
+✓ Theme toggle in profile/settings with three options (System / Light / Dark)
+✓ Quick toggle icon in header
+✓ Theme persists via localStorage AND profiles.preferred_theme
+✓ No flash of wrong theme on page load
+✓ Both dark and light modes look polished — no hardcoded colors breaking light mode
+✓ Status colors (orange/green/red/blue) work on both backgrounds
+✓ Translations updated in he.json, en.json, es.json
+✓ Take screenshots of team page in both modes and show them
+
+Run these in order:
+
+Bug 1 (rename TeamHub → HUDDLE) — quick search/replace
+Bug 2 (fix team header layout) — UI fix
+Bug 3 (logo upload as file) — adds storage handling
+Bug 4 (dark/light theme) — biggest, most invasive
+
+After bug 1, show me the list of files changed. After bugs 2 and 3, show me screenshots. After bug 4, show screenshots in both modes.
+
+That's the prompt. A few notes to set expectations:
+On bug 1 — the agent will probably find references in 10-20 places. Most are easy string replacements. The trickiest one is usually the email template subject line that goes out to recipients — it's hardcoded in a server file, not a translation file. If you have any unsent invitations from before this fix, those emails went out as "TeamHub" already; nothing to do about that.
+On bug 2 — the layout issue in your screenshot is almost certainly absolute positioning. The orange card has its content area, and "Edit Team" and "Share" buttons are positioned on top of it without reserving space. Fix is one component, maybe 5 minutes of work for the agent.
+On bug 3 — this is the biggest hidden problem in your screenshot. If the original prompt asked for "logo URL" instead of "logo file upload," the agent built it the literal way. Real apps always need file pickers. This fix adds proper Supabase Storage integration which you'll also need for many future features (training program PDFs, task proof photos, message attachments). Worth getting right now.
+On bug 4 — this is the biggest change. Light mode requires touching every component that has hardcoded colors. Expect 30-50 files to change. The CSS variable approach above is the right pattern; some agents will instead try to use Tailwind's dark: modifier which works but creates a lot more class noise. Either approach is fine as long as light mode actually looks good — review the screenshots the agent provides.
+One thing to test specifically after all four fixes — open the team detail page in light mode and verify:
+
+Orange gradient hero card still looks good (it should — orange on light is fine)
+White card backgrounds with proper borders (not a sea of pure white)
+Text contrast is readable (deep navy on warm off-white)
+Status badges still pop against the lighter background
+
+If the agent reports "done" but light mode looks washed out, push back: "the contrast is too low — increase the text color saturation and add more visible borders to cards in light mode."
