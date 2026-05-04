@@ -31,11 +31,23 @@ router.post("/auth/sync", async (req: Request, res: Response): Promise<void> => 
     .where(eq(usersTable.clerkId, clerkId))
     .limit(1);
 
+  // Build the list of emails that must always have admin role (from env var)
+  const adminEmails = (process.env.ADMIN_USER_IDS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const shouldBeAdmin = adminEmails.includes(email.toLowerCase());
+
   if (existing[0]) {
-    // Update name/email in case they changed in Clerk, but never downgrade role
+    const updateFields: { email: string; name: string; role?: "admin" | "coach" } = { email, name };
+    // Promote to admin if in the forced-admin list and not already admin
+    if (shouldBeAdmin && existing[0].role !== "admin") {
+      updateFields.role = "admin";
+    }
     const [updated] = await db
       .update(usersTable)
-      .set({ email, name })
+      .set(updateFields)
       .where(eq(usersTable.clerkId, clerkId))
       .returning();
     res.json(updated);

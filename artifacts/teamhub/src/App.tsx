@@ -185,8 +185,18 @@ function ProtectedRouteInner({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const { appUser, isLoading, error } = useCurrentUser();
 
-  // Sync tried (user loaded) but got a 403/404 — account not set up
-  if (!isLoading && user && (error || (!appUser && !isLoading))) {
+  // Show a blank loading screen while sync is in flight — prevents
+  // briefly rendering content for users whose sync will return 403
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  // Sync completed but got a 403/404 — account not activated or not invited
+  if (user && (error || !appUser)) {
     return <NotActivatedScreen />;
   }
 

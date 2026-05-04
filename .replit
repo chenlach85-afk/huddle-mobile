@@ -42,3 +42,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 VITE_CLERK_PUBLISHABLE_KEY = "pk_test_ZmxleGlibGUtbGFicmFkb3ItNjQuY2xlcmsuYWNjb3VudHMuZGV2JA"
+ADMIN_USER_IDS = "chen.lach@gmail.com,chen.lach85@gmail.com"
