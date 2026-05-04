@@ -168,12 +168,13 @@ function SendInvitationForm({ onSent }: { onSent: () => void }) {
 }
 
 /* ── Invitation Row ── */
-function InvitationRow({ inv: invitation, onRevoke }: { inv: Invitation; onRevoke: () => void }) {
+function InvitationRow({ inv: invitation, onRevoke, onResent }: { inv: Invitation; onRevoke: () => void; onResent: () => void }) {
   const { t, language } = useI18n();
   const inv = t.invitations;
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [resending, setResending] = useState(false);
   const dateLocale = DATE_LOCALES[language] ?? enUS;
 
   const statusLabel = {
@@ -192,7 +193,21 @@ function InvitationRow({ inv: invitation, onRevoke }: { inv: Invitation; onRevok
     } catch (e: unknown) {
       toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
     } finally {
-      setRevoking(false); }
+      setRevoking(false);
+    }
+  }
+
+  async function handleResend() {
+    setResending(true);
+    try {
+      await apiFetch(`/api/admin/invitations/${invitation.id}/resend`, { method: "POST" });
+      toast({ title: inv.emailSent + " ✓" });
+      onResent();
+    } catch (e: unknown) {
+      toast({ title: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setResending(false);
+    }
   }
 
   return (
@@ -241,6 +256,15 @@ function InvitationRow({ inv: invitation, onRevoke }: { inv: Invitation; onRevok
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {invitation.status === "pending" && (
+            <button
+              onClick={handleResend}
+              disabled={resending}
+              title={inv.resendEmail}
+              className="p-1.5 rounded-lg text-white/30 hover:text-blue-400 hover:bg-blue-500/10 transition-colors disabled:opacity-40">
+              {resending ? <span className="text-[10px] text-blue-400">…</span> : <Mail className="h-3.5 w-3.5" />}
+            </button>
+          )}
           {invitation.status === "pending" && invitation.emailSentAt && (
             <CopyButton text={getInviteLink(invitation.token)} />
           )}
@@ -361,7 +385,7 @@ export default function AdminInvitationsPage() {
         ) : (
           <div className="divide-y divide-white/5">
             {invitations.map(i => (
-              <InvitationRow key={i.id} inv={i} onRevoke={refresh} />
+              <InvitationRow key={i.id} inv={i} onRevoke={refresh} onResent={refresh} />
             ))}
           </div>
         )}

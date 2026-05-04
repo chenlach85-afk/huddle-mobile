@@ -46,7 +46,7 @@ async function sendInvitationEmail(to: string, inviterName: string, role: string
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: "Huddle <noreply@huddle.app>", to, subject, html }),
+      body: JSON.stringify({ from: "Huddle <onboarding@resend.dev>", to, subject, html }),
     });
     return res.ok;
   } catch {
@@ -311,6 +311,30 @@ router.post("/admin/invitations", requireAuth, requireAdminMiddleware, async (re
   const inviteLink = `https://${domain}${basePath}/invite/${token}`;
 
   res.status(201).json({ ...inv, inviteLink, emailSent });
+});
+
+/* ─── Admin: resend invitation email ───────────────────── */
+
+router.post("/admin/invitations/:id/resend", requireAuth, requireAdminMiddleware, async (req: AuthedRequest, res): Promise<void> => {
+  const adminId = req.userId!;
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [inv] = await db
+    .select()
+    .from(platformInvitationsTable)
+    .where(and(eq(platformInvitationsTable.id, id), eq(platformInvitationsTable.status, "pending")))
+    .limit(1);
+
+  if (!inv) { res.status(404).json({ error: "Pending invitation not found" }); return; }
+
+  const [admin] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, adminId)).limit(1);
+  const emailSent = await sendInvitationEmail(inv.email, admin?.name ?? "Admin", inv.invitedRole, inv.token);
+
+  if (!emailSent) { res.status(502).json({ error: "Failed to send email — check RESEND_API_KEY" }); return; }
+
+  await db.update(platformInvitationsTable).set({ emailSentAt: new Date() }).where(eq(platformInvitationsTable.id, id));
+  res.json({ success: true });
 });
 
 /* ─── Admin: revoke invitation ──────────────────────────── */
