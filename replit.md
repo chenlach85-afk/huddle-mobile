@@ -1,4 +1,4 @@
-# Huddle Pro (formerly TeamHub / Billing Hub)
+# Huddle Pro
 
 A full-stack sports team management app for coaches, built with React+Vite and Express.
 
@@ -37,8 +37,9 @@ Tables:
 - `admin_audit_log` — id, admin_id, action (enum includes invitation_created/revoked/user_registered_via_invitation/promoted/demoted), target_user_id, target_team_id, metadata (jsonb), created_at
 - `platform_invitations` — id, token (UUID, unique), email, invited_role (coach/admin), invited_by_user_id (FK→users), status (pending/accepted/revoked/expired), notes, expires_at, accepted_at, accepted_by_user_id, email_sent_at, created_at
 - `notifications` — id, user_id (FK→users), type, title, body, read, related_id, related_type, created_at
-- `team_members` — id, team_id (FK→teams), user_id (FK→users), role, created_at
+- `team_members` — id, team_id (FK→teams), user_id (FK→users), role (coach/player/assistant), created_at
 - `files` — id, uploader_id, team_id, filename, original_name, mime_type, size, url, related_type, related_id, created_at
+- `team_invitations` — id, token (UUID, unique), team_id (FK→teams), invited_by_user_id (FK→users), invite_type (email/link), email (nullable), status (pending/accepted/revoked/expired), expires_at, accepted_at, accepted_by_user_id, email_sent_at, created_at
 
 ## API Routes
 

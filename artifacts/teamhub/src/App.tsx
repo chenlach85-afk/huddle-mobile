@@ -21,6 +21,7 @@ import AdminPage from "@/pages/admin";
 import AuditLogPage from "@/pages/admin-audit-log";
 import AdminInvitationsPage from "@/pages/admin-invitations";
 import InvitePage from "@/pages/invite";
+import TeamInvitePage from "@/pages/team-invite";
 import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -237,6 +238,7 @@ function AppRouter() {
         <ClerkQueryClientCacheInvalidator />
         <Switch>
           <Route path="/member/:joinCode" component={MemberView} />
+          <Route path="/team-invite/:token" component={TeamInvitePage} />
           <Route path="/invite/:token" component={InvitePage} />
           <Route path="/sign-in/*?" component={SignInPage} />
           <Route path="/sign-up/*?" component={SignUpPage} />

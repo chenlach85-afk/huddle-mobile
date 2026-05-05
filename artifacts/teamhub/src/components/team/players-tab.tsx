@@ -23,7 +23,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Users, Trash2, Pencil } from "lucide-react";
+import { Plus, Users, Trash2, Pencil, Mail, Link2, Copy, Check, Send, RotateCcw, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 
@@ -44,13 +44,332 @@ const playerSchema = z.object({
 });
 type PlayerForm = z.infer<typeof playerSchema>;
 
+type ActiveInvite = {
+  id: number;
+  token: string;
+  inviteType: string;
+  email: string | null;
+  status: string;
+  url: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+/* ─── Invite Player Modal ─────────────────────────────────────── */
+
+function InvitePlayerModal({ teamId, teamColor, open, onClose }: {
+  teamId: number;
+  teamColor: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const ti = t.teamInvite;
+  const { toast } = useToast();
+
+  const [tab, setTab] = useState<"email" | "link">("email");
+  const [email, setEmail] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [revoking, setRevoking] = useState<number | null>(null);
+  const [resending, setResending] = useState<number | null>(null);
+
+  async function loadInvites() {
+    setInvitesLoading(true);
+    try {
+      const res = await fetch(`/api/teams/${teamId}/invitations`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveInvites(data.filter((i: ActiveInvite) => i.status === "pending"));
+      }
+    } finally {
+      setInvitesLoading(false);
+    }
+  }
+
+  function handleOpen() {
+    loadInvites();
+  }
+
+  async function sendEmailInvite() {
+    if (!email || !email.includes("@")) return;
+    setEmailStatus("sending");
+    try {
+      const res = await fetch(`/api/teams/${teamId}/invitations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "email", email }),
+      });
+      if (res.ok) {
+        setEmailStatus("sent");
+        setEmail("");
+        loadInvites();
+      } else {
+        setEmailStatus("error");
+      }
+    } catch {
+      setEmailStatus("error");
+    }
+  }
+
+  async function generateLink() {
+    setLinkLoading(true);
+    try {
+      const res = await fetch(`/api/teams/${teamId}/invitations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "link" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLinkUrl(data.url);
+        loadInvites();
+      }
+    } finally {
+      setLinkLoading(false);
+    }
+  }
+
+  async function copyLink(url: string) {
+    await navigator.clipboard.writeText(url).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function revokeInvite(invId: number) {
+    setRevoking(invId);
+    try {
+      const res = await fetch(`/api/teams/${teamId}/invitations/${invId}/revoke`, { method: "POST" });
+      if (res.ok) {
+        toast({ title: ti.inviteRevoked });
+        loadInvites();
+        if (linkUrl) setLinkUrl(null);
+      }
+    } finally {
+      setRevoking(null);
+    }
+  }
+
+  async function resendInvite(invId: number) {
+    setResending(invId);
+    try {
+      const res = await fetch(`/api/teams/${teamId}/invitations/${invId}/resend`, { method: "POST" });
+      if (res.ok) {
+        toast({ title: ti.inviteResent });
+      }
+    } finally {
+      setResending(null);
+    }
+  }
+
+  function handleClose() {
+    setEmail("");
+    setEmailStatus("idle");
+    setLinkUrl(null);
+    setCopied(false);
+    onClose();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); else handleOpen(); }}>
+      <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl text-white tracking-wide">
+            {ti.invitePlayer.toUpperCase()}
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Tab switcher */}
+        <div className="flex rounded-xl overflow-hidden border border-white/8" style={{ background: "rgba(255,255,255,0.04)" }}>
+          {(["email", "link"] as const).map(t => (
+            <button key={t} onClick={() => { setTab(t); setEmailStatus("idle"); }}
+              className="flex-1 py-2 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              style={{
+                background: tab === t ? teamColor : "transparent",
+                color: tab === t ? "white" : "rgba(255,255,255,0.4)",
+              }}>
+              {t === "email" ? <Mail className="h-3 w-3" /> : <Link2 className="h-3 w-3" />}
+              {t === "email" ? ti.emailTab : ti.linkTab}
+            </button>
+          ))}
+        </div>
+
+        {/* Email tab */}
+        {tab === "email" && (
+          <div className="space-y-3">
+            <p className="text-xs text-white/40">{ti.emailInviteLabel}</p>
+            {emailStatus === "sent" ? (
+              <div className="rounded-xl p-4 text-center space-y-1.5"
+                style={{ background: "rgba(46,204,113,0.08)", border: "1px solid rgba(46,204,113,0.2)" }}>
+                <Check className="h-6 w-6 text-green-400 mx-auto" />
+                <p className="text-sm font-semibold text-green-400">{ti.inviteSent}</p>
+                <p className="text-xs text-white/40">{ti.inviteSentDesc}</p>
+                <Button variant="ghost" size="sm" onClick={() => setEmailStatus("idle")}
+                  className="text-white/50 text-xs mt-1">
+                  Send another
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="stat-label text-white/50 block mb-1.5">{ti.playerEmail}</label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={e => { setEmail(e.target.value); setEmailStatus("idle"); }}
+                    placeholder={ti.emailPlaceholder}
+                    className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
+                    onKeyDown={e => { if (e.key === "Enter") sendEmailInvite(); }}
+                  />
+                </div>
+                {emailStatus === "error" && (
+                  <p className="text-xs text-red-400">{ti.inviteError}</p>
+                )}
+                <Button
+                  onClick={sendEmailInvite}
+                  disabled={emailStatus === "sending" || !email || !email.includes("@")}
+                  className="w-full font-semibold rounded-xl h-10"
+                  style={{ background: teamColor, color: "white" }}>
+                  {emailStatus === "sending" ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      {ti.sending}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Send className="h-3.5 w-3.5" />
+                      {ti.sendInvite}
+                    </span>
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Link tab */}
+        {tab === "link" && (
+          <div className="space-y-3">
+            <p className="text-xs text-white/40">{ti.linkInviteLabel}</p>
+            {linkUrl ? (
+              <div className="space-y-2">
+                <div className="rounded-xl p-3 flex items-center gap-2"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <p className="text-xs text-white/60 font-mono flex-1 truncate">{linkUrl}</p>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                    onClick={() => copyLink(linkUrl)}>
+                    {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
+                  </Button>
+                </div>
+                <Button onClick={() => copyLink(linkUrl)}
+                  className="w-full font-semibold rounded-xl h-10"
+                  style={{ background: copied ? "#2ecc71" : teamColor, color: "white" }}>
+                  {copied ? (
+                    <span className="flex items-center gap-2"><Check className="h-3.5 w-3.5" />{ti.linkCopied}</span>
+                  ) : (
+                    <span className="flex items-center gap-2"><Copy className="h-3.5 w-3.5" />{ti.copyLink}</span>
+                  )}
+                </Button>
+                <p className="text-[10px] text-white/25 text-center">{ti.linkDesc}</p>
+              </div>
+            ) : (
+              <Button
+                onClick={generateLink}
+                disabled={linkLoading}
+                className="w-full font-semibold rounded-xl h-10"
+                style={{ background: teamColor, color: "white" }}>
+                {linkLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    {ti.sending}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Link2 className="h-3.5 w-3.5" />
+                    {ti.generateLink}
+                  </span>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Active invitations list */}
+        {activeInvites.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-white/6">
+            <p className="stat-label text-white/40">{ti.activeInvites}</p>
+            {invitesLoading ? (
+              <Skeleton className="h-10 w-full rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />
+            ) : (
+              <div className="space-y-1.5">
+                {activeInvites.map(inv => (
+                  <div key={inv.id} className="rounded-xl px-3 py-2 flex items-center gap-2"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {inv.inviteType === "email" ? (
+                          <Mail className="h-3 w-3 text-white/30 shrink-0" />
+                        ) : (
+                          <Link2 className="h-3 w-3 text-white/30 shrink-0" />
+                        )}
+                        <p className="text-xs text-white/60 truncate">
+                          {inv.email ?? ti.linkTab}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {inv.inviteType === "email" && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-white/30 hover:text-white/60"
+                          disabled={resending === inv.id}
+                          onClick={() => resendInvite(inv.id)}
+                          title={ti.resend}>
+                          {resending === inv.id
+                            ? <span className="w-3 h-3 rounded-full border border-white/40 border-t-transparent animate-spin" />
+                            : <RotateCcw className="h-3 w-3" />}
+                        </Button>
+                      )}
+                      {inv.inviteType === "link" && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-white/30 hover:text-white/60"
+                          onClick={() => copyLink(inv.url)}
+                          title={ti.copyLink}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-red-400/50 hover:text-red-400"
+                        disabled={revoking === inv.id}
+                        onClick={() => revokeInvite(inv.id)}
+                        title={ti.revoke}>
+                        {revoking === inv.id
+                          ? <span className="w-3 h-3 rounded-full border border-red-400/40 border-t-transparent animate-spin" />
+                          : <X className="h-3 w-3" />}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Main component ──────────────────────────────────────────── */
+
 export default function PlayersTab({ teamId, teamColor }: { teamId: number; teamColor: string }) {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { t } = useI18n();
   const p = t.players;
+  const ti = t.teamInvite;
 
   const { data: players = [], isLoading } = useListPlayers(teamId, {
     query: { enabled: !!teamId, queryKey: getListPlayersQueryKey(teamId) },
@@ -114,10 +433,18 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="section-label"><span className="ltr-num">{players.length}</span> {p.athletesOnSquad}</p>
-        <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-player">
-          <Plus className="h-3.5 w-3.5 me-1.5" />
-          {p.addAthlete}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setInviteOpen(true)}
+            className="font-semibold rounded-xl border border-white/10 text-white/60 hover:text-white hover:border-white/20"
+            data-testid="button-invite-player">
+            <Mail className="h-3.5 w-3.5 me-1.5" />
+            {ti.invitePlayer}
+          </Button>
+          <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-player">
+            <Plus className="h-3.5 w-3.5 me-1.5" />
+            {p.addAthlete}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -127,7 +454,14 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
           <Users className="h-10 w-10 mx-auto text-white/15 mb-3" />
           <p className="font-display text-xl text-white/30 tracking-wide">{p.emptySquad.toUpperCase()}</p>
           <p className="text-xs text-white/25 mt-1 mb-4">{p.addToGetStarted}</p>
-          <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold">{p.addAthlete}</Button>
+          <div className="flex gap-2 justify-center">
+            <Button size="sm" variant="ghost" onClick={() => setInviteOpen(true)}
+              className="rounded-xl font-semibold border border-white/10 text-white/50">
+              <Mail className="h-3.5 w-3.5 me-1" />
+              {ti.invitePlayer}
+            </Button>
+            <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold">{p.addAthlete}</Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
@@ -167,6 +501,15 @@ export default function PlayersTab({ teamId, teamColor }: { teamId: number; team
         </div>
       )}
 
+      {/* Invite Player modal */}
+      <InvitePlayerModal
+        teamId={teamId}
+        teamColor={teamColor}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+      />
+
+      {/* Add / Edit player dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>

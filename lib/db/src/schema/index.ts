@@ -11,3 +11,4 @@ export * from "./files";
 export * from "./albums";
 export * from "./admin_audit_log";
 export * from "./platform_invitations";
+export * from "./team_invitations";

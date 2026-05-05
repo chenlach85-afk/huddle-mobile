@@ -1,0 +1,762 @@
+Adding it to the previous prompt now. Here's the full combined version with the player invitation feature added as Bug 4:
+
+Four bugs to fix. The first two are leftover renames, the third is missing functionality, and the fourth adds player invitation flows.
+Bug 1 — App URL still says "Billing Hub"
+The deployed app URL still references "billing-hub" or "billinghub" in the domain or path. The app is called HUDDLE.
+Diagnostic
+
+Show me the current Replit deployment URL
+Check package.json — what's the name field?
+Check if there's a replit.json, .replit, or replit.nix file with a project name
+Check if there's a custom domain set up in Replit deployment settings
+
+Fix
+In Replit:
+
+Go to project Settings (top right gear icon) → General → Rename project to huddle (lowercase, no spaces)
+The project URL changes to https://huddle-USERNAME.replit.app or similar
+If a custom domain is configured, update it to point at the new URL
+
+In code:
+
+Update package.json name: "name": "huddle"
+Update manifest.json: ensure "name": "HUDDLE", "short_name": "HUDDLE"
+Update any NEXT_PUBLIC_APP_URL env variable to the new URL — this is critical because invitation emails embed this URL in the magic link
+Search the entire codebase for hardcoded URLs:
+
+bash   grep -rn "billing-hub\|billinghub\|billing_hub\|BillingHub\|Billing Hub" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.json" --include="*.md" --include="*.html"
+
+Replace every occurrence with the proper HUDDLE branding
+
+After renaming the Replit project, the OLD URL (with billing-hub) becomes a dead link. Any invitation emails sent before this fix will be broken — the recipients will hit a 404. Resend any active invitations after the rename.
+Verify
+After changes, confirm:
+
+The browser URL bar shows the new domain (no "billing-hub")
+package.json shows "name": "huddle"
+A new invitation email contains a link starting with the new URL
+The PWA "Add to Home Screen" prompt shows "HUDDLE" not "Billing Hub"
+
+Bug 2 — Invitation emails come from "Billing Hub"
+The sender name in invitation emails is "Billing Hub" instead of "HUDDLE".
+Diagnostic
+Show me:
+
+The current value of RESEND_FROM_EMAIL in Replit Secrets
+The code in lib/email.ts (or wherever) that calls resend.emails.send()
+Whether the from field is hardcoded or env-driven
+
+Fix
+The Resend from field controls the sender name. It accepts the format:
+Display Name <email@domain.com>
+The display name is what users see in their inbox.
+
+Update Replit Secret RESEND_FROM_EMAIL:
+
+If you have a verified Resend domain: HUDDLE <noreply@yourdomain.com>
+If using Resend's default test sender: HUDDLE <onboarding@resend.dev>
+
+
+Make sure the email helper uses the env variable:
+
+typescript   // lib/email.ts
+   const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'HUDDLE <onboarding@resend.dev>';
+
+   await resend.emails.send({
+     from: FROM_EMAIL,
+     // ...
+   });
+If the code hardcodes from: 'Billing Hub <...>', change it to read from env. The fallback should also say "HUDDLE", never "Billing Hub".
+
+Check email subject lines and body for any remaining "Billing Hub" references:
+
+bash   grep -rn "Billing Hub\|billing hub\|billing-hub" --include="*.ts" --include="*.tsx"
+These often live in:
+
+Subject line constants (e.g., 'You're invited to Billing Hub')
+HTML email templates with the brand name in the header
+Translation files (messages/he.json, en.json, es.json)
+
+
+Update the email HTML template's brand wordmark to render "HUDDLE" instead of "Billing Hub". This is usually in the email template's <h1> or wordmark section:
+
+html   <div style="font-family: 'Bebas Neue', Impact, sans-serif; font-size: 42px; font-weight: 900; color: #FF6B35;">HUDDLE</div>
+
+Translation keys to verify:
+
+email.subject.invitation — should reference HUDDLE not Billing Hub
+email.heading.welcome — same
+email.footer.brand — same
+
+
+
+Test
+Send a test invitation to your own email. Check:
+
+Sender shown in inbox: "HUDDLE" (or whatever brand you set), NOT "Billing Hub"
+Subject line says HUDDLE
+Email body has HUDDLE branding throughout
+The invitation link points to the correct app URL (from bug 1)
+
+Bug 3 — Admin can't delete users
+The admin needs full control over user accounts including deletion.
+What's needed
+The admin can perform these actions on any user from /admin/users/[id]:
+ActionWhat it doesReversible?SuspendUser can't log in; data preservedYesReactivateReverse suspensionn/aSoft deleteAccount anonymized, can't log in, data preserved with "Deleted User" nameYes (via support)Hard deleteAccount and all data permanently destroyedNO
+Database — verify columns exist
+sql-- Run this to confirm the schema is in place
+select column_name, data_type, is_nullable
+from information_schema.columns
+where table_schema = 'public' and table_name = 'profiles'
+  and column_name in ('account_status', 'deleted_at', 'deleted_by', 'deletion_reason',
+                       'suspended_at', 'suspended_by', 'suspension_reason');
+If any of these are missing, add them:
+sqlalter table public.profiles
+  add column if not exists account_status text default 'active'
+    check (account_status in ('active', 'suspended', 'pending')),
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by uuid references auth.users(id),
+  add column if not exists deletion_reason text,
+  add column if not exists suspended_at timestamptz,
+  add column if not exists suspended_by uuid references auth.users(id),
+  add column if not exists suspension_reason text;
+
+alter table public.teams
+  add column if not exists archived_at timestamptz,
+  add column if not exists archived_by uuid references auth.users(id),
+  add column if not exists archived_reason text;
+API routes — implement these
+POST /api/admin/users/[id]/suspend
+typescript// Body: { reason?: string }
+// Behavior:
+// 1. Verify caller is platform admin
+// 2. Verify target user exists
+// 3. Block self-suspension: if (target.id === admin.id) return 400
+// 4. Update profiles: account_status='suspended', suspended_at=now(), suspended_by=admin.id, suspension_reason=body.reason
+// 5. Sign out all of target's sessions: supabaseAdmin.auth.admin.signOut(target.id, 'global')
+// 6. Audit log: action='user_suspended', target_user_id=target.id, metadata={reason}
+// 7. Send email to target (if their email is reachable): "Your HUDDLE account has been suspended"
+// 8. Return success
+POST /api/admin/users/[id]/reactivate
+typescript// Behavior:
+// 1. Verify admin
+// 2. Update profiles: account_status='active', clear suspended_at/by/reason
+// 3. Audit log: action='user_reactivated'
+// 4. Send email: "Your HUDDLE account has been reactivated"
+POST /api/admin/users/[id]/soft-delete
+typescript// Body: {
+//   reason?: string,
+//   team_action: 'archive' | 'transfer' | 'delete',
+//   transfer_to_user_id?: string  // required if team_action === 'transfer'
+// }
+// Behavior:
+// 1. Verify admin
+// 2. Block self-deletion
+// 3. Block deletion of last platform admin (count admins, must be > 1 if target is admin)
+// 4. Validate team_action and transfer_to_user_id if applicable
+// 5. For each team where target is owner (created_by = target.id):
+//    - if archive: set archived_at=now(), archived_by=admin.id, archived_reason='Owner deleted'
+//    - if transfer: update teams.created_by = transfer_to_user_id, also add transfer_to_user_id as coach in team_members if not already
+//    - if delete: delete the team (CASCADE handles events, messages, etc.)
+// 6. Anonymize the profile:
+//    full_name = 'Deleted User'
+//    email = `deleted-${target.id}@deleted.local`
+//    phone = null
+//    avatar_url = null
+//    deleted_at = now(), deleted_by = admin.id, deletion_reason = body.reason
+//    account_status = 'suspended'
+// 7. Update auth.users to disable login: ban for 100 years
+//    supabaseAdmin.auth.admin.updateUserById(target.id, { ban_duration: '876000h' })
+// 8. Sign out all sessions
+// 9. Audit log with team_action and counts: { team_action, teams_affected: N }
+POST /api/admin/users/[id]/hard-delete
+typescript// Body: {
+//   reason?: string,
+//   team_action: 'delete' | 'transfer',  // no 'archive' option for hard delete
+//   transfer_to_user_id?: string,
+//   confirmation_text: string  // must be exactly 'DELETE PERMANENTLY'
+// }
+// Behavior:
+// 1. Verify admin
+// 2. Verify confirmation_text === 'DELETE PERMANENTLY'
+// 3. Block self-deletion
+// 4. Block deletion of last platform admin
+// 5. Block if user has active subscription (when billing exists; for now skip this check)
+// 6. SNAPSHOT user data BEFORE deletion (for audit log):
+//    snapshot = { email, full_name, role, created_at, teams_owned: [...], etc. }
+// 7. Audit log FIRST (before deletion, so audit survives):
+//    action='user_hard_deleted', metadata={ snapshot, team_action, reason }
+// 8. Handle teams per team_action (delete or transfer)
+// 9. Delete the auth user: supabaseAdmin.auth.admin.deleteUser(target.id)
+//    -- This cascades through profiles (foreign key), team_members, etc.
+// 10. Return success
+UI — admin user detail page
+In /admin/users/[id], replace the existing actions section with this:
+Top action bar
+┌─────────────────────────────────────────────────────────────┐
+│ [Avatar] Chen Eldar              chen.lach85@gmail.com       │
+│          [ADMIN] [ACTIVE]                                     │
+│                                                                │
+│ Last sign-in: 2 hours ago · Created: 14 days ago              │
+│ 3 teams owned · 2 teams joined as coach                       │
+│                                                                │
+│ [Edit] [Reset password] [Toggle admin]                        │
+│ [Suspend] (if active) / [Reactivate] (if suspended)          │
+└─────────────────────────────────────────────────────────────┘
+Tabs
+
+Overview
+Teams owned
+Teams joined
+Invitations sent
+Audit log
+
+Danger zone (bottom of page)
+┌─────────────────────────────────────────────────────────────┐
+│  ⚠️  DANGER ZONE                                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                                │
+│  Soft delete account                                          │
+│  Anonymizes the user, blocks login, preserves history.        │
+│  Reversible by admin.                                         │
+│  [Soft delete account]                                        │
+│                                                                │
+├─────────────────────────────────────────────────────────────┤
+│                                                                │
+│  Permanent deletion                                           │
+│  Permanently destroys all user data. Cannot be undone.        │
+│  Use only for spam, GDPR requests, or test accounts.          │
+│  [Permanently delete account]                                 │
+│                                                                │
+└─────────────────────────────────────────────────────────────┘
+The danger zone uses red borders and warning icons.
+Soft delete modal
+┌────────────────────────────────────────────────┐
+│  Delete user account                            │
+├────────────────────────────────────────────────┤
+│  This will:                                     │
+│  • Anonymize the user (name → "Deleted User")  │
+│  • Block all future logins                     │
+│  • Preserve historical messages and events     │
+│  • Can be reversed by contacting support       │
+│                                                 │
+│  Reason (optional):                             │
+│  [                                            ] │
+│                                                 │
+│  This user owns 3 teams. What should happen?   │
+│  ◉ Archive teams (recommended)                  │
+│      Players keep read-only access             │
+│  ○ Transfer ownership                          │
+│      Pick a new owner: [Select coach...    ▼] │
+│  ○ Delete teams permanently                    │
+│      Destroys all team data                    │
+│                                                 │
+│  [Cancel]                    [Delete account]   │
+└────────────────────────────────────────────────┘
+Hard delete modal
+┌────────────────────────────────────────────────┐
+│  ⚠️  Permanently delete user                    │
+├────────────────────────────────────────────────┤
+│  THIS CANNOT BE UNDONE                          │
+│                                                 │
+│  All user data will be permanently destroyed.   │
+│  An audit log entry will be created with a     │
+│  snapshot before deletion.                      │
+│                                                 │
+│  Reason (required, min 10 characters):          │
+│  [                                            ] │
+│                                                 │
+│  This user owns 3 teams. What should happen?   │
+│  ◉ Delete teams permanently                     │
+│  ○ Transfer to: [Select coach...           ▼]  │
+│                                                 │
+│  Type DELETE PERMANENTLY to confirm:            │
+│  [                                            ] │
+│                                                 │
+│  [Cancel]              [Permanently delete]    │
+│                            (disabled until      │
+│                            confirmation matches)│
+└────────────────────────────────────────────────┘
+Safety rails — must enforce
+
+Cannot self-delete or self-suspend: every endpoint checks target.id !== admin.id
+Cannot delete last admin: count platform admins, block if target is admin and count <= 1
+Cannot hard-delete without exact phrase: server validates confirmation_text === 'DELETE PERMANENTLY' (case-sensitive)
+Hard delete requires reason >= 10 chars: server validates length
+
+If any of these is bypassed, that's a bug.
+Audit logging — verify it works
+Every admin action must log to admin_audit_log:
+sql-- Check that audit log entries are being created
+select admin_id, action, target_user_id, metadata, created_at
+from admin_audit_log
+order by created_at desc
+limit 20;
+Verify after testing each flow that the audit log has the corresponding entry.
+Test the full flow
+
+Create a test user via invitation: send invitation to a temporary email, register
+As admin, navigate to /admin/users and find that user
+Click into their detail page
+Test suspend → user can't log in anymore
+Test reactivate → user can log in again
+Test soft delete with archive teams → user is anonymized, their teams are archived
+Test soft delete with transfer teams → ownership transferred to another coach
+Verify in DB that profile is anonymized, NOT physically deleted
+Create another test user, test hard delete with delete teams
+Verify in auth.users that the user row is gone
+Verify in admin_audit_log that all actions are recorded with proper metadata
+Try to self-delete → blocked
+With only one admin, try to delete yourself as admin → blocked
+
+Bug 4 — Coaches need to invite players via email or link
+Coaches currently have no clean way to add players to their teams. Build two parallel flows: invite by email (with magic link, like the platform invitations) and invite by shareable link (the existing team invite code, made more usable).
+Conceptual model
+Coaches and only coaches can invite players to their teams. There are two flows:
+Flow A — Email invitation (one specific person): Coach types an email address, system sends an invitation email to that exact person. Recipient clicks the link, lands on a pre-filled signup page where their email is locked.
+Flow B — Shareable link (any person with the link): Coach copies a link or shares it via WhatsApp. Anyone with the link can use it to join the team — useful for parent groups, WhatsApp blasts, etc.
+Both flows result in a team_members row being created with role = 'player' (or 'parent' if the coach selects).
+Database
+We already have teams.invite_code for Flow B. Add a separate table for Flow A:
+sqlcreate table if not exists public.team_invitations (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  email text not null,
+  invited_role text not null default 'player' check (invited_role in ('player', 'parent', 'assistant_coach')),
+  -- Prefilled fields, optional, the coach can pre-set jersey number etc
+  prefill_jersey_number int,
+  prefill_position text,
+  prefill_full_name text,
+  -- Personal message from coach, shown in email and on accept page
+  personal_message text,
+  token text unique not null default replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''),
+  status text default 'pending' check (status in ('pending', 'accepted', 'revoked', 'expired')),
+  accepted_by_user_id uuid references auth.users(id),
+  accepted_at timestamptz,
+  expires_at timestamptz default now() + interval '14 days',
+  invited_by uuid references auth.users(id),
+  email_sent_at timestamptz,
+  email_send_count int default 0,
+  created_at timestamptz default now()
+);
+
+create index if not exists team_invitations_team_idx on team_invitations(team_id);
+create index if not exists team_invitations_email_idx on team_invitations(email);
+create index if not exists team_invitations_token_idx on team_invitations(token);
+create index if not exists team_invitations_status_idx on team_invitations(status);
+
+-- Allow anonymous read for token lookup (the public landing page needs this)
+alter table public.team_invitations enable row level security;
+
+create policy "anyone can read team invitation by token"
+  on public.team_invitations for select to anon, authenticated
+  using (status = 'pending' and expires_at > now());
+
+-- Coaches manage invitations for their own teams
+create policy "coaches manage team invitations"
+  on public.team_invitations for all to authenticated
+  using (is_team_coach(team_id))
+  with check (is_team_coach(team_id));
+Update handle_new_user trigger
+The existing trigger blocks signups without a platform invitation OR a joining_team_id in metadata. Extend it to also accept a team_invitation token:
+sqlcreate or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  has_platform_invite boolean;
+  has_team_code text;
+  has_team_invitation boolean;
+begin
+  select exists(
+    select 1 from platform_invitations
+    where email = new.email and status = 'pending' and expires_at > now()
+  ) into has_platform_invite;
+
+  -- joining_team_id is set when user joins via /join/[code] (shareable link, Flow B)
+  has_team_code := new.raw_user_meta_data->>'joining_team_id';
+
+  -- joining_team_invitation_id is set when user accepts /team-invite/[token] (Flow A)
+  select exists(
+    select 1 from team_invitations
+    where id::text = new.raw_user_meta_data->>'joining_team_invitation_id'
+      and status = 'pending'
+      and expires_at > now()
+      and email = new.email
+  ) into has_team_invitation;
+
+  if not has_platform_invite
+     and has_team_code is null
+     and not has_team_invitation
+     and (select count(*) from profiles) > 0 then
+    raise exception 'Signup requires either a platform invitation, team invite code, or team invitation';
+  end if;
+
+  insert into public.profiles (id, email, full_name, account_status)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data->>'full_name', ''),
+    'active'
+  );
+  return new;
+end;
+$$;
+API routes
+POST /api/teams/[teamId]/invitations
+Coach sends a player/parent invitation by email.
+typescript// Verify: caller is a coach of teamId
+// Body: {
+//   email: string;
+//   invited_role?: 'player' | 'parent' | 'assistant_coach';  // default 'player'
+//   prefill_jersey_number?: number;
+//   prefill_position?: string;
+//   prefill_full_name?: string;
+//   personal_message?: string;
+//   language?: 'he' | 'en' | 'es';  // for the email template
+// }
+//
+// Behavior:
+// 1. Validate email format
+// 2. Check if email already belongs to a team member of this team -> error "already a member"
+// 3. Check if there's a pending team_invitation for this email+team -> offer to resend instead
+// 4. Insert team_invitations row
+// 5. Generate invite URL: ${APP_URL}/team-invite/${token}
+// 6. Send email via Resend with the team's branding (logo + color)
+// 7. Update email_sent_at, email_send_count
+// 8. Return invitation row + URL
+POST /api/teams/[teamId]/invitations/[id]/resend
+Resend the email for a pending invitation. Same rules as platform invitations: max 5 sends, extends expiration.
+POST /api/teams/[teamId]/invitations/[id]/revoke
+Mark invitation as revoked. Coach only.
+GET /api/team-invite/[token]
+Public endpoint for the landing page. Returns invitation details (email, team name, team logo, team color, coach name, prefill values). Returns 404 if not found, 410 if used/expired.
+POST /api/auth/accept-team-invitation
+typescript// Body: {
+//   token: string;
+//   password: string;
+//   full_name: string;
+//   jersey_number?: number;  // overrides prefill if provided
+//   position?: string;
+// }
+//
+// Behavior (uses service role):
+// 1. Validate token
+// 2. Create user via supabaseAdmin.auth.admin.createUser({
+//      email: invitation.email,
+//      password,
+//      email_confirm: true,
+//      user_metadata: {
+//        full_name,
+//        joining_team_invitation_id: invitation.id  // satisfies the trigger
+//      }
+//    })
+// 3. Insert team_members row:
+//    {
+//      team_id: invitation.team_id,
+//      user_id: newUser.id,
+//      role: invitation.invited_role,  // player/parent/assistant_coach
+//      jersey_number: body.jersey_number ?? invitation.prefill_jersey_number,
+//      position: body.position ?? invitation.prefill_position,
+//      status: 'active'
+//    }
+// 4. Set profiles.last_team_id = invitation.team_id
+// 5. Mark invitation as accepted
+// 6. Sign user in (same pattern as platform invitation accept)
+// 7. Redirect to /team/[team_id]
+Coach UI — invite players
+In /team/[id]/squad (or the existing squad page), add an "Invite player" button at the top of the squad list. Clicking opens a modal with two tabs:
+Tab 1: Invite by email
+┌──────────────────────────────────────────────┐
+│  Invite a player                              │
+│  ─────────────────────────────────────────── │
+│  [ By email ] [ By shareable link ]           │
+│                                                │
+│  Email address (required)                     │
+│  [ player@example.com                       ] │
+│                                                │
+│  Role                                         │
+│  ◉ Player    ○ Parent                        │
+│                                                │
+│  ▼ Optional details                           │
+│    Jersey number: [  ]                        │
+│    Position: [                              ] │
+│    Full name (pre-fill): [                  ] │
+│                                                │
+│  Personal message (optional, sent in email)   │
+│  [                                          ] │
+│                                                │
+│  Language for email                           │
+│  ◉ Hebrew   ○ English   ○ Spanish            │
+│                                                │
+│  [Cancel]              [Send invitation]      │
+└──────────────────────────────────────────────┘
+After sending: success toast + the invitation appears in the "Pending invitations" section below the squad list. Form resets; coach can send another.
+If email send fails, show: "Email failed to send. Copy the link instead:" with a copy button.
+Tab 2: Invite by shareable link
+┌──────────────────────────────────────────────┐
+│  Invite a player                              │
+│  ─────────────────────────────────────────── │
+│  [ By email ] [ By shareable link ]           │
+│                                                │
+│  Anyone with this link can join your team.    │
+│  Share it with parents on WhatsApp or other.  │
+│                                                │
+│  Team join link                               │
+│  [ https://app.com/join/ABC12345          ] [Copy] │
+│                                                │
+│  [Share via WhatsApp]                         │
+│  [Generate new link] (revokes old one)        │
+│                                                │
+│  Stats                                        │
+│  This link has been used by 4 players.        │
+│                                                │
+└──────────────────────────────────────────────┘
+The "Share via WhatsApp" button opens https://wa.me/?text= with a pre-filled message in the user's preferred language:
+Hebrew: "הצטרף לקבוצה {team_name} ב-HUDDLE: {url}"
+English: "Join {team_name} on HUDDLE: {url}"
+Spanish: "Únete a {team_name} en HUDDLE: {url}"
+The "Generate new link" button regenerates teams.invite_code (invalidates the old one, useful if the link was shared too widely).
+Pending invitations section
+Below the squad, show a "Pending invitations" section visible only to coaches:
+┌──────────────────────────────────────────────┐
+│  Pending invitations (3)                      │
+│  ─────────────────────────────────────────── │
+│  [Avatar] dani@example.com                    │
+│           Player · Sent 2 days ago · 1 send   │
+│           [Resend] [Copy link] [Revoke]       │
+├──────────────────────────────────────────────┤
+│  [Avatar] amir@example.com                    │
+│           Player · Sent 1 hour ago            │
+│           [Resend] [Copy link] [Revoke]       │
+└──────────────────────────────────────────────┘
+Pending invitations are part of the squad workflow — coach should see them in the same place as the active roster.
+Recipient UI — accept team invitation
+Public landing page /team-invite/[token]
+When recipient clicks the email link:
+┌──────────────────────────────────────────────┐
+│  HUDDLE                                       │
+│                                                │
+│  [Team Logo]                                  │
+│                                                │
+│  You've been invited to                       │
+│  LIGHTNING FC                                 │
+│                                                │
+│  Coach Martinez · Soccer                      │
+│                                                │
+│  "Welcome to the team! Looking forward to     │
+│   the season." — Coach Martinez               │
+│                                                │
+│  ─────────────────────────────────────────── │
+│                                                │
+│  Email: dani@example.com (locked)             │
+│                                                │
+│  Full name *                                  │
+│  [                                          ] │
+│                                                │
+│  Password *                                   │
+│  [                                          ] │
+│                                                │
+│  Confirm password *                           │
+│  [                                          ] │
+│                                                │
+│  Jersey number (optional)                     │
+│  [   ]                                        │
+│                                                │
+│  Position (optional)                          │
+│  [                                          ] │
+│                                                │
+│  [Join LIGHTNING FC]                          │
+└──────────────────────────────────────────────┘
+The page uses the team's primary color as the accent throughout — first impression should feel like THEIR team, not generic HUDDLE branding (HUDDLE wordmark is small, team is the hero).
+If the team has a logo, show it prominently. If not, show a colored gradient tile with the team's first letter.
+If the recipient is already logged in:
+
+If they're logged in as a different account → show "Sign out first" screen (same pattern as platform invitations)
+If they're logged in with the same email → automatically join the team (no signup form needed) and redirect to /team/[id]
+
+Email template — team invitation
+The email should feel personal, from the coach, not from a generic platform.
+Subject (Hebrew): {coach_name} הזמין אותך להצטרף ל-{team_name}
+Subject (English): {coach_name} invited you to join {team_name}
+Subject (Spanish): {coach_name} te invitó a unirte a {team_name}
+
+Body:
+[Team Logo or colored tile with team initial]
+
+[Hebrew]
+שלום,
+
+{coach_name} הזמין אותך להצטרף לקבוצה {team_name} ב-HUDDLE.
+
+{personal_message if present}
+
+HUDDLE היא האפליקציה שמרכזת את כל מה שקורה בקבוצה — לוח זמנים, אירועים, הודעות, ועוד.
+
+[Join the team button - team color]
+
+הקישור תקף ל-14 ימים.
+
+[English]
+Hi,
+
+{coach_name} invited you to join {team_name} on HUDDLE.
+
+{personal_message if present}
+
+HUDDLE is the app that keeps everything together — schedule, events, messages, and more.
+
+[Join the team button - team color]
+
+This link is valid for 14 days.
+The email's primary CTA button uses the team's primary color, not the default HUDDLE orange. This ties the email to the team's identity.
+Translations
+Add to he.json:
+json{
+  "team_invite": {
+    "invite_player_button": "הזמן שחקן",
+    "tab_email": "דרך אימייל",
+    "tab_link": "דרך קישור",
+    "email_label": "כתובת אימייל",
+    "email_placeholder": "player@example.com",
+    "role_label": "תפקיד",
+    "role_player": "שחקן",
+    "role_parent": "הורה",
+    "role_assistant_coach": "מאמן עוזר",
+    "optional_details": "פרטים אופציונליים",
+    "jersey_number": "מספר חולצה",
+    "position": "תפקיד במגרש",
+    "prefill_name": "שם מלא (מילוי מראש)",
+    "personal_message": "הודעה אישית",
+    "personal_message_help": "תופיע במייל ובעמוד ההצטרפות",
+    "email_language": "שפת המייל",
+    "send_invitation": "שלח הזמנה",
+    "shareable_link_intro": "כל מי שיש לו את הקישור יכול להצטרף לקבוצה. שתף עם הורים ב-וואטסאפ.",
+    "team_join_link": "קישור הצטרפות לקבוצה",
+    "share_whatsapp": "שתף ב-וואטסאפ",
+    "generate_new_link": "צור קישור חדש",
+    "generate_new_link_warning": "פעולה זו תבטל את הקישור הישן",
+    "link_used_count": "הקישור נמצא בשימוש על ידי {n} שחקנים",
+    "pending_invitations": "הזמנות ממתינות ({n})",
+    "no_pending": "אין הזמנות ממתינות",
+    "send_count": "נשלח {n} פעמים",
+    "resend": "שלח שוב",
+    "copy_link": "העתק קישור",
+    "revoke": "בטל",
+    "already_member_error": "{email} כבר חבר בקבוצה",
+    "invitation_sent": "ההזמנה נשלחה ל-{email}",
+    "invitation_resent": "ההזמנה נשלחה שוב ל-{email}",
+    "max_resends_reached": "הגעת למקסימום ניסיונות שליחה",
+    "email_failed_copy_link": "המייל נכשל. העתק את הקישור ושלח ידנית:",
+    "join_landing_invited_to": "הוזמנת להצטרף ל",
+    "join_landing_coach_label": "מאמן",
+    "join_landing_join_button": "הצטרף ל-{team}",
+    "join_landing_email_locked": "אימייל",
+    "join_landing_full_name": "שם מלא",
+    "join_landing_password": "סיסמה",
+    "join_landing_password_confirm": "אימות סיסמה",
+    "join_landing_jersey_optional": "מספר חולצה (אופציונלי)",
+    "join_landing_position_optional": "תפקיד (אופציונלי)",
+    "join_landing_invalid": "הזמנה לא תקינה",
+    "join_landing_expired": "ההזמנה פגה. בקש מהמאמן לשלוח הזמנה חדשה.",
+    "join_landing_already_used": "ההזמנה כבר שומשה. אנא התחבר.",
+    "email_subject": "{coach_name} הזמין אותך להצטרף ל-{team_name}",
+    "email_heading": "הוזמנת להצטרף ל-{team_name}",
+    "email_body": "{coach_name} הזמין אותך להצטרף לקבוצה {team_name} ב-HUDDLE.",
+    "email_what_is_huddle": "HUDDLE היא האפליקציה שמרכזת את כל מה שקורה בקבוצה — לוח זמנים, אירועים, הודעות, ועוד.",
+    "email_cta": "הצטרף לקבוצה",
+    "email_link_validity": "הקישור תקף ל-14 ימים."
+  }
+}
+Add equivalents to en.json and es.json.
+Test the full flow
+Email invitation flow:
+
+As coach of "Lightning FC", go to squad page
+Click "Invite player"
+Select "By email" tab
+Enter test-player@gmail.com, role: Player
+Add personal message: "Welcome to the squad!"
+Click "Send invitation"
+Verify success toast and pending invitation appears below squad
+Open test-player@gmail.com inbox (or use a +alias on your real Gmail)
+Verify email shows: team logo, team color, coach name, personal message
+Click "Join Lightning FC" button in email
+Verify lands on team-invite page with team branding (orange color, lightning logo)
+Email is locked to test-player@gmail.com
+Fill form: name, password, jersey 9, position "Forward"
+Submit
+Verify: now logged in as test-player, redirected to /team/[id]
+Verify in squad list: jersey 9, position "Forward", role player
+Verify pending invitation now shows as "accepted" in coach view
+
+Shareable link flow:
+
+As coach, go to squad page → Invite player → "By shareable link" tab
+Copy the link
+In an incognito window, paste the link
+Verify lands on /join/[code] showing team preview
+"Join now" → sign up form
+Fill email, name, password
+Submit
+Verify added to team_members as player, redirected to /team/[id]
+
+Edge cases:
+
+Coach tries to invite an email that's already a team member → error
+Coach revokes a pending invitation → recipient clicking link sees "revoked"
+Pending invitation expires after 14 days → recipient sees "expired"
+Coach resends invitation → counter increments, expiration extended
+Coach generates new shareable link → old link returns 404
+Recipient already has a HUDDLE account with same email → auto-joins team without re-registering (just logs them in if needed)
+
+Acceptance criteria
+App URL rename:
+
+✓ No occurrences of "billing-hub" or similar in URLs
+✓ Replit project renamed to "huddle"
+✓ package.json name field is "huddle"
+✓ Manifest shows HUDDLE
+✓ NEXT_PUBLIC_APP_URL updated to new URL
+✓ Hardcoded URL references in code updated
+
+Email branding:
+7. ✓ RESEND_FROM_EMAIL set to "HUDDLE <...>"
+8. ✓ Test invitation email shows sender as "HUDDLE", not "Billing Hub"
+9. ✓ Email body shows HUDDLE wordmark
+10. ✓ Subject line references HUDDLE
+11. ✓ All translations updated (no leftover "Billing Hub" strings)
+User deletion:
+12. ✓ Suspend / reactivate work end-to-end
+13. ✓ Soft delete with all 3 team actions (archive / transfer / delete) work
+14. ✓ Hard delete with confirmation phrase works
+15. ✓ Self-deletion blocked
+16. ✓ Last-admin protection works
+17. ✓ Hard delete requires >= 10 char reason
+18. ✓ All actions log to admin_audit_log with metadata
+19. ✓ Anonymized soft-deleted users still show in old messages as "Deleted User"
+20. ✓ Hard-deleted users disappear from auth.users entirely
+Player invitations (email + link):
+21. ✓ Coach can send email invitation to a player from squad page
+22. ✓ Email arrives with team-specific branding (color, logo)
+23. ✓ Recipient lands on team-invite page with team branding
+24. ✓ Email is locked, recipient enters name/password/optional jersey
+25. ✓ After accepting, recipient lands on team page as a player
+26. ✓ Coach can copy/share the team's permanent invite link
+27. ✓ "Share via WhatsApp" button opens WhatsApp with pre-filled message
+28. ✓ Coach can regenerate the team invite code (invalidates old)
+29. ✓ Pending invitations visible to coach with resend/revoke actions
+30. ✓ Resend extends expiration and increments counter, blocks at 5
+31. ✓ Already-member error shown if coach tries to re-invite an existing member
+32. ✓ All player invite UI translates correctly in he/en/es
+33. ✓ Trigger updated to allow signup via team_invitations
+34. ✓ RLS allows coaches to manage team_invitations only for their teams
+Run bug 1 first (URL rename — needs manual Replit work), then bug 2 (email branding), then bug 3 (deletion), then bug 4 (player invitations). Bug 4 is the largest of the four; expect it to take the longest.
+
+That's the full combined prompt. A few practical notes:
+On bug 4's two flows being parallel — coaches will use both, often. The email invitation is for "one specific player I want to add" (most common). The shareable link is for "I'm starting a new season, share this with all the parents at once." Don't pick one, build both.
+On the team invite URL difference — /join/[code] is for shareable links (the existing flow, just made more usable), /team-invite/[token] is for email invitations (one-time, locked to a specific email). Two different URL patterns, two different tables, two different behaviors. The agent will be tempted to merge them — push back, they're not the same thing.
+On the "already logged in" flow for recipients — this matters more than you'd think. If a coach invites a player who already has a HUDDLE account (because they're already a member of another team), clicking the email link should NOT create a duplicate account. The flow should detect this and just add them to the new team. The prompt covers this in the test cases.
+On the email branding being team-specific — this is a small detail that makes a big difference. When a coach invites a parent and the email shows the team's actual logo and color (not generic HUDDLE orange), parents trust it more. They feel "this is my kid's team" not "this is a generic SaaS." Worth the extra 30 minutes to implement properly.
+Paste the prompt. Do bug 1 manually in the Replit dashboard first (rename the project), then let the agent run bugs 2-4. Update me when bug 4's email flow works end-to-end — that's the most likely place to hit issues with Resend's domain verification rules.

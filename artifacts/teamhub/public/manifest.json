@@ -1,0 +1,17 @@
+{
+  "name": "Huddle Pro",
+  "short_name": "Huddle",
+  "description": "Professional sports team management for coaches",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1729",
+  "theme_color": "#FF6B35",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}
