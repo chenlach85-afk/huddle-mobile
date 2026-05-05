@@ -1,12 +1,16 @@
 import { Router, type IRouter } from "express";
 import { eq, and, count } from "drizzle-orm";
 import { db, albumsTable, filesTable } from "@workspace/db";
+import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
+import { assertTeamAccess } from "../helpers/teamAccess";
 
 const router: IRouter = Router();
 
-router.get("/teams/:teamId/albums", async (req, res): Promise<void> => {
+router.get("/teams/:teamId/albums", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const teamId = parseInt(req.params.teamId);
   if (isNaN(teamId)) { res.status(400).json({ error: "Invalid teamId" }); return; }
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const albums = await db
     .select({
@@ -35,9 +39,12 @@ router.get("/teams/:teamId/albums", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.post("/teams/:teamId/albums", async (req, res): Promise<void> => {
+router.post("/teams/:teamId/albums", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const teamId = parseInt(req.params.teamId);
   if (isNaN(teamId)) { res.status(400).json({ error: "Invalid teamId" }); return; }
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
+
   const { name, description, coverUrl } = req.body as { name?: string; description?: string; coverUrl?: string };
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [album] = await db
@@ -47,11 +54,15 @@ router.post("/teams/:teamId/albums", async (req, res): Promise<void> => {
   res.status(201).json({ ...album, fileCount: 0 });
 });
 
-router.get("/albums/:albumId", async (req, res): Promise<void> => {
+router.get("/albums/:albumId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const albumId = parseInt(req.params.albumId);
   if (isNaN(albumId)) { res.status(400).json({ error: "Invalid albumId" }); return; }
+
   const [album] = await db.select().from(albumsTable).where(eq(albumsTable.id, albumId));
   if (!album) { res.status(404).json({ error: "Album not found" }); return; }
+
+  if (!(await assertTeamAccess(album.teamId, req, res))) return;
+
   const [{ value }] = await db
     .select({ value: count() })
     .from(filesTable)
@@ -59,9 +70,14 @@ router.get("/albums/:albumId", async (req, res): Promise<void> => {
   res.json({ ...album, fileCount: Number(value) });
 });
 
-router.patch("/albums/:albumId", async (req, res): Promise<void> => {
+router.patch("/albums/:albumId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const albumId = parseInt(req.params.albumId);
   if (isNaN(albumId)) { res.status(400).json({ error: "Invalid albumId" }); return; }
+
+  const [existing] = await db.select({ teamId: albumsTable.teamId }).from(albumsTable).where(eq(albumsTable.id, albumId));
+  if (!existing) { res.status(404).json({ error: "Album not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
   const { name, description, coverUrl } = req.body as { name?: string; description?: string; coverUrl?: string };
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
@@ -76,16 +92,26 @@ router.patch("/albums/:albumId", async (req, res): Promise<void> => {
   res.json({ ...album, fileCount: Number(value) });
 });
 
-router.delete("/albums/:albumId", async (req, res): Promise<void> => {
+router.delete("/albums/:albumId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const albumId = parseInt(req.params.albumId);
   if (isNaN(albumId)) { res.status(400).json({ error: "Invalid albumId" }); return; }
+
+  const [existing] = await db.select({ teamId: albumsTable.teamId }).from(albumsTable).where(eq(albumsTable.id, albumId));
+  if (!existing) { res.status(404).json({ error: "Album not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
   await db.delete(albumsTable).where(eq(albumsTable.id, albumId));
   res.sendStatus(204);
 });
 
-router.get("/albums/:albumId/files", async (req, res): Promise<void> => {
+router.get("/albums/:albumId/files", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const albumId = parseInt(req.params.albumId);
   if (isNaN(albumId)) { res.status(400).json({ error: "Invalid albumId" }); return; }
+
+  const [album] = await db.select({ teamId: albumsTable.teamId }).from(albumsTable).where(eq(albumsTable.id, albumId));
+  if (!album) { res.status(404).json({ error: "Album not found" }); return; }
+  if (!(await assertTeamAccess(album.teamId, req, res))) return;
+
   const files = await db
     .select()
     .from(filesTable)
@@ -94,9 +120,12 @@ router.get("/albums/:albumId/files", async (req, res): Promise<void> => {
   res.json(files);
 });
 
-router.get("/teams/:teamId/docs", async (req, res): Promise<void> => {
+router.get("/teams/:teamId/docs", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const teamId = parseInt(req.params.teamId);
   if (isNaN(teamId)) { res.status(400).json({ error: "Invalid teamId" }); return; }
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
+
   const docs = await db
     .select()
     .from(filesTable)

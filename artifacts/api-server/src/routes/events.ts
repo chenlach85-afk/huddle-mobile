@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, count } from "drizzle-orm";
-import { db, eventsTable, attendanceTable, playersTable } from "@workspace/db";
+import { db, eventsTable, attendanceTable, playersTable, teamsTable } from "@workspace/db";
 import {
   ListEventsParams,
   CreateEventParams,
@@ -13,6 +13,8 @@ import {
   UpsertAttendanceBody,
   ListAttendanceParams,
 } from "@workspace/api-zod";
+import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
+import { assertTeamAccess } from "../helpers/teamAccess";
 
 const router: IRouter = Router();
 
@@ -33,20 +35,23 @@ async function getEventWithCounts(eventId: number) {
   return { ...event, attendingCount: Number(attending), totalCount: Number(total) };
 }
 
-router.get("/teams/:teamId/events", async (req, res): Promise<void> => {
+router.get("/teams/:teamId/events", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = ListEventsParams.safeParse({ teamId: req.params.teamId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const events = await db
     .select()
     .from(eventsTable)
-    .where(eq(eventsTable.teamId, params.data.teamId))
+    .where(eq(eventsTable.teamId, teamId))
     .orderBy(eventsTable.startsAt);
 
   const [{ total }] = await db
     .select({ total: count() })
     .from(playersTable)
-    .where(eq(playersTable.teamId, params.data.teamId));
+    .where(eq(playersTable.teamId, teamId));
 
   const eventsWithCounts = await Promise.all(
     events.map(async (event) => {
@@ -61,17 +66,20 @@ router.get("/teams/:teamId/events", async (req, res): Promise<void> => {
   res.json(eventsWithCounts);
 });
 
-router.post("/teams/:teamId/events", async (req, res): Promise<void> => {
+router.post("/teams/:teamId/events", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = CreateEventParams.safeParse({ teamId: req.params.teamId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = CreateEventBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const d = parsed.data;
   const [event] = await db
     .insert(eventsTable)
     .values({
-      teamId: params.data.teamId,
+      teamId,
       title: d.title,
       type: d.type ?? "practice",
       location: d.location ?? null,
@@ -84,19 +92,27 @@ router.post("/teams/:teamId/events", async (req, res): Promise<void> => {
   res.status(201).json({ ...event, attendingCount: 0, totalCount: 0 });
 });
 
-router.get("/events/:eventId", async (req, res): Promise<void> => {
+router.get("/events/:eventId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = GetEventParams.safeParse({ eventId: req.params.eventId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
   const event = await getEventWithCounts(params.data.eventId);
   if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+
+  if (!(await assertTeamAccess(event.teamId, req, res))) return;
+
   res.json(event);
 });
 
-router.patch("/events/:eventId", async (req, res): Promise<void> => {
+router.patch("/events/:eventId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = UpdateEventParams.safeParse({ eventId: req.params.eventId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateEventBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: eventsTable.teamId }).from(eventsTable).where(eq(eventsTable.id, params.data.eventId));
+  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
 
   const updates: Record<string, unknown> = {};
   const d = parsed.data;
@@ -118,17 +134,26 @@ router.patch("/events/:eventId", async (req, res): Promise<void> => {
   res.json(result);
 });
 
-router.delete("/events/:eventId", async (req, res): Promise<void> => {
+router.delete("/events/:eventId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = DeleteEventParams.safeParse({ eventId: req.params.eventId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: eventsTable.teamId }).from(eventsTable).where(eq(eventsTable.id, params.data.eventId));
+  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
   const [event] = await db.delete(eventsTable).where(eq(eventsTable.id, params.data.eventId)).returning();
   if (!event) { res.status(404).json({ error: "Event not found" }); return; }
   res.sendStatus(204);
 });
 
-router.get("/events/:eventId/attendance", async (req, res): Promise<void> => {
+router.get("/events/:eventId/attendance", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = ListAttendanceParams.safeParse({ eventId: req.params.eventId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: eventsTable.teamId }).from(eventsTable).where(eq(eventsTable.id, params.data.eventId));
+  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
 
   const records = await db
     .select({
@@ -147,11 +172,15 @@ router.get("/events/:eventId/attendance", async (req, res): Promise<void> => {
   res.json(records);
 });
 
-router.post("/events/:eventId/attendance", async (req, res): Promise<void> => {
+router.post("/events/:eventId/attendance", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = UpsertAttendanceParams.safeParse({ eventId: req.params.eventId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpsertAttendanceBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: eventsTable.teamId }).from(eventsTable).where(eq(eventsTable.id, params.data.eventId));
+  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
 
   const [record] = await db
     .insert(attendanceTable)

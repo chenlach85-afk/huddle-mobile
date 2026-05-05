@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "TeamHub"
+title = "Huddle Pro"
 version = "1.0.0"
 id = "artifacts/teamhub"
 router = "path"

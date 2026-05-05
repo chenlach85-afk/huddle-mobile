@@ -1,4 +1,4 @@
-# HUDDLE (formerly TeamHub)
+# Huddle Pro (formerly TeamHub / Billing Hub)
 
 A full-stack sports team management app for coaches, built with React+Vite and Express.
 

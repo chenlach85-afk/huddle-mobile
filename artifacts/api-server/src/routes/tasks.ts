@@ -9,6 +9,8 @@ import {
   UpdateTaskBody,
   DeleteTaskParams,
 } from "@workspace/api-zod";
+import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
+import { assertTeamAccess } from "../helpers/teamAccess";
 
 const router: IRouter = Router();
 
@@ -21,31 +23,37 @@ async function enrichTask(task: typeof tasksTable.$inferSelect) {
   return { ...task, assignedToPlayerName: player?.name ?? null };
 }
 
-router.get("/teams/:teamId/tasks", async (req, res): Promise<void> => {
+router.get("/teams/:teamId/tasks", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = ListTasksParams.safeParse({ teamId: req.params.teamId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const tasks = await db
     .select()
     .from(tasksTable)
-    .where(eq(tasksTable.teamId, params.data.teamId))
+    .where(eq(tasksTable.teamId, teamId))
     .orderBy(tasksTable.createdAt);
 
   const enriched = await Promise.all(tasks.map(enrichTask));
   res.json(enriched);
 });
 
-router.post("/teams/:teamId/tasks", async (req, res): Promise<void> => {
+router.post("/teams/:teamId/tasks", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = CreateTaskParams.safeParse({ teamId: req.params.teamId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const d = parsed.data;
   const [task] = await db
     .insert(tasksTable)
     .values({
-      teamId: params.data.teamId,
+      teamId,
       title: d.title,
       description: d.description ?? null,
       assignedToPlayerId: d.assignedToPlayerId ?? null,
@@ -59,11 +67,15 @@ router.post("/teams/:teamId/tasks", async (req, res): Promise<void> => {
   res.status(201).json(enriched);
 });
 
-router.patch("/tasks/:taskId", async (req, res): Promise<void> => {
+router.patch("/tasks/:taskId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = UpdateTaskParams.safeParse({ taskId: req.params.taskId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateTaskBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: tasksTable.teamId }).from(tasksTable).where(eq(tasksTable.id, params.data.taskId));
+  if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
 
   const updates: Record<string, unknown> = {};
   const d = parsed.data;
@@ -85,9 +97,14 @@ router.patch("/tasks/:taskId", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.delete("/tasks/:taskId", async (req, res): Promise<void> => {
+router.delete("/tasks/:taskId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = DeleteTaskParams.safeParse({ taskId: req.params.taskId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: tasksTable.teamId }).from(tasksTable).where(eq(tasksTable.id, params.data.taskId));
+  if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
   const [task] = await db.delete(tasksTable).where(eq(tasksTable.id, params.data.taskId)).returning();
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   res.sendStatus(204);

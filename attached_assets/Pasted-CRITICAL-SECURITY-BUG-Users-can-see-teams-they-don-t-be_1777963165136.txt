@@ -1,0 +1,401 @@
+CRITICAL SECURITY BUG: Users can see teams they don't belong to. This is a data leak. Fix immediately at the database (RLS) level — UI-only fixes are insufficient.
+The bug
+
+A coach should see ONLY teams where they are a member (created the team, or were added as a coach/assistant_coach)
+A player should see ONLY teams where they are a member as a player or parent
+An admin should see all teams ONLY when accessing admin panel routes; in normal coach/player views they should follow the same rules as everyone else
+
+Currently a newly invited coach sees all teams created by all coaches. That's a data leak. Fix it at the RLS level so even direct database queries can't bypass it.
+Step 1 — Diagnostic
+Show me the current state. Run these queries with the SERVICE ROLE (so we see truth, not what RLS shows):
+sql-- Show all RLS policies on teams and team_members tables
+select schemaname, tablename, policyname, cmd, qual, with_check
+from pg_policies
+where tablename in ('teams', 'team_members', 'profiles')
+order by tablename, cmd, policyname;
+
+-- Show all teams in the system
+select id, name, created_by, created_at, archived_at
+from teams
+order by created_at;
+
+-- Show all team memberships
+select tm.id, tm.team_id, t.name as team_name, tm.user_id, p.email, tm.role, tm.status
+from team_members tm
+join teams t on t.id = tm.team_id
+join profiles p on p.id = tm.user_id
+order by t.name, tm.role;
+
+-- Test what a specific coach SHOULD see
+-- (replace 'coach@example.com' with the actual email of the affected user)
+select t.id, t.name
+from teams t
+join team_members tm on tm.team_id = t.id
+join profiles p on p.id = tm.user_id
+where p.email = 'COACH_EMAIL_HERE'
+  and tm.status = 'active';
+Show me the full output. Especially look for:
+
+Are there RLS policies on teams? If not, that's the bug
+Does the select policy on teams have using (is_team_member(id)) or similar?
+Are there any policies with using (true)?
+
+Step 2 — Find the broken query
+Search the codebase for every place that fetches teams. Show me each one:
+bashgrep -rn "from('teams')" --include="*.ts" --include="*.tsx"
+grep -rn '.from("teams")' --include="*.ts" --include="*.tsx"
+grep -rn "\.from(.teams.)" --include="*.ts" --include="*.tsx"
+Also search for usages of the SERVICE ROLE client where teams are fetched:
+bashgrep -rn "supabaseAdmin" --include="*.ts" --include="*.tsx" -l
+grep -rn "service_role" --include="*.ts" --include="*.tsx" -l
+grep -rn "SUPABASE_SERVICE_ROLE_KEY" --include="*.ts" --include="*.tsx" -l
+For each file that fetches teams, show me:
+
+The file path and line numbers
+Which Supabase client it uses (anon/auth vs. service role)
+What the query looks like
+
+The bug is almost certainly that a coach-facing page (like /teams or a team switcher) is using the service role client instead of the user's authenticated client. Service role bypasses RLS entirely.
+Step 3 — Fix the RLS policies
+Replace the existing teams and team_members policies with these strict, correct versions:
+sql-- Make sure RLS is enabled
+alter table public.teams enable row level security;
+alter table public.team_members enable row level security;
+
+-- ===========================================
+-- TEAMS TABLE POLICIES
+-- ===========================================
+
+-- Drop ALL existing policies on teams (we're rewriting them)
+do $$
+declare pol record;
+begin
+  for pol in (select policyname from pg_policies where tablename = 'teams' and schemaname = 'public')
+  loop
+    execute format('drop policy if exists %I on public.teams', pol.policyname);
+  end loop;
+end $$;
+
+-- Helper: is the current user a member of this team (any role)?
+create or replace function public.is_team_member(team_uuid uuid)
+returns boolean language sql security definer stable
+set search_path = public as $$
+  select exists(
+    select 1 from public.team_members
+    where team_id = team_uuid
+      and user_id = auth.uid()
+      and status = 'active'
+  );
+$$;
+
+-- Helper: is the current user a coach of this team?
+create or replace function public.is_team_coach(team_uuid uuid)
+returns boolean language sql security definer stable
+set search_path = public as $$
+  select exists(
+    select 1 from public.team_members
+    where team_id = team_uuid
+      and user_id = auth.uid()
+      and role in ('coach', 'assistant_coach')
+      and status = 'active'
+  );
+$$;
+
+-- Helper: is the current user the team owner (created the team)?
+create or replace function public.is_team_owner(team_uuid uuid)
+returns boolean language sql security definer stable
+set search_path = public as $$
+  select exists(
+    select 1 from public.teams
+    where id = team_uuid and created_by = auth.uid()
+  );
+$$;
+
+-- SELECT: only members of a team can see it
+create policy "members view team" on public.teams
+  for select to authenticated
+  using (public.is_team_member(id));
+
+-- INSERT: any authenticated user can create a team (becomes the owner via created_by)
+create policy "users create teams" on public.teams
+  for insert to authenticated
+  with check (created_by = auth.uid());
+
+-- UPDATE: only the owner can update team metadata
+create policy "owner updates team" on public.teams
+  for update to authenticated
+  using (public.is_team_owner(id))
+  with check (public.is_team_owner(id));
+
+-- DELETE: only the owner can delete the team
+create policy "owner deletes team" on public.teams
+  for delete to authenticated
+  using (public.is_team_owner(id));
+
+-- ===========================================
+-- TEAM_MEMBERS TABLE POLICIES
+-- ===========================================
+
+-- Drop ALL existing policies on team_members
+do $$
+declare pol record;
+begin
+  for pol in (select policyname from pg_policies where tablename = 'team_members' and schemaname = 'public')
+  loop
+    execute format('drop policy if exists %I on public.team_members', pol.policyname);
+  end loop;
+end $$;
+
+-- SELECT: members can see other members of teams they're in
+create policy "members view roster" on public.team_members
+  for select to authenticated
+  using (public.is_team_member(team_id));
+
+-- SELECT (special case): users can always see their own membership rows even if they're pending
+create policy "users see own memberships" on public.team_members
+  for select to authenticated
+  using (user_id = auth.uid());
+
+-- INSERT: users can only add themselves (when joining via invite code)
+create policy "users join teams" on public.team_members
+  for insert to authenticated
+  with check (user_id = auth.uid() and role in ('player', 'parent'));
+
+-- INSERT: coaches can add players to their teams
+create policy "coaches add players" on public.team_members
+  for insert to authenticated
+  with check (
+    public.is_team_coach(team_id)
+    and role in ('player', 'parent')
+  );
+
+-- INSERT: owner can add coaches to their team
+create policy "owner adds coaches" on public.team_members
+  for insert to authenticated
+  with check (
+    public.is_team_owner(team_id)
+    and role in ('coach', 'assistant_coach')
+  );
+
+-- UPDATE: coaches can update player rows (jersey, position, etc.)
+create policy "coaches update players" on public.team_members
+  for update to authenticated
+  using (
+    public.is_team_coach(team_id) and role in ('player', 'parent')
+  )
+  with check (
+    public.is_team_coach(team_id) and role in ('player', 'parent')
+  );
+
+-- UPDATE: users can update their own membership row (e.g., leave a team)
+create policy "users update own membership" on public.team_members
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- UPDATE: owner can update coach rows in their team
+create policy "owner manages coach roles" on public.team_members
+  for update to authenticated
+  using (
+    public.is_team_owner(team_id) and role in ('coach', 'assistant_coach')
+  )
+  with check (
+    public.is_team_owner(team_id) and role in ('coach', 'assistant_coach')
+  );
+
+-- DELETE: coaches can remove players
+create policy "coaches remove players" on public.team_members
+  for delete to authenticated
+  using (
+    public.is_team_coach(team_id) and role in ('player', 'parent')
+  );
+
+-- DELETE: owner can remove coaches
+create policy "owner removes coaches" on public.team_members
+  for delete to authenticated
+  using (
+    public.is_team_owner(team_id) and role in ('coach', 'assistant_coach')
+  );
+
+-- DELETE: users can remove themselves (leave a team)
+create policy "users leave teams" on public.team_members
+  for delete to authenticated
+  using (user_id = auth.uid());
+Step 4 — Verify RLS works at the database level
+After applying the above, test that RLS actually filters. Run these as the AUTHENTICATED user (not service role):
+sql-- Switch to a specific user's context
+-- (you'll need to actually log in as that user via the app and check via Supabase dashboard's "Run SQL with user" feature, OR test via the app directly)
+
+-- This should return ONLY teams the user is a member of:
+select id, name from teams;
+
+-- This should return ONLY the user's own memberships and memberships in shared teams:
+select * from team_members;
+Test specifically:
+
+Log in as Coach A (who owns Team A)
+Open /teams — should see only Team A
+Log in as Coach B (who owns Team B, was invited as coach)
+Open /teams — should see only Team B, NOT Team A
+Log in as Player who's in Team A
+Open /teams (or wherever they see teams) — should see only Team A
+
+If any user sees a team they don't belong to, RLS is still broken.
+Step 5 — Fix application code that bypasses RLS
+For each place in the codebase that fetches teams, ensure it uses the authenticated user's Supabase client, NOT the service role client. The service role bypasses RLS entirely.
+Server components (Next.js App Router)
+typescript// CORRECT — uses cookies to get user's session
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export default async function TeamsPage() {
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,  // ANON, not service role
+    {
+      cookies: {
+        get: (name) => cookies().get(name)?.value,
+      }
+    }
+  );
+
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  // RLS automatically filters to only teams the user is a member of
+  return <TeamsList teams={teams} />;
+}
+Client components
+typescript// CORRECT — uses anon client with user's session from cookies
+import { createBrowserClient } from '@supabase/ssr';
+
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+// In component:
+const { data: teams } = await supabase.from('teams').select('*');
+// RLS filters automatically
+Service role usage
+The ONLY places that should use the service role client:
+
+Admin API routes (verifying admin status FIRST, then querying)
+Webhook handlers (Resend webhook, Stripe webhook in future)
+Cron jobs
+The accept-invite API route (creating users via admin API)
+Trigger replacements that need elevated privileges
+
+The team switcher, coach dashboard, /teams page, team detail page, etc. should NEVER use service role. If they do, that's the bug.
+Audit every file
+For every file that uses supabaseAdmin or service role client, verify:
+
+It's an admin-only route OR a webhook OR an explicit admin task
+It performs an admin check before querying (if (!isAdmin) return 403)
+If it's not admin-only, refactor to use the user's authenticated client
+
+Show me the list of files using service role and confirm each is justified.
+Step 6 — Specific places to check
+Based on common bugs, look at these specific files:
+
+Team switcher in header — it queries all the user's teams. Make sure it uses the authenticated client.
+/teams page — list of all the user's teams. Same.
+Team selector during onboarding (if any) — same.
+Admin /admin/teams page — this one SHOULD use service role to see all teams (it's admin-only). But verify it checks admin status first.
+API route /api/teams — the GET endpoint. Should use the user's authenticated client, NOT service role.
+Coach dashboard counters ("You manage 3 teams") — should query via authenticated client.
+Player home page — when fetching their teams to show, must use authenticated client.
+
+Step 7 — Test the fix end-to-end
+After fixing, test these scenarios:
+Scenario 1: New coach signup
+
+Admin invites new coach via email
+New coach accepts invite, creates first team "Team Alpha"
+New coach goes to /teams page
+Expected: sees ONLY Team Alpha
+Bug if: sees other coaches' teams
+
+Scenario 2: Coach added to second team
+
+Coach A owns Team Alpha
+Coach A invites Coach B to Team Alpha
+Coach B accepts, joins Team Alpha as coach (not owner)
+Coach B goes to /teams
+Expected: sees Team Alpha (with "Coach" badge, not "Owner")
+Coach B creates Team Beta on their own
+Coach B goes to /teams
+Expected: sees both Team Alpha (Coach badge) and Team Beta (Owner badge)
+Coach B does NOT see any other coaches' teams
+
+Scenario 3: Player in multiple teams
+
+Coach A invites Player X to Team Alpha (Player X joins via invite code)
+Coach C invites Player X to Team Charlie (Player X joins via different invite code)
+Player X logs in
+Expected: sees only Team Alpha and Team Charlie, no other teams
+
+Scenario 4: Player in single team
+
+Player Y is a member of Team Beta only
+Player Y logs in
+Expected: sees only Team Beta, no other teams
+
+Scenario 5: Admin in coach view
+
+Admin Z is logged in
+Admin Z navigates to /teams (regular user view, not admin panel)
+Expected: sees only teams Admin Z is personally a member of
+Admin Z navigates to /admin/teams
+Expected: sees ALL teams in the system (admin override)
+
+If any scenario fails, the fix is incomplete.
+Step 8 — Add a logged warning for service role usage
+To prevent this from happening again, add runtime detection. In your service role client wrapper:
+typescript// lib/supabase-admin.ts
+import { createClient } from '@supabase/supabase-js';
+
+let warned = false;
+
+export function getSupabaseAdmin() {
+  if (!warned && process.env.NODE_ENV !== 'production') {
+    const stack = new Error().stack;
+    // Whitelist known-safe call sites
+    const safe = [
+      '/api/admin/',
+      '/api/webhooks/',
+      '/api/auth/accept-invite',
+      'lib/admin-',
+      'cron/',
+    ];
+    if (!safe.some(p => stack?.includes(p))) {
+      console.warn('⚠️ SERVICE ROLE used outside admin/webhook context — RLS bypassed!\n', stack);
+    }
+  }
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+This logs a warning whenever service role is used in suspicious places. Helps catch future bugs.
+Acceptance criteria
+
+✓ Diagnostic SQL output shown — current RLS state visible
+✓ All places fetching teams identified — service role usage audited
+✓ RLS policies on teams and team_members rewritten with strict member-only rules
+✓ All non-admin code paths use authenticated client (NOT service role)
+✓ Test scenarios 1-5 all pass
+✓ A new coach sees ONLY their own teams (the team they created + teams they were added to)
+✓ A player sees ONLY teams they're a member of
+✓ Admin in /admin/teams sees everything; admin in /teams follows normal rules
+✓ Service role usage warning added for future bug prevention
+✓ Show me screenshots of two different coach accounts each on their own /teams page proving they see different teams
+
+This is a security bug. Don't ship a fix until all 5 test scenarios pass. If RLS is still permissive after the fix, the bug isn't fixed.
+
+That's the prompt. Some honest notes:
+On the severity — this is the biggest bug you've had. A user seeing other users' data isn't a UX glitch, it's a privacy violation. If you eventually charge customers, this is the kind of thing that gets you sued or breaches GDPR. Fix it before doing anything else.
+On RLS as the only real defense — UI-level filtering ("just hide the other teams in the React component") is not a fix. An attacker can open DevTools, find the API call, and hit it directly with their own user token. Only the database RLS policy actually prevents the data from being returned. The prompt above fixes RLS first, which is correct.
+On the service role gotcha — this is the #1 cause of RLS data leaks in Supabase apps. The pattern is: agent builds a feature, hits a permission error, "fixes" it by switching to service role, ships it. Now the feature works AND is leaking data. The fix is to remove service role from non-admin paths and ensure RLS policies actually allow legitimate access.

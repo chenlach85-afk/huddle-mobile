@@ -10,31 +10,40 @@ import {
   UpdatePlayerBody,
   DeletePlayerParams,
 } from "@workspace/api-zod";
+import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
+import { assertTeamAccess } from "../helpers/teamAccess";
 
 const router: IRouter = Router();
 
-router.get("/teams/:teamId/players", async (req, res): Promise<void> => {
+router.get("/teams/:teamId/players", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = ListPlayersParams.safeParse({ teamId: req.params.teamId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
+
   const players = await db
     .select()
     .from(playersTable)
-    .where(eq(playersTable.teamId, params.data.teamId))
+    .where(eq(playersTable.teamId, teamId))
     .orderBy(playersTable.name);
   res.json(players);
 });
 
-router.post("/teams/:teamId/players", async (req, res): Promise<void> => {
+router.post("/teams/:teamId/players", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = CreatePlayerParams.safeParse({ teamId: req.params.teamId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = CreatePlayerBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const d = parsed.data;
   const [player] = await db
     .insert(playersTable)
     .values({
-      teamId: params.data.teamId,
+      teamId,
       name: d.name,
       number: d.number ?? null,
       position: d.position ?? null,
@@ -49,24 +58,32 @@ router.post("/teams/:teamId/players", async (req, res): Promise<void> => {
   await db
     .update(teamsTable)
     .set({ playerCount: sql`${teamsTable.playerCount} + 1` })
-    .where(eq(teamsTable.id, params.data.teamId));
+    .where(eq(teamsTable.id, teamId));
 
   res.status(201).json(player);
 });
 
-router.get("/players/:playerId", async (req, res): Promise<void> => {
+router.get("/players/:playerId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = GetPlayerParams.safeParse({ playerId: req.params.playerId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
   const [player] = await db.select().from(playersTable).where(eq(playersTable.id, params.data.playerId));
   if (!player) { res.status(404).json({ error: "Player not found" }); return; }
+
+  if (!(await assertTeamAccess(player.teamId, req, res))) return;
+
   res.json(player);
 });
 
-router.patch("/players/:playerId", async (req, res): Promise<void> => {
+router.patch("/players/:playerId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = UpdatePlayerParams.safeParse({ playerId: req.params.playerId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdatePlayerBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: playersTable.teamId }).from(playersTable).where(eq(playersTable.id, params.data.playerId));
+  if (!existing) { res.status(404).json({ error: "Player not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
 
   const updates: Record<string, unknown> = {};
   const d = parsed.data;
@@ -91,9 +108,14 @@ router.patch("/players/:playerId", async (req, res): Promise<void> => {
   res.json(player);
 });
 
-router.delete("/players/:playerId", async (req, res): Promise<void> => {
+router.delete("/players/:playerId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const params = DeletePlayerParams.safeParse({ playerId: req.params.playerId });
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+
+  const [existing] = await db.select({ teamId: playersTable.teamId }).from(playersTable).where(eq(playersTable.id, params.data.playerId));
+  if (!existing) { res.status(404).json({ error: "Player not found" }); return; }
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
   const [player] = await db.delete(playersTable).where(eq(playersTable.id, params.data.playerId)).returning();
   if (!player) { res.status(404).json({ error: "Player not found" }); return; }
 

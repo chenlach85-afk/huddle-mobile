@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 export interface AuthedRequest extends Request {
   userId?: number;
   clerkId?: string;
+  userRole?: "coach" | "player" | "admin";
 }
 
 export const requireAuth = async (
@@ -22,7 +23,7 @@ export const requireAuth = async (
   req.clerkId = clerkId;
 
   const [user] = await db
-    .select({ id: usersTable.id, accountStatus: usersTable.accountStatus })
+    .select({ id: usersTable.id, accountStatus: usersTable.accountStatus, role: usersTable.role })
     .from(usersTable)
     .where(eq(usersTable.clerkId, clerkId))
     .limit(1);
@@ -43,5 +44,6 @@ export const requireAuth = async (
   }
 
   req.userId = user.id;
+  req.userRole = user.role as "coach" | "player" | "admin";
   next();
 };
