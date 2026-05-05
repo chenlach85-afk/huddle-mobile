@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Mail, Copy, Check, Send, Trash2, Clock, CheckCircle2, XCircle, AlertCircle,
-  ShieldCheck, Users, ArrowLeft, Plus, TriangleAlert, Link2,
+  ShieldCheck, Users, ArrowLeft, Plus, TriangleAlert, Link2, FlaskConical,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
@@ -83,6 +83,39 @@ function CopyButton({ text }: { text: string }) {
       className="inline-flex items-center gap-1 text-xs rounded-lg px-2 py-1 transition-colors"
       style={{ background: copied ? "rgba(46,204,113,0.12)" : "rgba(255,255,255,0.06)", color: copied ? "#2ecc71" : "rgba(255,255,255,0.5)" }}>
       {copied ? <><Check className="h-3 w-3" />{inv.copied}</> : <><Copy className="h-3 w-3" />{inv.copyLink}</>}
+    </button>
+  );
+}
+
+/* ── Test Email Button ── */
+function TestEmailButton() {
+  const { t } = useI18n();
+  const inv = t.invitations;
+  const { toast } = useToast();
+  const [testing, setTesting] = useState(false);
+
+  async function handleTest() {
+    setTesting(true);
+    try {
+      const data = await apiFetch("/api/admin/test-email", { method: "POST" }) as { success: boolean; sentTo: string };
+      toast({ title: `${inv.testEmailSent} → ${data.sentTo}` });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error";
+      toast({ title: `${inv.testEmailFailed}: ${msg}`, variant: "destructive" });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleTest}
+      disabled={testing}
+      className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40"
+      style={{ background: "rgba(255,107,53,0.1)", color: "#FF6B35", border: "1px solid rgba(255,107,53,0.2)" }}
+    >
+      <FlaskConical className="h-3 w-3" />
+      {testing ? "…" : inv.testEmail}
     </button>
   );
 }
@@ -367,7 +400,16 @@ export default function AdminInvitationsPage() {
         <div className="rounded-xl px-4 py-3 flex items-start gap-3"
           style={{ background: "rgba(247,181,56,0.08)", border: "1px solid rgba(247,181,56,0.25)" }}>
           <TriangleAlert className="h-4 w-4 text-yellow-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-yellow-300/80 leading-relaxed">{inv.emailNotConfigured}</p>
+          <p className="text-sm text-yellow-300/80 leading-relaxed flex-1">{inv.emailNotConfigured}</p>
+        </div>
+      )}
+
+      {/* Email test — visible when email is configured */}
+      {emailConfigured && (
+        <div className="flex items-center justify-between rounded-xl px-4 py-3"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <p className="text-xs text-white/40">{inv.emailSent ? inv.resendEmail : ""} Email is configured</p>
+          <TestEmailButton />
         </div>
       )}
 

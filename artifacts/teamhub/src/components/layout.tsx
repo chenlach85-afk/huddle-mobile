@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { NotificationBell } from "@/components/notification-bell";
+import { UserMenu } from "@/components/user-menu";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useCurrentUser } from "@/lib/useCurrentUser";
@@ -116,6 +117,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-1">
             <ThemeToggleButton />
             <NotificationBell />
+            <UserMenu />
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="text-foreground/60 hover:text-foreground hover:bg-accent" data-testid="button-mobile-menu">
@@ -140,6 +142,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           style={{ background: "var(--surface-topbar)", borderColor: "var(--border-faint)" }}>
           <ThemeToggleButton />
           <NotificationBell />
+          <div className="w-px h-5 bg-border mx-1" />
+          <UserMenu />
         </div>
 
         <main className="flex-1 overflow-auto">

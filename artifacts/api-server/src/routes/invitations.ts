@@ -459,8 +459,56 @@ router.post("/admin/invitations/:id/resend", requireAuth, requireAdminMiddleware
     return;
   }
 
-  await db.update(platformInvitationsTable).set({ emailSentAt: new Date() }).where(eq(platformInvitationsTable.id, id));
+  // Extend expiration by 14 days from now on resend
+  const newExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  await db.update(platformInvitationsTable).set({
+    emailSentAt: new Date(),
+    expiresAt: newExpiresAt,
+  }).where(eq(platformInvitationsTable.id, id));
+
   res.json({ success: true, inviteLink });
+});
+
+/* ─── Admin: send test email ────────────────────────────── */
+
+router.post("/admin/test-email", requireAuth, requireAdminMiddleware, async (req: AuthedRequest, res): Promise<void> => {
+  const adminId = req.userId!;
+  const { email: overrideEmail } = req.body as { email?: string };
+
+  const [admin] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, adminId)).limit(1);
+  const toEmail = overrideEmail ?? admin?.email;
+
+  if (!toEmail) { res.status(400).json({ error: "No email address available" }); return; }
+
+  const key = process.env.RESEND_API_KEY;
+  if (!key) { res.status(400).json({ success: false, error: "RESEND_API_KEY is not configured" }); return; }
+
+  const from = process.env.RESEND_FROM_EMAIL ?? "Huddle <onboarding@resend.dev>";
+  const subject = "Huddle — Email configuration test";
+  const html = `
+    <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;">
+      <h2 style="color:#FF6B35;">Huddle Email Test</h2>
+      <p>This is a test message confirming your email configuration is working correctly.</p>
+      <p style="color:#666;font-size:12px;">Sent to: ${toEmail}</p>
+    </div>
+  `;
+
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: toEmail, subject, html }),
+    });
+    if (r.ok) {
+      res.json({ success: true, sentTo: toEmail });
+    } else {
+      const body = await r.json().catch(() => ({})) as { name?: string; message?: string };
+      const msg = body.message ?? body.name ?? `HTTP ${r.status}`;
+      res.status(502).json({ success: false, error: msg, sentTo: toEmail });
+    }
+  } catch (err) {
+    res.status(502).json({ success: false, error: err instanceof Error ? err.message : "Network error", sentTo: toEmail });
+  }
 });
 
 /* ─── Admin: revoke invitation ──────────────────────────── */

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useUser } from "@clerk/react";
+import { useUser, useClerk } from "@clerk/react";
 import { useI18n, type Language } from "@/lib/i18n";
 import { useCurrentUser, useUpdateSettings } from "@/lib/useCurrentUser";
 import { useTheme, type Theme } from "@/lib/useTheme";
@@ -29,6 +29,7 @@ export default function SettingsPage() {
   const { t, language, setLanguage } = useI18n();
   const { appUser } = useCurrentUser();
   const { user: clerkUser } = useUser();
+  const { signOut } = useClerk();
   const updateSettings = useUpdateSettings();
   const { toast } = useToast();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -119,8 +120,7 @@ export default function SettingsPage() {
 
   const handleSignOut = async () => {
     if (window.confirm(s.signOutConfirm)) {
-      await clerkUser?.reload();
-      window.location.href = "/sign-in";
+      await signOut();
     }
   };
 

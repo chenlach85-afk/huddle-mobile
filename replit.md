@@ -85,7 +85,9 @@ All under `/api/` base path:
 | POST | /api/invitations/:token/accept | Accept invitation (Clerk auth required, no DB user needed yet) |
 | GET | /api/admin/invitations | List all invitations (admin only) |
 | POST | /api/admin/invitations | Create invitation: {email, role, notes?} (admin only) |
+| POST | /api/admin/invitations/:id/resend | Resend invitation email; extends expiry by 14 days (admin only) |
 | DELETE | /api/admin/invitations/:id | Revoke a pending invitation (admin only) |
+| POST | /api/admin/test-email | Send a test email to the admin's own address (admin only) |
 
 ## Frontend Pages
 
@@ -120,6 +122,14 @@ In-app notification bell (top-right) polling every 30s.
 Base64 upload endpoint. Client-side `FileUploader` component in `artifacts/teamhub/src/components/file-uploader.tsx`.
 - Max 10MB per file
 - Supports images, videos, documents
+
+## Auth Bugs Fixed (May 2026)
+
+1. **Logout (Bug 1)** — `settings.tsx` was calling `clerkUser?.reload()` instead of Clerk's `signOut()`. Fixed to use `useClerk().signOut()`.
+2. **Profile menu (Bug 2)** — Added `UserMenu` component (`components/user-menu.tsx`) to both the desktop topbar and mobile header. Shows avatar, name, email, role badge, Settings link, and Sign Out button.
+3. **Invite session bleed (Bug 3, critical)** — Invite page now checks whether the signed-in Clerk user's email matches the invitation email (case-insensitive). If it doesn't match, a "wrong account" screen is shown with a "Sign Out and Switch Account" button instead of allowing the wrong session to accept the invite. Also fixed "TEAMHUB" branding to "HUDDLE".
+4. **Email diagnostic (Bug 4)** — Added `POST /api/admin/test-email` endpoint and a "Send Test Email" button in the admin invitations UI to verify Resend configuration.
+5. **Resend invitation (Bug 5)** — The resend endpoint now extends the invitation's expiry by 14 days on each resend. The frontend Resend button was already wired up.
 
 ## Design
 
