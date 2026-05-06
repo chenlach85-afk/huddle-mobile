@@ -29,80 +29,45 @@ PostgreSQL via `DATABASE_URL` env var. Schema push: `pnpm --filter @workspace/db
 Tables:
 - `teams` — id, name, sport, season, description, coach_name, avatar_color, image_url, location, player_count, join_code, created_by (FK→users), archived_at, archived_by, archived_reason, timestamps
 - `players` — id, team_id (FK→teams), name, number, position, email, phone, date_of_birth, notes, status
-- `events` — id, team_id (FK→teams), title, type, location, starts_at, ends_at, notes, timestamps
+- `events` — id, team_id (FK→teams), title, type (7-type enum: training/league_game/friendly_game/tournament/celebration/meeting/other), location, starts_at, ends_at, notes, timestamps
 - `attendance` — id, event_id (FK→events), player_id (FK→players), status, notes, updated_at
 - `tasks` — id, team_id (FK→teams), title, description, assigned_to_player_id, due_date, status, priority, timestamps
 - `messages` — id, team_id (FK→teams), sender_name, sender_role, content, pinned, created_at
 - `users` — id, clerk_id (unique), email, name, role, language, account_status (active/suspended/deleted), deleted_at, deleted_by, deletion_reason, suspended_at, suspended_by, suspension_reason, notifications prefs, timestamps
-- `admin_audit_log` — id, admin_id, action (enum includes invitation_created/revoked/user_registered_via_invitation/promoted/demoted), target_user_id, target_team_id, metadata (jsonb), created_at
-- `platform_invitations` — id, token (UUID, unique), email, invited_role (coach/admin), invited_by_user_id (FK→users), status (pending/accepted/revoked/expired), notes, expires_at, accepted_at, accepted_by_user_id, email_sent_at, created_at
+- `admin_audit_log` — id, admin_id, action, target_user_id, target_team_id, metadata (jsonb), created_at
+- `platform_invitations` — id, token (UUID), email, invited_role, invited_by_user_id, status, notes, expires_at, accepted_at, email_sent_at, created_at
 - `notifications` — id, user_id (FK→users), type, title, body, read, related_id, related_type, created_at
 - `team_members` — id, team_id (FK→teams), user_id (FK→users), role (coach/player/assistant), created_at
 - `files` — id, uploader_id, team_id, filename, original_name, mime_type, size, url, related_type, related_id, created_at
-- `team_invitations` — id, token (UUID, unique), team_id (FK→teams), invited_by_user_id (FK→users), invite_type (email/link), email (nullable), status (pending/accepted/revoked/expired), expires_at, accepted_at, accepted_by_user_id, email_sent_at, created_at
+- `team_invitations` — id, token (UUID), team_id, invited_by_user_id, invite_type (email/link), email (nullable), phone (nullable), invited_role (default "player"), status, expires_at, accepted_at, email_sent_at, created_at
 
 ## API Routes
 
-All under `/api/` base path:
+All under `/api/` base path. See `artifacts/api-server/src/routes/index.ts` for the full list. Key additions:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/healthz | Health check |
-| POST | /api/auth/sync | Create/get user record after Clerk sign-in |
-| GET | /api/auth/me | Get current user settings |
-| PATCH | /api/auth/me | Update user settings (language, notifications, etc.) |
-| GET | /api/notifications | List user notifications (auth required) |
-| PATCH | /api/notifications/:id/read | Mark notification read |
-| PATCH | /api/notifications/read-all | Mark all notifications read |
-| POST | /api/files/upload | Upload file as base64 (auth required) |
-| GET | /api/files | List files by team/related |
-| GET | /api/dashboard/summary | Aggregate stats |
-| GET | /api/teams/:teamId/activity | Recent activity feed |
-| GET/POST | /api/teams | List / create teams |
-| GET/PATCH/DELETE | /api/teams/:teamId | Team CRUD |
-| GET/POST | /api/teams/:teamId/players | List / add players |
-| GET/PATCH/DELETE | /api/players/:playerId | Player CRUD |
-| GET/POST | /api/teams/:teamId/events | List / create events |
-| GET/PATCH/DELETE | /api/events/:eventId | Event CRUD |
-| GET/POST | /api/events/:eventId/attendance | List / upsert attendance |
-| GET/POST | /api/teams/:teamId/tasks | List / create tasks |
-| PATCH/DELETE | /api/tasks/:taskId | Task CRUD |
-| GET/POST | /api/teams/:teamId/messages | List / post messages |
-| DELETE | /api/messages/:messageId | Delete message |
-| GET | /api/member/:joinCode | Public member view |
-| GET | /api/calendar | Calendar events with team info |
-| GET | /api/admin/kpis | Platform KPIs (admin only) |
-| GET | /api/admin/users | List users with filters: status, search, isAdmin, page, limit |
-| GET | /api/admin/users/:id | User detail + teams owned + audit log |
-| PATCH | /api/admin/users/:id | Edit user: name, role, language |
-| POST | /api/admin/users/:id/suspend | Suspend user (+ Clerk ban) |
-| POST | /api/admin/users/:id/reactivate | Reactivate user (+ Clerk unban) |
-| POST | /api/admin/users/:id/soft-delete | Anonymize user + handle teams (archive/transfer/delete) |
-| POST | /api/admin/users/:id/hard-delete | Permanently destroy user (confirmation phrase required) |
-| POST | /api/admin/teams/:id/archive | Archive a team |
-| POST | /api/admin/teams/:id/transfer | Transfer team ownership |
-| GET | /api/admin/audit-log | Paginated audit log with action filter |
-| GET | /api/invitations/:token | Public — get invitation details by token |
-| POST | /api/invitations/:token/accept | Accept invitation (Clerk auth required, no DB user needed yet) |
-| GET | /api/admin/invitations | List all invitations (admin only) |
-| POST | /api/admin/invitations | Create invitation: {email, role, notes?} (admin only) |
-| POST | /api/admin/invitations/:id/resend | Resend invitation email; extends expiry by 14 days (admin only) |
-| DELETE | /api/admin/invitations/:id | Revoke a pending invitation (admin only) |
-| POST | /api/admin/test-email | Send a test email to the admin's own address (admin only) |
+| GET | /api/teams/:teamId/coaches | List coaching staff (team_members) |
+| POST | /api/teams/:teamId/coaches/invite | Invite coach via team_invitations |
+| PATCH | /api/teams/:teamId/coaches/:userId/role | Change coach role |
+| DELETE | /api/teams/:teamId/coaches/:userId | Remove coach |
+| POST | /api/teams/:teamId/transfer-ownership | Transfer team ownership |
+| POST | /api/teams/:teamId/archive | Archive team |
+| POST | /api/teams/:teamId/unarchive | Unarchive team |
 
 ## Frontend Pages
 
-- `/` — Landing page (public) with sign-in/sign-up CTAs; authenticated users redirect to `/dashboard`
+- `/` — Landing page (public); authenticated users redirect to `/dashboard`
 - `/sign-in/*?` — Clerk sign-in (themed dark navy)
 - `/sign-up/*?` — Clerk sign-up (themed dark navy)
 - `/dashboard` — Scoreboard hero card + stats (auth required)
 - `/teams` — Team list with create-team dialog (auth required)
-- `/teams/:teamId` — Team detail with tabs: Roster, Schedule, Tasks, Messages (auth required)
-- `/calendar` — Month grid + upcoming sidebar + day detail panel (auth required)
-- `/settings` — Profile, language switcher, notification prefs, security/change password (auth required)
+- `/teams/:teamId` — Team detail with 7 tabs: Squad, Schedule, Tasks, Messages, Albums, Docs, **Management** (auth required)
+- `/calendar` — Month grid + upcoming sidebar + day detail panel; type filter row (auth required)
+- `/settings` — Profile, language, notification prefs, security (auth required)
 - `/member/:joinCode` — Public read-only player view (no auth)
-- `/invite/:token` — Public invitation acceptance page; shows invitation details + embedded Clerk SignIn/SignUp; on accept calls POST /api/invitations/:token/accept which creates the DB user record
-- `/admin/invitations` — Admin invitations management: send invitations, view/copy invite links, revoke pending (auth + admin required)
+- `/invite/:token` — Invitation acceptance page with email/account mismatch guard
+- `/admin/invitations` — Admin invitations management (auth + admin required)
 
 ## i18n
 
@@ -110,36 +75,48 @@ Language switcher in Settings: English, Hebrew (RTL), Spanish.
 - Context: `artifacts/teamhub/src/lib/i18n.tsx` — `I18nProvider`, `useI18n()`, `Language` type
 - Stored in `localStorage` and synced to the DB user record
 - RTL support via `document.dir` and `flex-row-reverse` on layout
+- Sections: nav, common, squads, teamDetail, teamInvite, events, tasks, messages, settings, files, **management**, **whatsapp**, admin, notifications, invite
 
 ## Notifications
 
-In-app notification bell (top-right) polling every 30s.
-- `useNotifications()`, `useMarkNotificationRead()`, `useMarkAllRead()` hooks
+In-app notification bell (top-right) polling every 30s. Notifications are now fired automatically on event/task/message creation.
 - `createNotification()` helper in `artifacts/api-server/src/routes/notifications.ts`
-- Types: task, event, message, general
+- Triggered in: events POST, tasks POST, messages POST (notifies all team_members)
+
+## Event Types (7)
+
+`training` | `league_game` | `friendly_game` | `tournament` | `celebration` | `meeting` | `other`
+- Card-grid picker in create/edit form; color + icon per type
+- Calendar filter row persisted in localStorage
+- Old `practice`→`training`, `game`→`league_game` migrated via SQL
+
+## Team Management Tab
+
+`artifacts/teamhub/src/pages/team-management.tsx` — tab within team-detail.
+- Coaching staff list with role badges (Owner/Head Coach/Assistant)
+- Invite coach via email or generate link
+- Change coach role, remove coach (owner only)
+- Transfer ownership, archive team, delete team with phrase confirmation (owner only)
+- Join code display + copy
+
+## Player Invite Revamp
+
+`artifacts/teamhub/src/components/team/players-tab.tsx`
+- Single `emailOrPhone` field + two action buttons (Send Email / Generate Link)
+- Link result modal with WhatsApp / Copy Text / Email share options
+- WhatsApp icon shown on player cards for players with a phone number
+- `normalizePhone` + `getWhatsAppUrl` utilities in same file
 
 ## File Uploads
 
-Base64 upload endpoint. Client-side `FileUploader` component in `artifacts/teamhub/src/components/file-uploader.tsx`.
-- Max 10MB per file
-- Supports images, videos, documents
-
-## Auth Bugs Fixed (May 2026)
-
-1. **Logout (Bug 1)** — `settings.tsx` was calling `clerkUser?.reload()` instead of Clerk's `signOut()`. Fixed to use `useClerk().signOut()`.
-2. **Profile menu (Bug 2)** — Added `UserMenu` component (`components/user-menu.tsx`) to both the desktop topbar and mobile header. Shows avatar, name, email, role badge, Settings link, and Sign Out button.
-3. **Invite session bleed (Bug 3, critical)** — Invite page now checks whether the signed-in Clerk user's email matches the invitation email (case-insensitive). If it doesn't match, a "wrong account" screen is shown with a "Sign Out and Switch Account" button instead of allowing the wrong session to accept the invite. Also fixed "TEAMHUB" branding to "HUDDLE".
-4. **Email diagnostic (Bug 4)** — Added `POST /api/admin/test-email` endpoint and a "Send Test Email" button in the admin invitations UI to verify Resend configuration.
-5. **Resend invitation (Bug 5)** — The resend endpoint now extends the invitation's expiry by 14 days on each resend. The frontend Resend button was already wired up.
+Base64 upload endpoint. `FileUploader` component in `artifacts/teamhub/src/components/file-uploader.tsx`.
+- Max 10MB per file; supports images, videos, documents
 
 ## Design
 
 Huddle aesthetic — dark navy stadium theme:
-- `background: hsl(226, 40%, 7%)` — deep navy
-- `primary: hsl(22, 100%, 60%)` — ignition orange
+- `background: hsl(226, 40%, 7%)` — deep navy; `primary: hsl(22, 100%, 60%)` — ignition orange
 - Font display: Bebas Neue + Oswald; body: Inter
-- CSS utilities: `.font-display`, `.jersey-tile`, `.hero-card`, `.stat-value`, `.stat-label`, `.section-label`
-- Per-team color theming via `avatarColor`
 - Tailwind v4 with `@tailwindcss/vite` plugin (`optimize: false` for Clerk compat)
 
 ## Key Config
@@ -147,3 +124,10 @@ Huddle aesthetic — dark navy stadium theme:
 - React override in `pnpm-workspace.yaml` forces single React 19.1.0 instance (needed for Clerk)
 - Clerk layer declared in `index.css` before tailwindcss import
 - `vite.config.ts` dedupe includes `@clerk/react`, `@clerk/shared`
+- After OpenAPI spec changes, always run: `pnpm --filter @workspace/api-spec run codegen`
+
+## Gotchas
+
+- Event type enum lives in `lib/db/src/schema/events.ts` AND `lib/api-spec/openapi.yaml` — keep both in sync, then run codegen
+- `team_invitations` now has `phone` and `invited_role` columns — schema push required after any schema change
+- Albums route has pre-existing TS errors (string | string[] params) — unrelated to app features, doesn't affect runtime

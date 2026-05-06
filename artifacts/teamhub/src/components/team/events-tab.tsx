@@ -21,32 +21,69 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Calendar, MapPin, Trash2, Pencil, Check, X, HelpCircle, ChevronDown } from "lucide-react";
+import { Plus, Calendar, MapPin, Trash2, Pencil, Check, X, HelpCircle, ChevronDown,
+  Dumbbell, Swords, HandshakeIcon, Trophy, PartyPopper, Users, MoreHorizontal,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 
-const TYPE_COLORS: Record<string, string> = {
-  practice: "#4a90e2",
-  game: "#FF6B35",
-  meeting: "#9b59b6",
-  other: "rgba(255,255,255,0.3)",
+export const EVENT_TYPES = ["training", "league_game", "friendly_game", "tournament", "celebration", "meeting", "other"] as const;
+export type EventType = typeof EVENT_TYPES[number];
+
+export const TYPE_COLORS: Record<EventType, string> = {
+  training: "#4a90e2",
+  league_game: "#e74c3c",
+  friendly_game: "#2ecc71",
+  tournament: "#9b59b6",
+  celebration: "#f7b538",
+  meeting: "#1abc9c",
+  other: "rgba(255,255,255,0.35)",
+};
+
+const TYPE_ICONS: Record<EventType, React.ComponentType<{ className?: string }>> = {
+  training: Dumbbell,
+  league_game: Swords,
+  friendly_game: HandshakeIcon,
+  tournament: Trophy,
+  celebration: PartyPopper,
+  meeting: Users,
+  other: MoreHorizontal,
 };
 
 const eventSchema = z.object({
   title: z.string().min(1),
-  type: z.enum(["practice", "game", "meeting", "other"]).default("practice"),
+  type: z.enum(EVENT_TYPES).default("training"),
   location: z.string().optional(),
   startsAt: z.string().min(1),
   endsAt: z.string().optional(),
   notes: z.string().optional(),
 });
 type EventForm = z.infer<typeof eventSchema>;
+
+function TypeCard({ type, selected, onClick, label }: {
+  type: EventType; selected: boolean; onClick: () => void; label: string;
+}) {
+  const color = TYPE_COLORS[type];
+  const Icon = TYPE_ICONS[type];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center gap-1 p-2.5 rounded-xl border transition-all text-center"
+      style={{
+        background: selected ? `${color}20` : "rgba(255,255,255,0.03)",
+        borderColor: selected ? `${color}60` : "rgba(255,255,255,0.08)",
+        color: selected ? color : "rgba(255,255,255,0.4)",
+      }}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="text-[10px] font-bold leading-tight">{label}</span>
+    </button>
+  );
+}
 
 function AttendancePanel({ eventId, teamId, teamColor }: { eventId: number; teamId: number; teamColor: string }) {
   const queryClient = useQueryClient();
@@ -151,11 +188,19 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
   const { t, formatDateTime } = useI18n();
   const ev = t.events;
 
-  const typeLabel = (type: string) => {
-    if (type === "practice") return ev.typePractice;
-    if (type === "game") return ev.typeGame;
-    if (type === "meeting") return ev.typeMeeting;
-    return ev.typeOther;
+  const typeLabel = (type: string): string => {
+    const map: Record<string, string> = {
+      training: ev.typeTraining,
+      league_game: ev.typeLeagueGame,
+      friendly_game: ev.typeFriendlyGame,
+      tournament: ev.typeTournament,
+      celebration: ev.typeCelebration,
+      meeting: ev.typeMeeting,
+      other: ev.typeOther,
+      practice: ev.typeTraining,
+      game: ev.typeLeagueGame,
+    };
+    return map[type] ?? type;
   };
 
   const { data: events = [], isLoading } = useListEvents(teamId, {
@@ -167,13 +212,16 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
 
   const form = useForm<EventForm>({
     resolver: zodResolver(eventSchema),
-    defaultValues: { title: "", type: "practice", location: "", startsAt: "", endsAt: "", notes: "" },
+    defaultValues: { title: "", type: "training", location: "", startsAt: "", endsAt: "", notes: "" },
   });
+
+  const currentType = form.watch("type");
 
   function openCreate() { form.reset(); setEditingId(null); setOpen(true); }
   function openEdit(e: typeof events[0]) {
+    const t = (EVENT_TYPES as readonly string[]).includes(e.type) ? e.type as EventType : "training";
     form.reset({
-      title: e.title, type: e.type, location: e.location || "", notes: e.notes || "",
+      title: e.title, type: t, location: e.location || "", notes: e.notes || "",
       startsAt: new Date(e.startsAt).toISOString().slice(0, 16),
       endsAt: e.endsAt ? new Date(e.endsAt).toISOString().slice(0, 16) : "",
     });
@@ -235,16 +283,18 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
       ) : (
         <div className="space-y-2">
           {events.map(event => {
-            const color = TYPE_COLORS[event.type];
+            const color = TYPE_COLORS[event.type as EventType] ?? "rgba(255,255,255,0.3)";
             const isExpanded = expandedId === event.id;
+            const Icon = TYPE_ICONS[event.type as EventType] ?? MoreHorizontal;
             return (
               <div key={event.id} className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }} data-testid={`card-event-${event.id}`}>
                 <div
                   className="p-4 flex items-start gap-3 cursor-pointer hover:bg-white/3 transition-colors group"
                   onClick={() => setExpandedId(isExpanded ? null : event.id)}
                 >
-                  <div className="mt-0.5 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-widest shrink-0"
+                  <div className="mt-0.5 flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-widest shrink-0"
                     style={{ background: `${color}20`, color, border: `1px solid ${color}40` }}>
+                    <Icon className="h-2.5 w-2.5" />
                     {typeLabel(event.type)}
                   </div>
 
@@ -303,25 +353,26 @@ export default function EventsTab({ teamId, teamColor }: { teamId: number; teamC
                   <FormMessage />
                 </FormItem>
               )} />
+
+              {/* Card grid type picker */}
               <FormField control={form.control} name="type" render={({ field }) => (
                 <FormItem>
                   <FormLabel className="stat-label text-white/50">{ev.type}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-event-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
-                      <SelectItem value="practice" className="text-white">{ev.typePractice}</SelectItem>
-                      <SelectItem value="game" className="text-white">{ev.typeGame}</SelectItem>
-                      <SelectItem value="meeting" className="text-white">{ev.typeMeeting}</SelectItem>
-                      <SelectItem value="other" className="text-white">{ev.typeOther}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="grid grid-cols-4 gap-1.5" data-testid="select-event-type">
+                    {EVENT_TYPES.map(et => (
+                      <TypeCard
+                        key={et}
+                        type={et}
+                        selected={field.value === et}
+                        onClick={() => field.onChange(et)}
+                        label={typeLabel(et)}
+                      />
+                    ))}
+                  </div>
                   <FormMessage />
                 </FormItem>
               )} />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField control={form.control} name="startsAt" render={({ field }) => (
                   <FormItem>

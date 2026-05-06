@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, count } from "drizzle-orm";
-import { db, eventsTable, attendanceTable, playersTable, teamsTable } from "@workspace/db";
+import { db, eventsTable, attendanceTable, playersTable, teamsTable, teamMembersTable } from "@workspace/db";
 import {
   ListEventsParams,
   CreateEventParams,
@@ -15,6 +15,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
 import { assertTeamAccess } from "../helpers/teamAccess";
+import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -33,6 +34,18 @@ async function getEventWithCounts(eventId: number) {
     .where(eq(attendanceTable.eventId, eventId));
 
   return { ...event, attendingCount: Number(attending), totalCount: Number(total) };
+}
+
+async function notifyTeamMembers(teamId: number, title: string, body: string, relatedId: number) {
+  try {
+    const members = await db.select({ userId: teamMembersTable.userId })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.teamId, teamId));
+    await Promise.all(members.map(m =>
+      createNotification({ userId: m.userId, type: "event", title, body, relatedId, relatedType: "event" })
+        .catch(() => {})
+    ));
+  } catch {}
 }
 
 router.get("/teams/:teamId/events", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
@@ -76,18 +89,22 @@ router.post("/teams/:teamId/events", requireAuth, async (req: AuthedRequest, res
   if (!(await assertTeamAccess(teamId, req, res))) return;
 
   const d = parsed.data;
+  const [team] = await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId));
+
   const [event] = await db
     .insert(eventsTable)
     .values({
       teamId,
       title: d.title,
-      type: d.type ?? "practice",
+      type: (d.type as "training" | "league_game" | "friendly_game" | "tournament" | "celebration" | "meeting" | "other") ?? "training",
       location: d.location ?? null,
       startsAt: new Date(d.startsAt as unknown as string),
       endsAt: d.endsAt ? new Date(d.endsAt as unknown as string) : null,
       notes: d.notes ?? null,
     })
     .returning();
+
+  notifyTeamMembers(teamId, `New event: ${d.title}`, `${team?.name ?? "Your team"} — ${d.title}`, event.id);
 
   res.status(201).json({ ...event, attendingCount: 0, totalCount: 0 });
 });

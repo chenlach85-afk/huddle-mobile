@@ -3,11 +3,23 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { teamsTable } from "./teams";
 
+export const EVENT_TYPES = [
+  "training",
+  "league_game",
+  "friendly_game",
+  "tournament",
+  "celebration",
+  "meeting",
+  "other",
+] as const;
+
+export type EventType = typeof EVENT_TYPES[number];
+
 export const eventsTable = pgTable("events", {
   id: serial("id").primaryKey(),
   teamId: integer("team_id").notNull().references(() => teamsTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
-  type: text("type", { enum: ["practice", "game", "meeting", "other"] }).notNull().default("practice"),
+  type: text("type", { enum: EVENT_TYPES }).notNull().default("training"),
   location: text("location"),
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
   endsAt: timestamp("ends_at", { withTimezone: true }),

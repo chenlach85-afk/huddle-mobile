@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, messagesTable } from "@workspace/db";
+import { db, messagesTable, teamsTable, teamMembersTable } from "@workspace/db";
 import {
   ListMessagesParams,
   CreateMessageParams,
@@ -9,6 +9,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
 import { assertTeamAccess } from "../helpers/teamAccess";
+import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -48,6 +49,28 @@ router.post("/teams/:teamId/messages", requireAuth, async (req: AuthedRequest, r
       pinned: d.pinned ?? false,
     })
     .returning();
+
+  const [team] = await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId));
+  const senderId = req.userId!;
+  try {
+    const members = await db.select({ userId: teamMembersTable.userId })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.teamId, teamId));
+    await Promise.all(
+      members
+        .filter(m => m.userId !== senderId)
+        .map(m =>
+          createNotification({
+            userId: m.userId,
+            type: "message",
+            title: `${d.senderName} in ${team?.name ?? "your team"}`,
+            body: d.content.slice(0, 100),
+            relatedId: message.id,
+            relatedType: "message",
+          }).catch(() => {})
+        )
+    );
+  } catch {}
 
   res.status(201).json(message);
 });

@@ -1126,7 +1126,7 @@ components:
           type: string
         type:
           type: string
-          enum: [practice, game, meeting, other]
+          enum: [training, league_game, friendly_game, tournament, celebration, meeting, other]
         location:
           type: ["string", "null"]
         startsAt:
@@ -1164,7 +1164,7 @@ components:
           type: string
         type:
           type: string
-          enum: [practice, game, meeting, other]
+          enum: [training, league_game, friendly_game, tournament, celebration, meeting, other]
         location:
           type: ["string", "null"]
         startsAt:
@@ -1186,7 +1186,7 @@ components:
           type: string
         type:
           type: string
-          enum: [practice, game, meeting, other]
+          enum: [training, league_game, friendly_game, tournament, celebration, meeting, other]
         location:
           type: ["string", "null"]
         startsAt:
@@ -1419,7 +1419,7 @@ components:
           type: string
         type:
           type: string
-          enum: [practice, game, meeting, other]
+          enum: [training, league_game, friendly_game, tournament, celebration, meeting, other]
         location:
           type: ["string", "null"]
         startsAt:

@@ -19,6 +19,7 @@ import {
 import {
   ChevronLeft, ChevronRight, Calendar as CalIcon, MapPin,
   X, AlertCircle, Plus,
+  Dumbbell, Swords, HandshakeIcon, Trophy, PartyPopper, Users, MoreHorizontal,
 } from "lucide-react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval,
@@ -29,10 +30,13 @@ import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/lib/useTheme";
 
+export const EVENT_TYPES = ["training", "league_game", "friendly_game", "tournament", "celebration", "meeting", "other"] as const;
+export type EventType = typeof EVENT_TYPES[number];
+
 type CalendarEvent = {
   id: number;
   title: string;
-  type: "practice" | "game" | "meeting" | "other";
+  type: string;
   location: string | null;
   startsAt: string;
   endsAt: string | null;
@@ -42,7 +46,29 @@ type CalendarEvent = {
   teamColor: string;
 };
 
-const EVENT_TYPES = ["practice", "game", "meeting", "other"] as const;
+const TYPE_COLORS: Record<string, string> = {
+  training: "#4a90e2",
+  league_game: "#e74c3c",
+  friendly_game: "#2ecc71",
+  tournament: "#9b59b6",
+  celebration: "#f7b538",
+  meeting: "#1abc9c",
+  other: "#7f8c8d",
+  practice: "#4a90e2",
+  game: "#e74c3c",
+};
+
+const TYPE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+  training: Dumbbell,
+  league_game: Swords,
+  friendly_game: HandshakeIcon,
+  tournament: Trophy,
+  celebration: PartyPopper,
+  meeting: Users,
+  other: MoreHorizontal,
+  practice: Dumbbell,
+  game: Swords,
+};
 
 export default function CalendarPage() {
   const { t, isRTL, formatTime, formatDateTime, formatMonthYear, language } = useI18n();
@@ -53,12 +79,13 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
 
   const [newTitle, setNewTitle] = useState("");
-  const [newType, setNewType] = useState<string>("practice");
+  const [newType, setNewType] = useState<string>("training");
   const [newTeamId, setNewTeamId] = useState<string>("");
   const [newStartsAt, setNewStartsAt] = useState("");
   const [newEndsAt, setNewEndsAt] = useState("");
@@ -78,9 +105,11 @@ export default function CalendarPage() {
   });
 
   const events = useMemo(() => {
-    if (selectedTeamId === null) return allEvents;
-    return allEvents.filter(e => e.teamId === selectedTeamId);
-  }, [allEvents, selectedTeamId]);
+    let filtered = allEvents;
+    if (selectedTeamId !== null) filtered = filtered.filter(e => e.teamId === selectedTeamId);
+    if (selectedTypeFilter !== null) filtered = filtered.filter(e => e.type === selectedTypeFilter);
+    return filtered;
+  }, [allEvents, selectedTeamId, selectedTypeFilter]);
 
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentMonth));
@@ -95,15 +124,20 @@ export default function CalendarPage() {
   const selectedDayEvents = selectedDay ? getEventsForDay(selectedDay) : [];
   const monthLabel = formatMonthYear(currentMonth).toUpperCase();
 
-  const eventTypeLabel = (type: string) => {
-    return t.calendar.eventTypes[type as keyof typeof t.calendar.eventTypes] ?? type;
-  };
-
-  const typeColor: Record<string, string> = {
-    practice: "#4a90e2",
-    game: "#FF6B35",
-    meeting: "#9b59b6",
-    other: "#6b7280",
+  const eventTypeLabel = (type: string): string => {
+    const ev = t.events;
+    const map: Record<string, string> = {
+      training: ev.typeTraining,
+      league_game: ev.typeLeagueGame,
+      friendly_game: ev.typeFriendlyGame,
+      tournament: ev.typeTournament,
+      celebration: ev.typeCelebration,
+      meeting: ev.typeMeeting,
+      other: ev.typeOther,
+      practice: ev.typeTraining,
+      game: ev.typeLeagueGame,
+    };
+    return map[type] ?? type;
   };
 
   function openAddEvent(day?: Date) {
@@ -112,7 +146,7 @@ export default function CalendarPage() {
     setNewStartsAt(`${dateStr}T10:00`);
     setNewEndsAt(`${dateStr}T11:00`);
     setNewTitle("");
-    setNewType("practice");
+    setNewType("training");
     setNewTeamId(teams[0]?.id?.toString() ?? "");
     setNewLocation("");
     setNewNotes("");
@@ -167,7 +201,7 @@ export default function CalendarPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="stat-label text-white/50 block mb-1.5">Title</label>
+              <label className="stat-label text-white/50 block mb-1.5">{t.events.title}</label>
               <Input
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
@@ -191,7 +225,7 @@ export default function CalendarPage() {
               </Select>
             </div>
             <div dir="ltr">
-              <label className="stat-label text-white/50 block mb-1.5">Type</label>
+              <label className="stat-label text-white/50 block mb-1.5">{t.events.type}</label>
               <Select value={newType} onValueChange={setNewType}>
                 <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
                   <SelectValue />
@@ -204,7 +238,7 @@ export default function CalendarPage() {
               </Select>
             </div>
             <div dir="ltr">
-              <label className="stat-label text-white/50 block mb-1.5">Starts</label>
+              <label className="stat-label text-white/50 block mb-1.5">{t.events.startsAt}</label>
               <Input
                 type="datetime-local"
                 value={newStartsAt}
@@ -213,7 +247,7 @@ export default function CalendarPage() {
               />
             </div>
             <div dir="ltr">
-              <label className="stat-label text-white/50 block mb-1.5">Ends (optional)</label>
+              <label className="stat-label text-white/50 block mb-1.5">{t.events.endsAt} ({t.common.optional})</label>
               <Input
                 type="datetime-local"
                 value={newEndsAt}
@@ -222,7 +256,7 @@ export default function CalendarPage() {
               />
             </div>
             <div>
-              <label className="stat-label text-white/50 block mb-1.5">Location (optional)</label>
+              <label className="stat-label text-white/50 block mb-1.5">{t.events.location} ({t.common.optional})</label>
               <Input
                 value={newLocation}
                 onChange={e => setNewLocation(e.target.value)}
@@ -230,7 +264,7 @@ export default function CalendarPage() {
               />
             </div>
             <div>
-              <label className="stat-label text-white/50 block mb-1.5">Notes (optional)</label>
+              <label className="stat-label text-white/50 block mb-1.5">{t.events.notes} ({t.common.optional})</label>
               <Input
                 value={newNotes}
                 onChange={e => setNewNotes(e.target.value)}
@@ -242,7 +276,7 @@ export default function CalendarPage() {
               disabled={addSaving || !newTitle.trim() || !newTeamId || !newStartsAt}
               className="w-full bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl h-11"
             >
-              {addSaving ? "Saving..." : t.calendar.addEvent}
+              {addSaving ? t.common.saving : t.calendar.addEvent}
             </Button>
           </div>
         </DialogContent>
@@ -255,42 +289,79 @@ export default function CalendarPage() {
           <h1 className="font-display text-4xl text-white">{t.calendar.title.toUpperCase()}</h1>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            onClick={() => openAddEvent()}
-            className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl shadow-lg shadow-primary/20"
-          >
-            <Plus className="h-4 w-4 me-2" />
-            {t.calendar.addEvent}
-          </Button>
+        <Button
+          onClick={() => openAddEvent()}
+          className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl shadow-lg shadow-primary/20"
+        >
+          <Plus className="h-4 w-4 me-2" />
+          {t.calendar.addEvent}
+        </Button>
+      </div>
 
-          {/* Team filter */}
+      {/* Filter row: teams + event types */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {/* Team filters */}
+        <button
+          onClick={() => setSelectedTeamId(null)}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+          style={{
+            background: selectedTeamId === null ? "rgba(255,107,53,0.2)" : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
+            color: selectedTeamId === null ? "#FF6B35" : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
+            border: selectedTeamId === null ? "1px solid rgba(255,107,53,0.4)" : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          {t.common.allSquads}
+        </button>
+        {teams.map(team => (
           <button
-            onClick={() => setSelectedTeamId(null)}
+            key={team.id}
+            onClick={() => setSelectedTeamId(team.id === selectedTeamId ? null : team.id)}
             className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
             style={{
-              background: selectedTeamId === null ? "rgba(255,107,53,0.2)" : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
-              color: selectedTeamId === null ? "#FF6B35" : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
-              border: selectedTeamId === null ? "1px solid rgba(255,107,53,0.4)" : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
+              background: selectedTeamId === team.id ? `${team.avatarColor}28` : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
+              color: selectedTeamId === team.id ? team.avatarColor : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
+              border: selectedTeamId === team.id ? `1px solid ${team.avatarColor}50` : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            {t.common.allSquads}
+            {team.name}
           </button>
-          {teams.map(team => (
+        ))}
+
+        {/* Divider */}
+        <div className="w-px h-5 bg-white/10 mx-1" />
+
+        {/* Event type filters */}
+        <button
+          onClick={() => setSelectedTypeFilter(null)}
+          className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+          style={{
+            background: selectedTypeFilter === null ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+            color: selectedTypeFilter === null ? "white" : "rgba(255,255,255,0.35)",
+            border: selectedTypeFilter === null ? "1px solid rgba(255,255,255,0.25)" : "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          {t.events.filterAll}
+        </button>
+        {EVENT_TYPES.map(et => {
+          const color = TYPE_COLORS[et];
+          const active = selectedTypeFilter === et;
+          const Icon = TYPE_ICONS[et] ?? MoreHorizontal;
+          return (
             <button
-              key={team.id}
-              onClick={() => setSelectedTeamId(team.id === selectedTeamId ? null : team.id)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
+              key={et}
+              onClick={() => setSelectedTypeFilter(active ? null : et)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
               style={{
-                background: selectedTeamId === team.id ? `${team.avatarColor}28` : isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)",
-                color: selectedTeamId === team.id ? team.avatarColor : isLight ? "rgba(10,14,26,0.50)" : "rgba(255,255,255,0.4)",
-                border: selectedTeamId === team.id ? `1px solid ${team.avatarColor}50` : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.08)",
+                background: active ? `${color}25` : "rgba(255,255,255,0.04)",
+                color: active ? color : "rgba(255,255,255,0.35)",
+                border: active ? `1px solid ${color}50` : "1px solid rgba(255,255,255,0.06)",
               }}
             >
-              {team.name}
+              <Icon className="h-3 w-3" />
+              {eventTypeLabel(et)}
             </button>
-          ))}
-        </div>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
@@ -373,21 +444,24 @@ export default function CalendarPage() {
 
                     {/* Event chips */}
                     <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map(ev => (
-                        <div
-                          key={ev.id}
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-md truncate leading-tight cursor-pointer"
-                          style={{
-                            background: `${ev.teamColor}28`,
-                            color: ev.teamColor,
-                            border: `1px solid ${ev.teamColor}40`,
-                          }}
-                          onClick={e => { e.stopPropagation(); setSelectedEvent(ev); setSelectedDay(day); }}
-                          title={ev.title}
-                        >
-                          {ev.title}
-                        </div>
-                      ))}
+                      {dayEvents.slice(0, 3).map(ev => {
+                        const evColor = TYPE_COLORS[ev.type] ?? ev.teamColor;
+                        return (
+                          <div
+                            key={ev.id}
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md truncate leading-tight cursor-pointer"
+                            style={{
+                              background: `${evColor}28`,
+                              color: evColor,
+                              border: `1px solid ${evColor}40`,
+                            }}
+                            onClick={e => { e.stopPropagation(); setSelectedEvent(ev); setSelectedDay(day); }}
+                            title={ev.title}
+                          >
+                            {ev.title}
+                          </div>
+                        );
+                      })}
                       {dayEvents.length > 3 && (
                         <div className="text-[10px] text-white/30 font-bold px-1.5 ltr-num">
                           +{dayEvents.length - 3}
@@ -441,24 +515,28 @@ export default function CalendarPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
-                  {selectedDayEvents.map(ev => (
-                    <button
-                      key={ev.id}
-                      className="w-full text-start px-4 py-3 hover:bg-white/4 transition-colors"
-                      onClick={() => setSelectedEvent(ev)}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: ev.teamColor }} />
-                        <span className="text-xs font-bold"
-                          style={{ color: typeColor[ev.type] ?? ev.teamColor }}>
-                          {eventTypeLabel(ev.type)}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-white truncate">{ev.title}</p>
-                      <p className="text-xs text-white/40 mt-0.5 ltr-num">{formatTime(ev.startsAt)}</p>
-                      <p className="text-[10px] text-white/25 mt-0.5">{ev.teamName}</p>
-                    </button>
-                  ))}
+                  {selectedDayEvents.map(ev => {
+                    const typeClr = TYPE_COLORS[ev.type] ?? ev.teamColor;
+                    const Icon = TYPE_ICONS[ev.type] ?? MoreHorizontal;
+                    return (
+                      <button
+                        key={ev.id}
+                        className="w-full text-start px-4 py-3 hover:bg-white/4 transition-colors"
+                        onClick={() => setSelectedEvent(ev)}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: ev.teamColor }} />
+                          <Icon className="h-3 w-3 shrink-0" style={{ color: typeClr }} />
+                          <span className="text-xs font-bold" style={{ color: typeClr }}>
+                            {eventTypeLabel(ev.type)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-semibold text-white truncate">{ev.title}</p>
+                        <p className="text-xs text-white/40 mt-0.5 ltr-num">{formatTime(ev.startsAt)}</p>
+                        <p className="text-[10px] text-white/25 mt-0.5">{ev.teamName}</p>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -478,24 +556,27 @@ export default function CalendarPage() {
                   {events
                     .filter(e => new Date(e.startsAt) >= new Date(new Date().setHours(0, 0, 0, 0)))
                     .slice(0, 8)
-                    .map(ev => (
-                      <button
-                        key={ev.id}
-                        className="w-full text-start px-4 py-3 hover:bg-white/4 transition-colors"
-                        onClick={() => { setSelectedDay(parseISO(ev.startsAt)); setSelectedEvent(ev); }}
-                      >
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ev.teamColor }} />
-                          <span className="text-[10px] font-bold" style={{ color: ev.teamColor }}>
-                            {ev.teamName}
-                          </span>
-                        </div>
-                        <p className="text-sm font-semibold text-white truncate">{ev.title}</p>
-                        <p className="text-xs text-white/35 ltr-num">
-                          {formatDateTime(ev.startsAt)}
-                        </p>
-                      </button>
-                    ))}
+                    .map(ev => {
+                      const typeClr = TYPE_COLORS[ev.type] ?? ev.teamColor;
+                      return (
+                        <button
+                          key={ev.id}
+                          className="w-full text-start px-4 py-3 hover:bg-white/4 transition-colors"
+                          onClick={() => { setSelectedDay(parseISO(ev.startsAt)); setSelectedEvent(ev); }}
+                        >
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: typeClr }} />
+                            <span className="text-[10px] font-bold" style={{ color: typeClr }}>
+                              {eventTypeLabel(ev.type)}
+                            </span>
+                          </div>
+                          <p className="text-sm font-semibold text-white truncate">{ev.title}</p>
+                          <p className="text-xs text-white/35 ltr-num">
+                            {formatDateTime(ev.startsAt)}
+                          </p>
+                        </button>
+                      );
+                    })}
                   {events.filter(e => new Date(e.startsAt) >= new Date()).length === 0 && (
                     <div className="px-4 py-8 text-center">
                       <p className="text-xs text-white/25">{t.calendar.noUpcoming}</p>
@@ -515,11 +596,19 @@ export default function CalendarPage() {
               }}>
               <div className="px-4 py-3 border-b flex items-center justify-between"
                 style={{ borderColor: `${selectedEvent.teamColor}20` }}>
-                <div>
-                  <span className="text-[10px] font-bold"
-                    style={{ color: typeColor[selectedEvent.type] ?? selectedEvent.teamColor }}>
-                    {eventTypeLabel(selectedEvent.type)}
-                  </span>
+                <div className="flex items-center gap-1.5">
+                  {(() => {
+                    const Icon = TYPE_ICONS[selectedEvent.type] ?? MoreHorizontal;
+                    const clr = TYPE_COLORS[selectedEvent.type] ?? selectedEvent.teamColor;
+                    return (
+                      <>
+                        <Icon className="h-3.5 w-3.5" style={{ color: clr }} />
+                        <span className="text-[10px] font-bold" style={{ color: clr }}>
+                          {eventTypeLabel(selectedEvent.type)}
+                        </span>
+                      </>
+                    );
+                  })()}
                 </div>
                 <button
                   onClick={() => setSelectedEvent(null)}

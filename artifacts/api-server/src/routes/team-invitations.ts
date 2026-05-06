@@ -9,8 +9,6 @@ import type { Request, Response } from "express";
 
 const router: IRouter = Router();
 
-/* ─── helpers ─────────────────────────────────────────────── */
-
 async function sendTeamInviteEmail(
   to: string, inviterName: string, teamName: string, sport: string, token: string,
 ): Promise<{ success: boolean; error?: string }> {
@@ -81,19 +79,32 @@ router.post("/teams/:teamId/invitations", requireAuth, async (req: AuthedRequest
   const [team] = await db.select().from(teamsTable).where(eq(teamsTable.id, teamId));
   if (!team) { res.status(404).json({ error: "Team not found" }); return; }
 
-  const { type = "email", email } = req.body as { type?: "email" | "link"; email?: string };
+  const {
+    type = "email",
+    email,
+    phone,
+    invitedRole = "player",
+  } = req.body as { type?: "email" | "link"; email?: string; phone?: string; invitedRole?: string };
 
   if (type === "email" && (!email || !email.includes("@"))) {
     res.status(400).json({ error: "Valid email required for email invitations" }); return;
   }
+
+  const validRole = ["player", "coach", "assistant"].includes(invitedRole) ? invitedRole : "player";
 
   const [inviter] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
   const token = randomUUID();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
   const [inv] = await db.insert(teamInvitationsTable).values({
-    token, teamId, invitedByUserId: userId,
-    inviteType: type, email: type === "email" ? (email ?? null) : null, expiresAt,
+    token,
+    teamId,
+    invitedByUserId: userId,
+    inviteType: type,
+    invitedRole: validRole as "player" | "coach" | "assistant",
+    email: type === "email" ? (email ?? null) : null,
+    phone: phone ?? null,
+    expiresAt,
   }).returning();
 
   const url = inviteUrl(token);
@@ -107,7 +118,7 @@ router.post("/teams/:teamId/invitations", requireAuth, async (req: AuthedRequest
     }
   }
 
-  res.json({ id: inv.id, token, url, type, email, expiresAt, emailSent });
+  res.json({ id: inv.id, token, url, type, email, phone, invitedRole: validRole, expiresAt, emailSent });
 });
 
 /* ─── List invitations ──────────────────────────────────── */
@@ -125,7 +136,9 @@ router.get("/teams/:teamId/invitations", requireAuth, async (req: AuthedRequest,
     id: teamInvitationsTable.id,
     token: teamInvitationsTable.token,
     inviteType: teamInvitationsTable.inviteType,
+    invitedRole: teamInvitationsTable.invitedRole,
     email: teamInvitationsTable.email,
+    phone: teamInvitationsTable.phone,
     status: teamInvitationsTable.status,
     expiresAt: teamInvitationsTable.expiresAt,
     acceptedAt: teamInvitationsTable.acceptedAt,
@@ -204,7 +217,9 @@ router.get("/team-invite/:token", async (req: Request, res: Response): Promise<v
   const [inv] = await db.select({
     id: teamInvitationsTable.id,
     inviteType: teamInvitationsTable.inviteType,
+    invitedRole: teamInvitationsTable.invitedRole,
     email: teamInvitationsTable.email,
+    phone: teamInvitationsTable.phone,
     status: teamInvitationsTable.status,
     expiresAt: teamInvitationsTable.expiresAt,
     acceptedAt: teamInvitationsTable.acceptedAt,
@@ -253,14 +268,15 @@ router.post("/team-invite/:token/accept", requireAuth, async (req: AuthedRequest
   const [team] = await db.select({ joinCode: teamsTable.joinCode }).from(teamsTable).where(eq(teamsTable.id, inv.teamId));
   if (!team) { res.status(404).json({ error: "Team not found" }); return; }
 
-  await db.insert(teamMembersTable).values({ teamId: inv.teamId, userId, role: "player" })
+  const memberRole = (inv.invitedRole ?? "player") as "player" | "coach" | "assistant";
+  await db.insert(teamMembersTable).values({ teamId: inv.teamId, userId, role: memberRole })
     .onConflictDoNothing();
 
   await db.update(teamInvitationsTable).set({
     status: "accepted", acceptedAt: new Date(), acceptedByUserId: userId,
   }).where(eq(teamInvitationsTable.id, inv.id));
 
-  res.json({ success: true, joinCode: team.joinCode });
+  res.json({ success: true, joinCode: team.joinCode, role: memberRole });
 });
 
 export default router;

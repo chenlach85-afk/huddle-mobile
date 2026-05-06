@@ -42,9 +42,11 @@ import {
 import {
   ArrowLeft, Users, Calendar, CheckSquare, MessageSquare,
   AlertCircle, Activity, Link2, Check, Zap, MapPin, Pencil,
-  ImageIcon, FileText,
+  ImageIcon, FileText, Settings,
 } from "lucide-react";
 import PlayersTab from "@/components/team/players-tab";
+import TeamManagementTab from "@/pages/team-management";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import EventsTab from "@/components/team/events-tab";
 import TasksTab from "@/components/team/tasks-tab";
 import MessagesTab from "@/components/team/messages-tab";
@@ -185,6 +187,7 @@ export default function TeamDetailPage() {
   const { t, language } = useI18n();
   const td = t.teamDetail;
   const sq = t.squads;
+  const { appUser } = useCurrentUser();
   const [copied, setCopied] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const id = Number(teamId);
@@ -293,6 +296,8 @@ export default function TeamDetailPage() {
     );
   }
 
+  const isOwner = !!(appUser && (team as any)?.createdBy === appUser.id);
+
   const tabs = [
     { value: "players", label: td.tabSquad, icon: Users },
     { value: "events", label: td.tabLineup, icon: Calendar },
@@ -300,6 +305,7 @@ export default function TeamDetailPage() {
     { value: "messages", label: td.tabHuddle, icon: MessageSquare },
     { value: "albums", label: td.tabAlbums, icon: ImageIcon },
     { value: "docs", label: td.tabDocs, icon: FileText },
+    { value: "management", label: td.tabManagement, icon: Settings },
   ];
 
   const teamImage = (team as any).imageUrl as string | null | undefined;
@@ -525,12 +531,21 @@ export default function TeamDetailPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
           <div className="lg:col-span-3">
-            <TabsContent value="players" className="mt-0"><PlayersTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="players" className="mt-0"><PlayersTab teamId={id} teamColor={teamColor} teamName={team?.name} /></TabsContent>
             <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="albums" className="mt-0"><AlbumsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="docs" className="mt-0"><DocsTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="management" className="mt-0">
+              <TeamManagementTab
+                teamId={id}
+                teamColor={teamColor}
+                teamName={team?.name ?? ""}
+                joinCode={(team as any)?.joinCode ?? undefined}
+                isOwner={isOwner}
+              />
+            </TabsContent>
           </div>
 
           <div className="lg:col-span-1 space-y-4">

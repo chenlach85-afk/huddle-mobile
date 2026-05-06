@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, tasksTable, playersTable } from "@workspace/db";
+import { db, tasksTable, playersTable, teamsTable, teamMembersTable } from "@workspace/db";
 import {
   ListTasksParams,
   CreateTaskParams,
@@ -11,6 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
 import { assertTeamAccess } from "../helpers/teamAccess";
+import { createNotification } from "./notifications";
 
 const router: IRouter = Router();
 
@@ -21,6 +22,18 @@ async function enrichTask(task: typeof tasksTable.$inferSelect) {
     .from(playersTable)
     .where(eq(playersTable.id, task.assignedToPlayerId));
   return { ...task, assignedToPlayerName: player?.name ?? null };
+}
+
+async function notifyTeamMembers(teamId: number, title: string, body: string, relatedId: number) {
+  try {
+    const members = await db.select({ userId: teamMembersTable.userId })
+      .from(teamMembersTable)
+      .where(eq(teamMembersTable.teamId, teamId));
+    await Promise.all(members.map(m =>
+      createNotification({ userId: m.userId, type: "task", title, body, relatedId, relatedType: "task" })
+        .catch(() => {})
+    ));
+  } catch {}
 }
 
 router.get("/teams/:teamId/tasks", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
@@ -63,6 +76,9 @@ router.post("/teams/:teamId/tasks", requireAuth, async (req: AuthedRequest, res)
     })
     .returning();
 
+  const [team] = await db.select({ name: teamsTable.name }).from(teamsTable).where(eq(teamsTable.id, teamId));
+  notifyTeamMembers(teamId, `New task: ${d.title}`, `${team?.name ?? "Your team"} — ${d.title}`, task.id);
+
   const enriched = await enrichTask(task);
   res.status(201).json(enriched);
 });
@@ -80,9 +96,9 @@ router.patch("/tasks/:taskId", requireAuth, async (req: AuthedRequest, res): Pro
   const updates: Record<string, unknown> = {};
   const d = parsed.data;
   if (d.title !== undefined) updates.title = d.title;
-  if ("description" in d) updates.description = d.description;
-  if ("assignedToPlayerId" in d) updates.assignedToPlayerId = d.assignedToPlayerId;
-  if ("dueDate" in d) updates.dueDate = d.dueDate;
+  if (d.description !== undefined) updates.description = d.description;
+  if (d.assignedToPlayerId !== undefined) updates.assignedToPlayerId = d.assignedToPlayerId;
+  if (d.dueDate !== undefined) updates.dueDate = d.dueDate;
   if (d.status !== undefined) updates.status = d.status;
   if (d.priority !== undefined) updates.priority = d.priority;
 

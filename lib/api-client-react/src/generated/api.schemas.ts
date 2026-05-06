@@ -146,8 +146,11 @@ export interface UpdatePlayerBody {
 export type EventType = (typeof EventType)[keyof typeof EventType];
 
 export const EventType = {
-  practice: "practice",
-  game: "game",
+  training: "training",
+  league_game: "league_game",
+  friendly_game: "friendly_game",
+  tournament: "tournament",
+  celebration: "celebration",
   meeting: "meeting",
   other: "other",
 } as const;
@@ -174,8 +177,11 @@ export type CreateEventBodyType =
   (typeof CreateEventBodyType)[keyof typeof CreateEventBodyType];
 
 export const CreateEventBodyType = {
-  practice: "practice",
-  game: "game",
+  training: "training",
+  league_game: "league_game",
+  friendly_game: "friendly_game",
+  tournament: "tournament",
+  celebration: "celebration",
   meeting: "meeting",
   other: "other",
 } as const;
@@ -196,8 +202,11 @@ export type UpdateEventBodyType =
   (typeof UpdateEventBodyType)[keyof typeof UpdateEventBodyType];
 
 export const UpdateEventBodyType = {
-  practice: "practice",
-  game: "game",
+  training: "training",
+  league_game: "league_game",
+  friendly_game: "friendly_game",
+  tournament: "tournament",
+  celebration: "celebration",
   meeting: "meeting",
   other: "other",
 } as const;
@@ -403,8 +412,11 @@ export type CalendarEventType =
   (typeof CalendarEventType)[keyof typeof CalendarEventType];
 
 export const CalendarEventType = {
-  practice: "practice",
-  game: "game",
+  training: "training",
+  league_game: "league_game",
+  friendly_game: "friendly_game",
+  tournament: "tournament",
+  celebration: "celebration",
   meeting: "meeting",
   other: "other",
 } as const;

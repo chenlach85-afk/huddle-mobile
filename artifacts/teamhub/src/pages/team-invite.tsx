@@ -41,7 +41,7 @@ function TeamInviteContent({ token }: { token: string }) {
 
   async function handleAccept() {
     if (!isSignedIn) {
-      openSignIn({ redirectUrl: window.location.href });
+      openSignIn({ redirectUrl: window.location.href } as Parameters<typeof openSignIn>[0]);
       return;
     }
     setAccepting(true);

@@ -1,0 +1,798 @@
+Five connected changes. Build in order. Don't skip steps.
+Change 1 — Player invitation: explicit email vs link choice
+Right now (after Bug 4 of the previous prompt) the "Invite player" modal has two tabs: "By email" and "By shareable link." That's good but ambiguous. The coach often wants to invite ONE specific player but send the link via WhatsApp instead of email. Make this explicit.
+New flow
+When coach clicks "Invite player," show ONE form (not tabs). At the bottom, show TWO buttons that determine delivery:
+┌────────────────────────────────────────────────────┐
+│  Invite a player to Lightning FC                    │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Email or phone (we'll use this to identify them)   │
+│  [ player@example.com or 050-1234567              ] │
+│                                                      │
+│  Role                                               │
+│  ◉ Player    ○ Parent                              │
+│                                                      │
+│  ▼ Optional details                                 │
+│    Jersey number: [   ]                             │
+│    Position: [                                    ] │
+│    Pre-fill name: [                              ] │
+│                                                      │
+│  Personal message (shown to recipient)              │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  How to send?                                       │
+│                                                      │
+│  [📧 Send email invitation]  [🔗 Generate link]    │
+│                                                      │
+└────────────────────────────────────────────────────┘
+"Send email invitation" button
+
+Email is required (validates format, can't be a phone number)
+Behavior: same as before — creates team_invitations row, sends email via Resend
+After click: success toast "Invitation sent to {email}"
+
+"Generate link" button
+
+Email OR phone is acceptable as identifier
+Behavior: creates team_invitations row WITHOUT sending email
+After click: shows a result modal:
+
+┌────────────────────────────────────────────────────┐
+│  Personal invitation link created                   │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  This link is unique to {name or email/phone}.      │
+│  Only they can use it. It expires in 14 days.       │
+│                                                      │
+│  [ https://huddle.app/team-invite/abc123def456...] │
+│  [Copy link]                                        │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Share via:                                         │
+│  [📱 WhatsApp]   [📋 Copy text]   [✉ Email]        │
+│                                                      │
+│  Pre-formatted message (editable):                  │
+│  [ שלום! אני מזמין אותך להצטרף לקבוצה לייטנינג │
+│    אר.סי ב-HUDDLE. הנה הקישור האישי שלך:        │
+│    https://huddle.app/team-invite/abc...        ] │
+│                                                      │
+│  [Done]                                             │
+└────────────────────────────────────────────────────┘
+Three sharing options:
+WhatsApp — opens https://wa.me/PHONE?text=ENCODED_MESSAGE in a new tab:
+
+If invitation has a phone number, pre-populate the recipient: wa.me/972501234567?text=...
+If only email, no phone is set, so use wa.me/?text=... (WhatsApp asks user to pick recipient)
+Israeli phone format: app should accept 050-1234567, 0501234567, or +972501234567 and normalize to 972501234567 for the wa.me URL
+
+Copy text — copies the entire pre-formatted message including the link to clipboard.
+Email — opens the user's email client with mailto:EMAIL?subject=...&body=... (only if invitation has an email).
+Database — add phone field to team_invitations
+sqlalter table public.team_invitations
+  add column if not exists phone text,
+  alter column email drop not null,
+  add constraint team_invitations_email_or_phone_check
+    check (email is not null or phone is not null);
+
+create index if not exists team_invitations_phone_idx on team_invitations(phone);
+If phone is provided but no email, the recipient flow is slightly different (see below).
+Recipient flow when accessing a link with phone-only invitation
+When someone clicks /team-invite/[token] and the invitation has phone but no email:
+The accept page shows:
+
+"Welcome to {team_name}" header
+Phone number field that is locked to the invitation's phone (display only)
+Email field that THEY must provide (we need email for the auth account)
+Standard password / name / jersey / position fields
+"Join team" button
+
+When they submit:
+
+Create user via supabaseAdmin.auth.admin.createUser with the email they provided
+Save the phone number in profiles.phone
+Add to team_members
+Mark invitation accepted, save the email in team_invitations.email (now we have it)
+
+WhatsApp message templates
+Generate per language. The coach's preferred language determines which template appears in the editable text field:
+typescriptconst whatsappTemplates = {
+  he: `שלום! 👋
+
+אני מזמין אותך להצטרף לקבוצה *{team_name}* באפליקציית HUDDLE.
+
+{personal_message_if_any}
+
+באפליקציה תוכל לראות את לוח הזמנים, אישורי הגעה, הודעות הקבוצה ועוד.
+
+הקישור האישי שלך (תקף ל-14 ימים):
+{invite_url}
+
+נתראה במגרש! ⚽`,
+
+  en: `Hi! 👋
+
+I'd like to invite you to join *{team_name}* on the HUDDLE app.
+
+{personal_message_if_any}
+
+In the app you can see the schedule, RSVP to events, get team announcements and more.
+
+Your personal link (valid for 14 days):
+{invite_url}
+
+See you on the field! ⚽`,
+
+  es: `¡Hola! 👋
+
+Me gustaría invitarte a unirte a *{team_name}* en la app HUDDLE.
+
+{personal_message_if_any}
+
+En la app puedes ver el calendario, confirmar asistencia, recibir avisos del equipo y más.
+
+Tu enlace personal (válido por 14 días):
+{invite_url}
+
+¡Nos vemos en la cancha! ⚽`
+};
+Make these editable — coach can tweak the message before sending.
+Translations
+Add to he.json:
+json{
+  "team_invite": {
+    "send_email": "שלח הזמנה במייל",
+    "generate_link": "צור קישור אישי",
+    "personal_link_created": "נוצר קישור אישי",
+    "link_unique_to": "הקישור ייחודי ל-{recipient}. רק הוא יוכל להשתמש בו.",
+    "link_expires_14d": "הקישור תקף ל-14 ימים.",
+    "share_via": "שתף ב-",
+    "share_whatsapp": "וואטסאפ",
+    "share_copy_text": "העתק טקסט",
+    "share_email": "מייל",
+    "preformatted_message": "הודעה מוכנה (ניתנת לעריכה)",
+    "email_or_phone_label": "מייל או טלפון",
+    "email_or_phone_placeholder": "player@example.com או 050-1234567",
+    "phone_only_email_required": "במקרה שהוזן רק טלפון, השחקן יידרש למלא מייל בעת ההצטרפות",
+    "copied_to_clipboard": "הקישור הועתק"
+  }
+}
+Add equivalents to en.json and es.json.
+Change 2 — Promote coach management to a real "Team Management" section
+Multi-coach support exists in the schema but is buried. Make it a top-level part of team settings.
+New page: /team/[id]/management
+Add a new sidebar/menu entry called "ניהול הקבוצה" / "Team Management" / "Administración del equipo" in the team navigation. Visible only to coaches and assistant coaches; the management actions inside are role-gated.
+The page has these sections (in this order):
+Section 1: Coaching staff
+┌────────────────────────────────────────────────────┐
+│  COACHING STAFF                                     │
+│  ────────────────────────────────────────────────  │
+│                                                      │
+│  [Avatar]  Yossi Cohen           [OWNER]            │
+│            yossi@example.com                        │
+│            Joined 3 months ago                      │
+│                                                      │
+│  [Avatar]  Liran Eldar            [COACH]    [...]  │
+│            liran@example.com                        │
+│            Joined 2 weeks ago                       │
+│            [Change role to Assistant] [Remove]      │
+│                                                      │
+│  [Avatar]  Dana Levi               [ASSISTANT] [..] │
+│            dana@example.com                         │
+│            Joined 5 days ago                        │
+│            [Change role to Coach] [Remove]          │
+│                                                      │
+│  [+ Invite another coach]                           │
+└────────────────────────────────────────────────────┘
+The kebab menu [...] and the inline buttons [Remove] [Change role] are visible only to the team owner. Non-owner coaches see the staff list but can't modify it.
+The "Invite another coach" button opens the same invitation modal as Change 1, but with role selector preset to "Coach" / "Assistant Coach":
+┌────────────────────────────────────────────────────┐
+│  Invite another coach                               │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Email                                              │
+│  [                                                ] │
+│                                                      │
+│  Role                                               │
+│  ◉ Coach (full management rights)                   │
+│  ○ Assistant coach (manage events, players, tasks  │
+│      — cannot change team settings or coaches)      │
+│                                                      │
+│  Personal message (optional)                        │
+│  [                                                ] │
+│                                                      │
+│  [📧 Send email invitation]  [🔗 Generate link]    │
+└────────────────────────────────────────────────────┘
+The created platform_invitations (yes, platform-level for coaches, since coaches need accounts) has invited_role = 'coach' and notes = {"prefill_team_id": "<this-team-id>", "prefill_role": "coach"|"assistant_coach"}.
+The accept-invite flow (which already exists from earlier prompts) sees the prefill_team_id and auto-adds the new coach to this team.
+Section 2: Squad summary (link out)
+Brief view: total players, active players, parents. With a "Manage squad" button linking to the existing /team/[id]/squad page.
+Section 3: Team information (owner only)
+Shows team name, sport, age group, season, primary color, logo. With an "Edit team info" button.
+Section 4: Team join settings
+Shows the shareable team invite code/link with options to copy, share via WhatsApp, regenerate. Same UI as Change 1's "By shareable link" tab but on the management page.
+Section 5: Danger zone (owner only)
+┌────────────────────────────────────────────────────┐
+│  ⚠️  DANGER ZONE                                     │
+│  ────────────────────────────────────────────────  │
+│                                                      │
+│  Transfer ownership                                 │
+│  Pass team ownership to another coach.             │
+│  You'll become a regular coach.                    │
+│  [Transfer ownership]                               │
+│                                                      │
+│  Archive team                                       │
+│  Hide the team from active rotation. Players keep   │
+│  read-only access. Reversible.                      │
+│  [Archive team]                                     │
+│                                                      │
+│  Delete team                                        │
+│  Permanently delete the team and all its data.     │
+│  Cannot be undone.                                  │
+│  [Delete team]                                      │
+└────────────────────────────────────────────────────┘
+API endpoints
+POST /api/teams/[teamId]/coaches/invite
+  Body: { email, role: 'coach'|'assistant_coach', personal_message?, language? }
+  Auth: team owner only
+  Behavior: same as platform invitation but with team prefill
+
+POST /api/teams/[teamId]/coaches/[userId]/role
+  Body: { new_role: 'coach' | 'assistant_coach' }
+  Auth: team owner only
+  Behavior: updates team_members.role for that user in that team
+
+DELETE /api/teams/[teamId]/coaches/[userId]
+  Auth: team owner only
+  Behavior: removes a coach from the team (deletes the team_members row)
+  Sends notification to removed coach: "{owner_name} removed you as coach of {team_name}"
+  Logs to audit
+
+POST /api/teams/[teamId]/transfer-ownership
+  Body: { new_owner_user_id: uuid }
+  Auth: team owner only
+  Behavior: updates teams.created_by to new owner; old owner remains as coach
+  Notifies both via email
+  Logs to audit
+
+POST /api/teams/[teamId]/archive
+  Body: { reason? }
+  Auth: team owner only
+  Behavior: sets archived_at, archived_by, archived_reason
+
+POST /api/teams/[teamId]/unarchive
+  Auth: team owner only
+  Behavior: clears archived_at, archived_by, archived_reason
+
+DELETE /api/teams/[teamId]
+  Body: { confirmation_text: 'DELETE PERMANENTLY' }
+  Auth: team owner only
+  Behavior: cascades through events, messages, team_members, etc.
+Permission boundaries (verify these still hold)
+ActionOwnerCoachAssistant CoachPlayerView management page✅✅✅❌See coaching staff list✅✅✅❌Invite another coach✅❌❌❌Change a coach's role✅❌❌❌Remove a coach✅❌❌❌Transfer ownership✅❌❌❌Edit team info✅❌❌❌Create events✅✅✅❌Manage players✅✅✅❌Send messages/announcements✅✅✅❌Archive/delete team✅❌❌❌
+These boundaries are enforced at the database level via RLS, NOT just the UI. If the agent put owner-only checks only in React components, that's a security bug — push back and demand RLS policies.
+Translations
+Add to he.json:
+json{
+  "management": {
+    "title": "ניהול הקבוצה",
+    "coaching_staff": "צוות אימון",
+    "owner_badge": "בעלים",
+    "coach_badge": "מאמן",
+    "assistant_badge": "מאמן עוזר",
+    "joined_ago": "הצטרף לפני {time}",
+    "invite_another_coach": "הזמן מאמן נוסף",
+    "change_role_to_coach": "שנה לתפקיד מאמן",
+    "change_role_to_assistant": "שנה לתפקיד מאמן עוזר",
+    "remove_coach": "הסר מאמן",
+    "remove_coach_confirm": "להסיר את {name} כמאמן? הוא יאבד את כל ההרשאות לקבוצה זו.",
+    "remove_coach_success": "{name} הוסר כמאמן",
+    "role_changed_success": "התפקיד של {name} השתנה ל-{role}",
+    "invite_coach_subtitle": "הזמן מאמן נוסף לעזור בניהול הקבוצה",
+    "role_coach_help": "מאמן: ניהול מלא של הקבוצה",
+    "role_assistant_help": "מאמן עוזר: ניהול אירועים, שחקנים, משימות. לא יכול לשנות הגדרות קבוצה או להוסיף מאמנים.",
+    "transfer_ownership": "העבר בעלות",
+    "transfer_ownership_subtitle": "העבר את הבעלות למאמן אחר. אתה תהפוך למאמן רגיל.",
+    "transfer_to": "העבר ל-",
+    "transfer_confirm_check": "אני מבין שזו פעולה קבועה",
+    "transfer_button": "העבר בעלות",
+    "team_info": "פרטי הקבוצה",
+    "edit_team_info": "ערוך פרטי קבוצה",
+    "team_join_settings": "הגדרות הצטרפות לקבוצה",
+    "archive_team": "העבר קבוצה לארכיון",
+    "archive_team_subtitle": "השחקנים יוכלו לצפות בלבד. ניתן לשחזור.",
+    "unarchive_team": "החזר מארכיון",
+    "delete_team": "מחק קבוצה",
+    "delete_team_subtitle": "מחיקה לצמיתות של הקבוצה ושל כל הנתונים. לא ניתן לביטול.",
+    "delete_team_confirm_phrase": "DELETE PERMANENTLY",
+    "danger_zone": "אזור מסוכן"
+  }
+}
+Add equivalents to en.json and es.json.
+Change 3 — Distinguish event types in the calendar
+The schema supports event types. Make them visually distinct.
+Schema update
+Expand the allowed event types:
+sqlalter table public.events
+  drop constraint if exists events_type_check;
+
+alter table public.events
+  add constraint events_type_check
+  check (type in (
+    'training',
+    'league_game',
+    'friendly_game',
+    'tournament',
+    'celebration',
+    'meeting',
+    'other'
+  ));
+
+-- Migrate existing 'game' rows to 'league_game' (most common case for existing teams)
+update public.events set type = 'league_game' where type = 'game';
+Visual identity per event type
+Each type gets a unique color and icon. Use these consistently across the calendar, event cards, hero card, and notifications:
+TypeHebrewEnglishSpanishColorIconBadgetrainingאימוןTrainingEntrenamiento#FF6B35 (ignition)dumbbellTRAININGleague_gameמשחק ליגהLeague gamePartido de liga#E74C3C (kit_red)trophyLEAGUEfriendly_gameמשחק ידידותFriendly gameAmistoso#4A90E2 (kit_blue)handshakeFRIENDLYtournamentטורנירTournamentTorneo#9B59B6 (kit_purple)medalTOURNAMENTcelebrationאירוע חגיגיCelebrationCelebración#F7B538 (trophy gold)sparklesCELEBRATIONmeetingפגישהMeetingReunión#2ECC71 (kit_green)usersMEETINGotherאחרOtherOtro#7F8C8D (gray)calendarOTHER
+Calendar view rendering
+Each event in the calendar grid shows as a colored pill:
+┌─────────────────────────────┐
+│  Tuesday Mar 15              │
+│  ┌─────────────────────────┐│
+│  │ 🏋 17:00 Training        ││  ← orange pill, dumbbell icon
+│  └─────────────────────────┘│
+│  ┌─────────────────────────┐│
+│  │ 🏆 19:00 League Game     ││  ← red pill, trophy icon
+│  └─────────────────────────┘│
+└─────────────────────────────┘
+The pill background uses the type's color at full saturation; text is white. Icon at the start (or end in RTL).
+In the schedule list view (not just calendar grid), each event card has:
+
+Type badge in upper corner: small pill with type name + color
+Event title
+Date, time, location
+Attendance summary
+
+Event creation form
+The "Type" selector in the event creation modal becomes a visual grid of cards instead of a dropdown:
+┌─────────────────────────────────────────────────┐
+│  Event type *                                    │
+│                                                   │
+│  [🏋 Training]  [🏆 League]   [🤝 Friendly]    │
+│  [🥇 Tournament][✨ Celebration][👥 Meeting]    │
+│  [📅 Other]                                      │
+└─────────────────────────────────────────────────┘
+Each card is the type's color (faded background, full-color icon and text). Selected card shows full saturation. Tap to select.
+This makes type selection memorable and fast — coach doesn't read a dropdown.
+Type-specific defaults in event form
+When the coach picks a type, pre-fill sensible defaults:
+
+Training: title default "אימון" / "Training", uniform default empty, what to bring "בקבוק מים" / "Water bottle"
+League game: title default "משחק נגד ___" / "Game vs ___", arrival time default 60 min before, opponent field shown, home/away toggle shown
+Friendly game: same as league game but title default "משחק ידידות נגד ___"
+Tournament: title default "טורניר ___" / "Tournament ___", duration default 4 hours
+Celebration: title default empty (coach types), location field becomes "Venue", uniform field hidden, what to bring becomes "What to bring (food, drinks, etc.)"
+Meeting: title default "פגישה" / "Meeting", uniform field hidden, location optional, what to bring hidden
+Other: title required (no default), all fields visible
+
+Filter calendar by type
+Above the calendar grid, add a filter row:
+┌────────────────────────────────────────────────────────────┐
+│  All  Training  League  Friendly  Tournament  Celebration  │
+│  ●    ●         ○       ●         ○           ●           │  ← currently visible (●) or hidden (○)
+└────────────────────────────────────────────────────────────┘
+Tapping a type toggles its visibility. Coach can hide event types they don't care about right now (e.g., hide all Meetings to focus on the playing schedule).
+State persisted to localStorage per team — next visit remembers the filter.
+Translations
+json{
+  "events": {
+    "type_training": "אימון",
+    "type_league_game": "משחק ליגה",
+    "type_friendly_game": "משחק ידידות",
+    "type_tournament": "טורניר",
+    "type_celebration": "אירוע חגיגי",
+    "type_meeting": "פגישה",
+    "type_other": "אחר",
+    "filter_all": "הכל",
+    "type_picker_label": "סוג אירוע",
+    "venue": "מקום",
+    "what_to_bring_celebration": "מה להביא (אוכל, שתייה וכו')"
+  }
+}
+Add equivalents.
+Change 4 — Fix notifications and event alerts
+The notification system was specced in earlier prompts but events aren't triggering notifications. Diagnose first, then fix.
+Diagnostic
+Show me:
+
+The notification creation code paths — every place in the codebase that should fire a notification:
+
+bash   grep -rn "admin_notifications\|push.*subscribe\|push.*send\|notification" --include="*.ts" --include="*.tsx" -l
+
+The list of events that should trigger notifications:
+
+Coach creates event → push to all team members
+Coach sends announcement → push to all team members
+Coach creates task with assignment → push to assigned players
+Player RSVPs → push to coach
+Event reminder 24h before → push to all team members
+Event reminder 2h before → push to confirmed attendees
+Coach is invited to a team → push to coach
+Player is removed from a team → push to player
+Admin invites a coach → push to all admins
+Etc.
+
+
+The push subscription state — query the database:
+
+sql   select id, full_name, push_subscription is not null as has_push_sub,
+          jsonb_typeof(push_subscription) as sub_type
+   from profiles
+   limit 20;
+If most rows show has_push_sub = false, the subscription flow isn't working — users haven't been prompted or the subscribe API call failed.
+
+The push send function — show me the code that actually calls web-push library to send notifications. Common issues:
+
+VAPID keys not set or mismatched between client and server
+The web-push library not installed
+The endpoint URL is wrong
+Subscriptions are stale (browser revoked them) and the code doesn't handle 410 Gone responses
+
+
+The service worker — show me the contents of public/sw.js or app/sw.ts. The push event handler must be present:
+
+javascript   self.addEventListener('push', (event) => {
+     const data = event.data.json();
+     event.waitUntil(
+       self.registration.showNotification(data.title, {
+         body: data.body,
+         icon: '/icon-192.png',
+         badge: '/icon-192.png',
+         data: { url: data.url }
+       })
+     );
+   });
+
+   self.addEventListener('notificationclick', (event) => {
+     event.notification.close();
+     event.waitUntil(clients.openWindow(event.notification.data.url));
+   });
+Fix the most common causes
+Fix A: VAPID key mismatch
+The NEXT_PUBLIC_VAPID_PUBLIC_KEY (client-side, used to subscribe) and VAPID_PRIVATE_KEY (server-side, used to send) must be a matched pair. If they were generated separately or one is stale, all sends fail silently.
+Generate fresh keys:
+bashnpx web-push generate-vapid-keys
+Output looks like:
+Public Key: BNn9YhX...
+Private Key: wQ4F3z...
+Update both Replit Secrets, then clear all existing push_subscription rows because they were generated against the old key:
+sqlupdate public.profiles set push_subscription = null;
+Users must re-subscribe (they'll get the prompt again on next visit).
+Fix B: Subscription flow not running
+Verify the client subscribes on app load. Common implementation:
+typescript// hooks/usePushSubscription.ts
+'use client';
+
+import { useEffect } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+
+export function usePushSubscription() {
+  useEffect(() => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    async function subscribe() {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        // Ask permission first
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(
+            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+          )
+        });
+      }
+
+      // Save subscription to profile
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      await supabase
+        .from('profiles')
+        .update({ push_subscription: sub.toJSON() })
+        .eq('id', (await supabase.auth.getUser()).data.user?.id);
+    }
+
+    subscribe().catch(console.error);
+  }, []);
+}
+
+function urlBase64ToUint8Array(base64: string) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const data = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(data);
+  return new Uint8Array([...raw].map(c => c.charCodeAt(0)));
+}
+Call this hook in the main authenticated layout so it runs once per session.
+But — DON'T prompt for permission immediately on page load. That feels spammy. Instead:
+
+After user creates their first event OR signs up
+Show a banner: "Stay updated — enable push notifications" with an "Enable" button
+Only call Notification.requestPermission() when they click "Enable"
+
+Fix C: Push send function broken
+Show me lib/push.ts or wherever notifications get sent. Common implementation:
+typescriptimport webpush from 'web-push';
+import { supabaseAdmin } from './supabase-admin';
+
+webpush.setVapidDetails(
+  'mailto:admin@huddle.app',
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+  process.env.VAPID_PRIVATE_KEY!
+);
+
+export async function sendPushToUsers(userIds: string[], payload: {
+  title: string;
+  body: string;
+  url?: string;
+}) {
+  const { data: profiles } = await supabaseAdmin
+    .from('profiles')
+    .select('id, push_subscription')
+    .in('id', userIds)
+    .not('push_subscription', 'is', null);
+
+  if (!profiles?.length) return { sent: 0, failed: 0 };
+
+  let sent = 0, failed = 0;
+  await Promise.all(profiles.map(async (p) => {
+    try {
+      await webpush.sendNotification(p.push_subscription, JSON.stringify(payload));
+      sent++;
+    } catch (err: any) {
+      failed++;
+      // Subscription expired/revoked
+      if (err.statusCode === 410) {
+        await supabaseAdmin
+          .from('profiles')
+          .update({ push_subscription: null })
+          .eq('id', p.id);
+      }
+      console.error(`Push send failed for ${p.id}:`, err.statusCode, err.body);
+    }
+  }));
+
+  return { sent, failed };
+}
+Fix D: Triggers not calling the push function
+After any of these database operations, the corresponding API route must call sendPushToUsers:
+
+POST /api/events after insert: sendPushToUsers(playerUserIds, { title: 'אירוע חדש', body: ... })
+POST /api/announcements after insert: same
+POST /api/messages after insert: send to all conversation members except sender
+POST /api/tasks with assignments: send to each assigned user
+
+Audit each API route. If the database operation succeeds but no push is sent, that's the bug.
+Fix E: Add a /api/admin/test-push diagnostic endpoint
+Build this so you can verify the system end-to-end:
+typescript// app/api/admin/test-push/route.ts
+export async function POST(request: Request) {
+  const admin = await requireAdmin();
+
+  const result = await sendPushToUsers([admin.id], {
+    title: '🔔 Test notification',
+    body: 'If you see this, push notifications work!',
+    url: '/admin'
+  });
+
+  return NextResponse.json(result);
+}
+Add a "Test push notification" button in admin settings that calls this. Click it, verify a notification appears on the admin's device. If not, the problem is in subscribe/send pipeline.
+In-app notification fallback
+Push notifications don't always reach (browser closed, no network, iOS without PWA install). Add an in-app notification feed as a fallback that ALWAYS works.
+This already exists for admins (admin_notifications table). Extend it for regular users:
+sqlcreate table if not exists public.user_notifications (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null check (type in (
+    'new_event', 'new_announcement', 'new_message', 'new_task',
+    'event_reminder_24h', 'event_reminder_2h', 'event_cancelled', 'event_updated',
+    'rsvp_received', 'task_assigned', 'task_completed',
+    'team_invitation', 'removed_from_team', 'role_changed'
+  )),
+  title text not null,
+  body text,
+  link text,
+  team_id uuid references teams(id) on delete cascade,
+  read_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create index if not exists user_notifications_user_idx
+  on user_notifications(user_id, read_at, created_at desc);
+
+alter table public.user_notifications enable row level security;
+
+create policy "users read own notifications" on public.user_notifications
+  for select to authenticated using (user_id = auth.uid());
+create policy "users update own notifications" on public.user_notifications
+  for update to authenticated using (user_id = auth.uid());
+Whenever a push is sent, ALSO create a user_notifications row. Even if the push fails to deliver, the user sees it on next app open.
+In the app header (next to the user menu avatar), add a notification bell with unread count. Click → dropdown of recent notifications, "Mark all read" button, "View all" → /notifications page.
+Change 5 — WhatsApp messaging integration for coach broadcasts
+You said "phone updates via WhatsApp." Add a generalized WhatsApp messaging utility to the coach toolbox.
+Where it appears
+Three places where coaches need to message players via WhatsApp:
+Place 1: Player invitation (covered in Change 1)
+Already specced — the "Generate link" → "Share via WhatsApp" button.
+Place 2: Event broadcast
+When coach creates or updates an event, after saving show a follow-up modal:
+┌────────────────────────────────────────────────────┐
+│  ✓ Event created: Training, Tuesday 17:00           │
+│                                                      │
+│  Notify players via:                                │
+│                                                      │
+│  ☑ Push notifications (sent automatically)          │
+│  ☑ In-app notification (sent automatically)         │
+│  ☐ WhatsApp message (manual — see below)            │
+│                                                      │
+│  ▼ Send WhatsApp messages to players                │
+│                                                      │
+│  Pre-formatted message (editable):                  │
+│  [ אימון מחר 17:00 במגרש 3.                       │
+│    אנא אשרו הגעה באפליקציה.                       │
+│    [link to event]                                ] │
+│                                                      │
+│  Players (12 with phone numbers):                   │
+│  ☑ All  ☐ None  ☑ Only those who haven't RSVPd     │
+│                                                      │
+│  [Open WhatsApp for each player]                    │
+│                                                      │
+│  This will open 12 browser tabs, one per player.   │
+│  Click "Send" in each WhatsApp window.              │
+│                                                      │
+└────────────────────────────────────────────────────┘
+When clicked, the app opens N tabs (one per selected player) with wa.me/PHONE?text=ENCODED_MESSAGE. The coach manually clicks send in each. Tedious but free and reliable.
+For browsers that block multiple popups, fall back to opening one at a time with a progress indicator: "WhatsApp tab 1 of 12 opened. [Next player ›]"
+Place 3: Player profile
+On a player's detail page (when coach clicks a player in the squad), add buttons:
+
+Send WhatsApp — opens wa.me/PHONE with empty message
+Send invitation reminder via WhatsApp — only if player hasn't accepted their invitation yet
+
+Place 4: Bulk message (announcement broadcast)
+In /team/[id]/announcements, when coach posts an announcement, after saving show:
+┌────────────────────────────────────────────────────┐
+│  ✓ Announcement posted                              │
+│                                                      │
+│  ☑ Push notification sent (automatic)               │
+│  ☑ In-app notification (automatic)                  │
+│                                                      │
+│  Also send via WhatsApp?                            │
+│  [Send to all players (12)]                         │
+│                                                      │
+└────────────────────────────────────────────────────┘
+Phone number management
+Players have a profiles.phone field. Add UI for collecting and managing it:
+When a player joins
+After a player accepts an invitation and lands on /onboarding/player, after the jersey/position step, add a phone number field. Optional but encouraged: "Allow your coach to reach you on WhatsApp."
+In player profile
+A player can update/remove their phone in /profile.
+Coach view
+In the squad list, players who have phone numbers show a small WhatsApp icon next to their name. Tapping it opens WhatsApp with that player.
+Israeli phone number normalization
+Israeli numbers come in multiple formats:
+
+050-1234567 (with hyphens)
+0501234567 (no hyphens)
++972501234567 (international)
+972-50-1234567 (international with hyphens)
+972501234567 (international, no formatting)
+
+Normalize to international without + for wa.me URLs:
+typescriptexport function normalizePhoneForWhatsApp(phone: string): string | null {
+  const digits = phone.replace(/\D/g, '');
+
+  if (digits.startsWith('972')) {
+    return digits;
+  }
+
+  if (digits.startsWith('0') && digits.length === 10) {
+    // Israeli local: 0501234567 → 972501234567
+    return '972' + digits.substring(1);
+  }
+
+  return null; // Invalid
+}
+Validate phone numbers on input. Show user-friendly error: "Phone number doesn't look like a valid Israeli mobile number."
+Translations for WhatsApp UI
+json{
+  "whatsapp": {
+    "send_via": "שלח ב-וואטסאפ",
+    "open_whatsapp": "פתח וואטסאפ",
+    "broadcast_title": "שלח הודעת וואטסאפ לשחקנים",
+    "preformatted_message": "הודעה מוכנה (ניתנת לעריכה)",
+    "all_players": "כל השחקנים",
+    "only_no_rsvp": "רק מי שלא אישר הגעה",
+    "with_phone_count": "{n} שחקנים עם מספר טלפון",
+    "open_for_each": "פתח וואטסאפ לכל שחקן",
+    "tabs_warning": "פעולה זו תפתח {n} כרטיסיות, אחת לכל שחקן. לחץ \"שלח\" בכל אחת.",
+    "tab_progress": "כרטיסייה {n} מתוך {total}",
+    "next_player": "השחקן הבא",
+    "no_phone_skipped": "{n} שחקנים ללא מספר טלפון דולגו",
+    "phone_invalid": "מספר טלפון לא תקין",
+    "phone_optional_help": "אופציונלי, אבל מאפשר למאמן לשלוח לך עדכונים בוואטסאפ"
+  }
+}
+Add equivalents.
+Acceptance criteria
+Player invitation choice (email vs link):
+
+✓ Invite player modal shows ONE form with two send options
+✓ "Send email" works as before, requires email
+✓ "Generate link" works with email OR phone, doesn't send email
+✓ Generated link result shows copy + WhatsApp + Email + editable message
+✓ Phone-only invitation works end-to-end (recipient provides email when accepting)
+✓ Israeli phone formatting normalized correctly for wa.me links
+
+Team management page:
+7. ✓ /team/[id]/management exists with all 5 sections
+8. ✓ Coaching staff section visible to all coaches, modify actions only visible to owner
+9. ✓ Owner can invite second coach via email or link with role selector
+10. ✓ Owner can change a coach's role between coach/assistant
+11. ✓ Owner can remove a coach
+12. ✓ Owner can transfer ownership; old owner becomes regular coach
+13. ✓ Owner can archive/unarchive team
+14. ✓ Owner can delete team (with confirmation phrase)
+15. ✓ Permission boundaries enforced via RLS, not just UI
+Calendar event types:
+16. ✓ Schema migrated to support 7 types: training, league_game, friendly_game, tournament, celebration, meeting, other
+17. ✓ Existing 'game' rows migrated to 'league_game'
+18. ✓ Each type has distinct color and icon throughout the app
+19. ✓ Event creation form uses card grid (not dropdown) for type selection
+20. ✓ Type-specific defaults pre-fill the form intelligently
+21. ✓ Calendar grid pills are color-coded by type
+22. ✓ Filter row above calendar lets coach toggle visibility per type
+23. ✓ Filter state persists per team in localStorage
+Notifications fixed:
+24. ✓ VAPID keys regenerated, all stale push_subscriptions cleared
+25. ✓ Push subscription flow only triggers after explicit user action (not on first page load)
+26. ✓ All event-creating actions also call sendPushToUsers
+27. ✓ Failed pushes (410 Gone) clear the stale subscription
+28. ✓ /api/admin/test-push works and admin can trigger a self-test
+29. ✓ user_notifications table populated as a fallback
+30. ✓ Bell icon in header shows unread count
+31. ✓ "Mark all read" works
+32. ✓ /notifications page lists all notifications
+WhatsApp integration:
+33. ✓ Event creation prompts coach to broadcast via WhatsApp (optional)
+34. ✓ "Open WhatsApp for each player" opens N tabs with pre-formatted messages
+35. ✓ Player profile has Send WhatsApp button
+36. ✓ Phone field collected during player onboarding
+37. ✓ Squad shows WhatsApp icon next to players with phone numbers
+38. ✓ Phone validation handles Israeli formats
+39. ✓ All WhatsApp UI translates correctly in he/en/es
+Build sequence — strict order
+
+Change 4 first — fix notifications. They're foundational and other changes depend on the system working. Plus diagnosing the existing system surfaces other broken things.
+Change 1 — player invite explicit choice (small, builds on existing).
+Change 5 — WhatsApp utility (depends on Change 1's phone normalization logic).
+Change 3 — calendar event types (independent, can be done in parallel if desired).
+Change 2 last — team management page (largest UI work, builds on everything).
+
+Pause after Change 4 to verify push notifications actually work before proceeding. Pause after Change 2 part 1 (sections 1-3) before doing the danger zone — that's the riskiest piece.
+Don't break: the existing player invite flow, the platform admin invitations, the core schedule/squad/messaging features.
+
+That's the full prompt. Some honest practical notes:
+On notifications first — I put Change 4 first because everything else builds on it. If notifications don't work, none of the cool features (event broadcast, team invitations, message alerts) feel right. Fix the foundation before piling on.
+On WhatsApp's manual click limitation — to be clear, the "open N tabs" approach isn't elegant. It's the free, no-API-key way to do it. The coach has to click "send" in each tab. For a 15-player team, that's 15 clicks. Tedious but free. The alternative is paying for WhatsApp Business API (~$25/month minimum), which is overkill until you have paying customers.
+On the test push button — actually click this when the agent says "done." If a notification doesn't appear on your phone within 5 seconds, the agent didn't really finish. Don't ship to coaches until you can reliably get a test notification through.
+On event types specifically — once these are color-coded, your calendar will look much more professional immediately. This is one of those changes where the visual improvement is way out of proportion to the code change. Worth doing well.
+One thing to test specifically — after Change 2 is done, log in as a non-owner coach (have someone test, or invite yourself with a + alias) and verify they CANNOT see the danger zone. If they can see "Delete team" or "Transfer ownership," the permission boundaries leaked into the UI without proper RLS enforcement. Push back if so.

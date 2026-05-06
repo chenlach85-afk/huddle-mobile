@@ -16,6 +16,7 @@ import adminRouter from "./admin";
 import invitationsRouter from "./invitations";
 import storageRouter from "./storage";
 import teamInvitationsRouter from "./team-invitations";
+import teamManagementRouter from "./team-management";
 
 const router: IRouter = Router();
 
@@ -35,6 +36,7 @@ router.use(albumsRouter);
 router.use(adminRouter);
 router.use(invitationsRouter);
 router.use(teamInvitationsRouter);
+router.use(teamManagementRouter);
 router.use(storageRouter);
 
 export default router;
