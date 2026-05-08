@@ -1,785 +1,632 @@
-import { useState } from "react";
-import {
-  useListPlayers,
-  useCreatePlayer,
-  useUpdatePlayer,
-  useDeletePlayer,
-  getListPlayersQueryKey,
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import {
-  Plus, Users, Trash2, Pencil, Mail, Link2, Copy, Check, X,
-  RotateCcw, Send, MessageCircle, Phone,
+  Plus, Users, MoreVertical, Mail, Link2, Copy, Check, Phone,
+  UserX, UserCheck, Trash2, Pencil, Send, RefreshCw, MessageCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 
-const STATUS_COLORS: Record<string, string> = {
-  active: "#2ecc71",
-  inactive: "rgba(255,255,255,0.3)",
-  injured: "#e74c3c",
-};
-
-const playerSchema = z.object({
-  name: z.string().min(1),
-  number: z.string().optional(),
-  position: z.string().optional(),
-  email: z.string().email().optional().or(z.literal("")),
-  phone: z.string().optional(),
-  status: z.enum(["active", "inactive", "injured"]).default("active"),
-  notes: z.string().optional(),
-});
-type PlayerForm = z.infer<typeof playerSchema>;
-
-type ActiveInvite = {
+type RosterMember = {
   id: number;
-  token: string;
-  inviteType: string;
-  email: string | null;
-  phone: string | null;
-  status: string;
-  url: string;
-  expiresAt: string;
+  teamId: number;
+  userId: number | null;
+  role: "coach" | "player" | "assistant";
+  status: "active" | "inactive" | "pending_invitation" | "invited" | "declined" | null;
+  placeholderFullName: string | null;
+  placeholderEmail: string | null;
+  placeholderPhone: string | null;
+  invitationId: number | null;
+  jerseyNumber: number | null;
+  position: string | null;
+  memberNotes: string | null;
+  coachTitle: string | null;
   createdAt: string;
+  displayName: string;
+  displayEmail: string | null;
+  displayPhone: string | null;
+  invitationUrl: string | null;
+  invitationToken: string | null;
+  invitationStatus: string | null;
+  invitationSendCount: number | null;
 };
 
-/* ─── Phone normalization helper ─────────────────────────────── */
+const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  active:               { bg: "rgba(46,204,113,0.12)",  text: "#2ecc71", border: "rgba(46,204,113,0.25)",  label: "active" },
+  inactive:             { bg: "rgba(255,255,255,0.06)", text: "rgba(255,255,255,0.3)", border: "rgba(255,255,255,0.1)", label: "inactive" },
+  pending_invitation:   { bg: "rgba(243,156,18,0.12)",  text: "#f39c12", border: "rgba(243,156,18,0.25)",  label: "statusPendingInvitation" },
+  invited:              { bg: "rgba(52,152,219,0.12)",  text: "#3498db", border: "rgba(52,152,219,0.25)",  label: "statusInvited" },
+  declined:             { bg: "rgba(231,76,60,0.12)",   text: "#e74c3c", border: "rgba(231,76,60,0.25)",   label: "statusDeclined" },
+};
 
-function normalizePhone(phone: string): string | null {
-  let p = phone.replace(/[\s\-()]/g, "").replace(/^\+/, "");
-  if (p.startsWith("0")) p = "972" + p.slice(1);
-  if (/^972[5-9]\d{8}$/.test(p)) return p;
-  return null;
+function getWhatsAppUrl(phone: string, name: string, teamName: string): string {
+  const normalized = phone.replace(/[^\d+]/g, "");
+  const msg = `Hi ${name}! Coach is checking in about the upcoming game for ${teamName}.`;
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(msg)}`;
 }
 
-function getWhatsAppUrl(phone: string, message?: string): string | null {
-  const n = normalizePhone(phone);
-  if (!n) return null;
-  const text = message ? `?text=${encodeURIComponent(message)}` : "";
-  return `https://wa.me/${n}${text}`;
-}
-
-/* ─── Result modal after link generation ─────────────────────── */
-
-function LinkResultModal({
-  open,
-  onClose,
-  url,
-  recipientHint,
-  teamName,
+export default function PlayersTab({
+  teamId,
   teamColor,
+  teamName,
 }: {
-  open: boolean;
-  onClose: () => void;
-  url: string;
-  recipientHint: string;
-  teamName?: string;
-  teamColor: string;
-}) {
-  const { t } = useI18n();
-  const ti = t.teamInvite;
-  const { toast } = useToast();
-  const [copied, setCopied] = useState(false);
-  const [msgText, setMsgText] = useState(
-    `Hi${recipientHint ? ` ${recipientHint}` : ""}! ${teamName ? `You've been invited to join ${teamName}` : "You've been invited to join our team"} on Huddle. Click the link to accept: ${url}`
-  );
-
-  async function copyLink() {
-    await navigator.clipboard.writeText(url).catch(() => {});
-    setCopied(true);
-    toast({ title: ti.linkCopied });
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  async function copyText() {
-    await navigator.clipboard.writeText(msgText).catch(() => {});
-    toast({ title: ti.copiedToClipboard });
-  }
-
-  function openWhatsApp(phone?: string) {
-    const waUrl = phone
-      ? getWhatsAppUrl(phone, msgText)
-      : `https://wa.me/?text=${encodeURIComponent(msgText)}`;
-    if (waUrl) window.open(waUrl, "_blank");
-  }
-
-  function openEmail() {
-    const subject = encodeURIComponent(`Team invitation`);
-    const body = encodeURIComponent(msgText);
-    window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
-        <DialogHeader>
-          <DialogTitle className="font-display text-xl text-white tracking-wide">
-            {ti.personalLinkCreated.toUpperCase()}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          {/* Link display */}
-          <div className="rounded-xl p-3 flex items-center gap-2"
-            style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <p className="text-xs text-white/60 font-mono flex-1 truncate">{url}</p>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={copyLink}>
-              {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
-            </Button>
-          </div>
-
-          {recipientHint && (
-            <p className="text-xs text-white/40 text-center">
-              {ti.linkUniqueTo.replace("{recipient}", recipientHint)}
-            </p>
-          )}
-
-          {/* Editable message */}
-          <div>
-            <p className="stat-label text-white/40 mb-1.5">{ti.preformattedMessage}</p>
-            <textarea
-              value={msgText}
-              onChange={e => setMsgText(e.target.value)}
-              rows={4}
-              className="w-full text-xs text-white/70 bg-white/4 border border-white/8 rounded-xl p-3 resize-none focus:outline-none focus:border-white/20"
-            />
-          </div>
-
-          {/* Share buttons */}
-          <div className="space-y-2">
-            <p className="stat-label text-white/40">{ti.shareVia}</p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={() => openWhatsApp()}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/8 hover:bg-white/5 transition-all text-[#25d366]"
-              >
-                <MessageCircle className="h-5 w-5" />
-                <span className="text-[10px] font-bold">{ti.shareWhatsapp}</span>
-              </button>
-              <button
-                onClick={copyText}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/8 hover:bg-white/5 transition-all text-white/60"
-              >
-                <Copy className="h-5 w-5" />
-                <span className="text-[10px] font-bold">{ti.shareCopyText}</span>
-              </button>
-              <button
-                onClick={openEmail}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-white/8 hover:bg-white/5 transition-all text-white/60"
-              >
-                <Mail className="h-5 w-5" />
-                <span className="text-[10px] font-bold">{ti.shareEmail}</span>
-              </button>
-            </div>
-          </div>
-
-          <Button
-            onClick={onClose}
-            className="w-full font-semibold rounded-xl h-10"
-            style={{ background: teamColor, color: "white" }}
-          >
-            {ti.done}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ─── Invite Player Modal ─────────────────────────────────────── */
-
-function InvitePlayerModal({ teamId, teamColor, teamName, open, onClose }: {
   teamId: number;
   teamColor: string;
   teamName?: string;
-  open: boolean;
-  onClose: () => void;
 }) {
   const { t } = useI18n();
-  const ti = t.teamInvite;
+  const p = t.players;
   const { toast } = useToast();
 
-  const [identifier, setIdentifier] = useState("");
-  const [prefillName, setPrefillName] = useState("");
-  const [personalNote, setPersonalNote] = useState("");
-  const [showOptional, setShowOptional] = useState(false);
-  const [status, setStatus] = useState<"idle" | "sending" | "generating" | "sent" | "error">("idle");
+  const [members, setMembers] = useState<RosterMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<"all" | "active" | "pending">("all");
 
-  const [linkResult, setLinkResult] = useState<{ url: string; recipient: string } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [editMember, setEditMember] = useState<RosterMember | null>(null);
+  const [inviteResult, setInviteResult] = useState<{ url: string; emailSent: boolean; emailError: string | null } | null>(null);
 
-  const [activeInvites, setActiveInvites] = useState<ActiveInvite[]>([]);
-  const [invitesLoading, setInvitesLoading] = useState(false);
-  const [revoking, setRevoking] = useState<number | null>(null);
-  const [resending, setResending] = useState<number | null>(null);
-  const [copied, setCopied] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  const isEmail = identifier.includes("@");
-  const hasValue = identifier.trim().length > 0;
+  const [form, setForm] = useState({
+    fullName: "", jerseyNumber: "", position: "", email: "", phone: "", notes: "",
+    invitationAction: "none" as "none" | "send_email" | "generate_link",
+    personalMessage: "",
+  });
 
-  async function loadInvites() {
-    setInvitesLoading(true);
+  const resetForm = () => setForm({
+    fullName: "", jerseyNumber: "", position: "", email: "", phone: "", notes: "",
+    invitationAction: "none", personalMessage: "",
+  });
+
+  const loadRoster = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/invitations`);
+      const res = await fetch(`/api/teams/${teamId}/roster`);
       if (res.ok) {
-        const data = await res.json();
-        setActiveInvites(data.filter((i: ActiveInvite) => i.status === "pending"));
+        const all: RosterMember[] = await res.json();
+        setMembers(all.filter(m => m.role === "player"));
       }
     } finally {
-      setInvitesLoading(false);
+      setLoading(false);
     }
-  }
+  }, [teamId]);
 
-  function handleOpen() {
-    loadInvites();
-    setStatus("idle");
-    setLinkResult(null);
-  }
+  useEffect(() => { loadRoster(); }, [loadRoster]);
 
-  async function sendEmailInvite() {
-    if (!hasValue) return;
-    if (!isEmail) {
-      toast({ title: "Please enter a valid email address for email invitations", variant: "destructive" });
-      return;
-    }
-    setStatus("sending");
+  const filtered = members.filter(m => {
+    if (filter === "active") return m.status === "active";
+    if (filter === "pending") return m.status === "pending_invitation" || m.status === "invited" || m.status === "declined";
+    return true;
+  });
+
+  async function handleAdd() {
+    if (!form.fullName.trim()) return;
+    setSubmitting(true);
+    setInviteResult(null);
     try {
-      const res = await fetch(`/api/teams/${teamId}/invitations`, {
+      const res = await fetch(`/api/teams/${teamId}/roster`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "email",
-          email: identifier.trim(),
-          invitedRole: "player",
+          fullName: form.fullName,
+          jerseyNumber: form.jerseyNumber ? parseInt(form.jerseyNumber) : undefined,
+          position: form.position || undefined,
+          notes: form.notes || undefined,
+          email: form.email || undefined,
+          phone: form.phone || undefined,
+          invitationAction: form.invitationAction,
+          personalMessage: form.personalMessage || undefined,
         }),
       });
       if (res.ok) {
-        setStatus("sent");
-        loadInvites();
+        const data = await res.json();
+        toast({ title: p.playerAdded });
+        loadRoster();
+        if (data.inviteUrl) {
+          setInviteResult({ url: data.inviteUrl, emailSent: data.emailSent, emailError: data.emailError });
+          if (data.emailSent) toast({ title: p.emailSentSuccess });
+          else if (data.emailError) {
+            await navigator.clipboard.writeText(data.inviteUrl).catch(() => {});
+            toast({ title: p.emailFailed, variant: "destructive" });
+          }
+        } else {
+          setAddOpen(false);
+          resetForm();
+        }
       } else {
-        setStatus("error");
+        toast({ title: p.failedAdd, variant: "destructive" });
       }
-    } catch {
-      setStatus("error");
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  async function generateLink() {
-    setStatus("generating");
+  async function handleEdit() {
+    if (!editMember) return;
+    setSubmitting(true);
     try {
-      const body: Record<string, string> = {
-        type: "link",
-        invitedRole: "player",
-      };
-      if (isEmail) body.email = identifier.trim();
-      else if (hasValue) body.phone = identifier.trim();
-
-      const res = await fetch(`/api/teams/${teamId}/invitations`, {
-        method: "POST",
+      const res = await fetch(`/api/teams/${teamId}/roster/${editMember.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          fullName: form.fullName || undefined,
+          jerseyNumber: form.jerseyNumber ? parseInt(form.jerseyNumber) : null,
+          position: form.position || null,
+          notes: form.notes || null,
+          email: form.email || null,
+          phone: form.phone || null,
+        }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setLinkResult({
-          url: data.url,
-          recipient: prefillName || identifier.trim() || "",
-        });
-        loadInvites();
-        setStatus("idle");
-      } else {
-        setStatus("error");
-      }
-    } catch {
-      setStatus("error");
+        toast({ title: p.playerUpdated });
+        setEditMember(null);
+        loadRoster();
+      } else toast({ title: p.failedUpdate, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  async function copyInviteLink(url: string, invId: number) {
-    await navigator.clipboard.writeText(url).catch(() => {});
-    setCopied(invId);
-    setTimeout(() => setCopied(null), 2000);
-    toast({ title: ti.linkCopied });
+  function openEdit(m: RosterMember) {
+    setForm({
+      fullName: m.displayName,
+      jerseyNumber: m.jerseyNumber ? String(m.jerseyNumber) : "",
+      position: m.position ?? "",
+      email: m.displayEmail ?? "",
+      phone: m.displayPhone ?? "",
+      notes: m.memberNotes ?? "",
+      invitationAction: "none",
+      personalMessage: "",
+    });
+    setEditMember(m);
   }
 
-  async function revokeInvite(invId: number) {
-    setRevoking(invId);
-    try {
-      const res = await fetch(`/api/teams/${teamId}/invitations/${invId}/revoke`, { method: "POST" });
-      if (res.ok) { toast({ title: ti.inviteRevoked }); loadInvites(); }
-    } finally { setRevoking(null); }
+  async function sendInvite(m: RosterMember, method: "email" | "link") {
+    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/send-invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.emailSent) toast({ title: p.inviteSent });
+      else if (method === "link" && data.inviteUrl) {
+        await navigator.clipboard.writeText(data.inviteUrl).catch(() => {});
+        toast({ title: p.inviteLinkCopied });
+      } else if (data.emailError) {
+        if (data.inviteUrl) {
+          await navigator.clipboard.writeText(data.inviteUrl).catch(() => {});
+        }
+        toast({ title: `${p.emailFailed}: ${data.emailError}`, variant: "destructive" });
+      }
+      loadRoster();
+    } else toast({ title: t.common.error, variant: "destructive" });
   }
 
-  async function resendInvite(invId: number) {
-    setResending(invId);
-    try {
-      const res = await fetch(`/api/teams/${teamId}/invitations/${invId}/resend`, { method: "POST" });
-      if (res.ok) toast({ title: ti.inviteResent });
-    } finally { setResending(null); }
+  async function cancelInvite(m: RosterMember) {
+    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/cancel-invite`, { method: "POST" });
+    if (res.ok) { toast({ title: p.inviteCancelled }); loadRoster(); }
   }
 
-  function handleClose() {
-    setIdentifier("");
-    setPrefillName("");
-    setPersonalNote("");
-    setShowOptional(false);
-    setStatus("idle");
-    setLinkResult(null);
-    onClose();
+  async function deactivate(m: RosterMember) {
+    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/deactivate`, { method: "POST" });
+    if (res.ok) { toast({ title: p.deactivated }); loadRoster(); }
   }
 
-  const isLoading = status === "sending" || status === "generating";
+  async function reactivate(m: RosterMember) {
+    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/reactivate`, { method: "POST" });
+    if (res.ok) { toast({ title: p.reactivated }); loadRoster(); }
+  }
+
+  async function removeMember(m: RosterMember) {
+    if (!confirm(p.confirmRemove)) return;
+    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}`, { method: "DELETE" });
+    if (res.ok) { toast({ title: p.playerRemoved }); loadRoster(); }
+    else toast({ title: p.failedRemove, variant: "destructive" });
+  }
+
+  async function copyLink(m: RosterMember) {
+    if (!m.invitationUrl) return;
+    await navigator.clipboard.writeText(m.invitationUrl).catch(() => {});
+    setCopiedId(m.id);
+    toast({ title: p.inviteLinkCopied });
+    setTimeout(() => setCopiedId(null), 2000);
+  }
+
+  const statusStyle = (status: string | null) => STATUS_STYLES[status ?? "pending_invitation"] ?? STATUS_STYLES.pending_invitation;
+  const statusLabel = (status: string | null) => {
+    const key = statusStyle(status).label as keyof typeof p;
+    return (p[key] as string | undefined) ?? status ?? "—";
+  };
+
+  const FILTERS: { key: typeof filter; label: string }[] = [
+    { key: "all", label: p.filterAll },
+    { key: "active", label: p.filterActive },
+    { key: "pending", label: p.filterPending },
+  ];
 
   return (
-    <>
-      <Dialog open={open && !linkResult} onOpenChange={v => { if (!v) handleClose(); else handleOpen(); }}>
-        <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
+        <div className="px-4 py-3 border-b border-white/6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4" style={{ color: teamColor }} />
+            <p className="font-semibold text-white text-sm">
+              {members.length} {p.rosterCount}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => { resetForm(); setInviteResult(null); setAddOpen(true); }}
+            className="text-xs font-semibold rounded-xl text-white"
+            style={{ background: teamColor }}
+          >
+            <Plus className="h-3.5 w-3.5 me-1" />
+            {p.addPlayerTitle}
+          </Button>
+        </div>
+
+        {/* Filter chips */}
+        <div className="px-4 py-2 flex gap-1.5 border-b border-white/4">
+          {FILTERS.map(f => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className="px-3 py-1 rounded-lg text-xs font-semibold transition-all"
+              style={filter === f.key
+                ? { background: `${teamColor}25`, color: teamColor, border: `1px solid ${teamColor}40` }
+                : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.08)" }
+              }
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Roster list */}
+        {loading ? (
+          <div className="p-4 space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="py-10 px-4 text-center">
+            <Users className="h-8 w-8 text-white/15 mx-auto mb-2" />
+            <p className="text-sm text-white/30 font-semibold">{p.emptySquad}</p>
+            <p className="text-xs text-white/20 mt-1">{p.addToGetStarted}</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/4">
+            {filtered.map(m => {
+              const ss = statusStyle(m.status);
+              const isRegistered = m.userId !== null;
+              return (
+                <div key={m.id} className="px-4 py-3 flex items-center gap-3">
+                  {/* Avatar */}
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
+                    style={{ background: `${teamColor}20`, color: teamColor }}
+                  >
+                    {m.jerseyNumber != null
+                      ? <span className="text-xs font-bold ltr-num">{m.jerseyNumber}</span>
+                      : m.displayName.charAt(0).toUpperCase()
+                    }
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-white truncate">{m.displayName}</p>
+                      {m.position && <span className="text-[10px] text-white/30 font-medium">{m.position}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      {/* Status badge */}
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide"
+                        style={{ background: ss.bg, color: ss.text, border: `1px solid ${ss.border}` }}>
+                        {statusLabel(m.status)}
+                      </span>
+                      {/* Contact */}
+                      {m.displayEmail && !isRegistered && (
+                        <span className="text-[10px] text-white/30 truncate max-w-[120px]">{m.displayEmail}</span>
+                      )}
+                      {m.displayPhone && (
+                        <a
+                          href={getWhatsAppUrl(m.displayPhone, m.displayName, teamName ?? "the team")}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-0.5 text-[10px] text-green-400/60 hover:text-green-400 transition-colors"
+                        >
+                          <MessageCircle className="h-2.5 w-2.5" />
+                          <span>WhatsApp</span>
+                        </a>
+                      )}
+                      {/* Invite send count */}
+                      {m.status === "invited" && m.invitationSendCount != null && m.invitationSendCount > 0 && (
+                        <span className="text-[9px] text-blue-400/50">
+                          {p.inviteResent.includes("resent") ? `Sent ${m.invitationSendCount}×` : `${m.invitationSendCount}×`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Quick copy link if invited */}
+                    {m.invitationUrl && (m.status === "invited" || m.status === "pending_invitation") && (
+                      <button
+                        onClick={() => copyLink(m)}
+                        className="h-7 w-7 rounded-lg flex items-center justify-center transition-colors hover:bg-white/8"
+                        title={p.inviteLinkCopied}
+                      >
+                        {copiedId === m.id
+                          ? <Check className="h-3 w-3 text-green-400" />
+                          : <Link2 className="h-3 w-3 text-white/30" />
+                        }
+                      </button>
+                    )}
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="h-7 w-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition-colors">
+                          <MoreVertical className="h-3.5 w-3.5 text-white/40" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="border-border text-sm" style={{ background: "var(--surface-elevated)" }}>
+                        <DropdownMenuItem onClick={() => openEdit(m)} className="text-white/80 cursor-pointer">
+                          <Pencil className="h-3.5 w-3.5 me-2" />{p.editPlayer}
+                        </DropdownMenuItem>
+
+                        {!isRegistered && (
+                          <>
+                            <DropdownMenuSeparator className="bg-white/6" />
+                            {m.displayEmail && (
+                              <DropdownMenuItem onClick={() => sendInvite(m, "email")} className="text-blue-400 cursor-pointer">
+                                <Mail className="h-3.5 w-3.5 me-2" />
+                                {m.status === "invited" ? p.resendInvite : p.sendInvite}
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => sendInvite(m, "link")} className="text-white/60 cursor-pointer">
+                              <Link2 className="h-3.5 w-3.5 me-2" />{p.inviteGenerateLink}
+                            </DropdownMenuItem>
+                            {m.status === "invited" && (
+                              <DropdownMenuItem onClick={() => cancelInvite(m)} className="text-amber-400/70 cursor-pointer">
+                                <RefreshCw className="h-3.5 w-3.5 me-2" />{p.cancelInvite}
+                              </DropdownMenuItem>
+                            )}
+                          </>
+                        )}
+
+                        {isRegistered && (
+                          <>
+                            <DropdownMenuSeparator className="bg-white/6" />
+                            {m.status === "active"
+                              ? <DropdownMenuItem onClick={() => deactivate(m)} className="text-amber-400/70 cursor-pointer">
+                                  <UserX className="h-3.5 w-3.5 me-2" />{p.deactivate}
+                                </DropdownMenuItem>
+                              : <DropdownMenuItem onClick={() => reactivate(m)} className="text-green-400/70 cursor-pointer">
+                                  <UserCheck className="h-3.5 w-3.5 me-2" />{p.reactivate}
+                                </DropdownMenuItem>
+                            }
+                          </>
+                        )}
+
+                        <DropdownMenuSeparator className="bg-white/6" />
+                        <DropdownMenuItem onClick={() => removeMember(m)} className="text-red-400 cursor-pointer">
+                          <Trash2 className="h-3.5 w-3.5 me-2" />{p.removePlayer}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Add Player Dialog */}
+      <Dialog open={addOpen} onOpenChange={open => { setAddOpen(open); if (!open) { resetForm(); setInviteResult(null); } }}>
+        <DialogContent className="max-w-sm border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl text-white tracking-wide">
-              {ti.invitePlayer.toUpperCase()}
-            </DialogTitle>
+            <DialogTitle className="font-display text-xl text-white tracking-wide">{p.addPlayerTitle.toUpperCase()}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {status === "sent" ? (
-              <div className="rounded-xl p-4 text-center space-y-1.5"
-                style={{ background: "rgba(46,204,113,0.08)", border: "1px solid rgba(46,204,113,0.2)" }}>
-                <Check className="h-6 w-6 text-green-400 mx-auto" />
-                <p className="text-sm font-semibold text-green-400">{ti.inviteSent}</p>
-                <p className="text-xs text-white/40">{ti.inviteSentDesc}</p>
-                <Button variant="ghost" size="sm" onClick={() => { setStatus("idle"); setIdentifier(""); }}
-                  className="text-white/50 text-xs mt-1">
-                  Send another
+          {inviteResult ? (
+            <div className="space-y-4">
+              {inviteResult.emailSent ? (
+                <div className="rounded-xl p-4 text-center" style={{ background: "rgba(46,204,113,0.08)", border: "1px solid rgba(46,204,113,0.2)" }}>
+                  <Check className="h-6 w-6 text-green-400 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-green-400">{p.emailSentSuccess}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-white/50">{p.inviteGenerateLink}</p>
+                  <div className="rounded-xl p-3 flex items-center gap-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <p className="text-xs text-white/60 font-mono flex-1 truncate">{inviteResult.url}</p>
+                    <button onClick={async () => {
+                      await navigator.clipboard.writeText(inviteResult.url).catch(() => {});
+                      toast({ title: p.inviteLinkCopied });
+                    }} className="p-1 rounded hover:bg-white/10">
+                      <Copy className="h-3.5 w-3.5 text-white/50" />
+                    </button>
+                  </div>
+                  {inviteResult.emailError && (
+                    <p className="text-xs text-red-400/70">{inviteResult.emailError}</p>
+                  )}
+                </div>
+              )}
+              <Button className="w-full rounded-xl font-semibold" variant="ghost"
+                style={{ border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)" }}
+                onClick={() => { resetForm(); setInviteResult(null); }}>
+                {t.common.add} {p.addPlayerTitle.split(" ")[1] ?? "another"}
+              </Button>
+              <Button className="w-full rounded-xl font-semibold" style={{ background: teamColor, color: "white" }}
+                onClick={() => { setAddOpen(false); resetForm(); setInviteResult(null); }}>
+                {t.common.close}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.fullName} *</label>
+                <Input value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+                  placeholder="John Smith"
+                  className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="stat-label text-white/50 block mb-1">{p.jerseyNumber}</label>
+                  <Input type="number" value={form.jerseyNumber} onChange={e => setForm(f => ({ ...f, jerseyNumber: e.target.value }))}
+                    placeholder="10"
+                    className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl" />
+                </div>
+                <div>
+                  <label className="stat-label text-white/50 block mb-1">{p.position}</label>
+                  <Input value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
+                    placeholder="FW"
+                    className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl" />
+                </div>
+              </div>
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.email}</label>
+                <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="player@example.com"
+                  className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl" />
+              </div>
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.phone}</label>
+                <Input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="+1 555 0100"
+                  className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl" />
+              </div>
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.notes}</label>
+                <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Any notes about this player…"
+                  rows={2}
+                  className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl resize-none" />
+              </div>
+
+              {/* Invitation action */}
+              <div>
+                <label className="stat-label text-white/50 block mb-1.5">{p.invitationActionLabel}</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(["none", "send_email", "generate_link"] as const).map(action => (
+                    <button
+                      key={action}
+                      onClick={() => setForm(f => ({ ...f, invitationAction: action }))}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+                      style={form.invitationAction === action
+                        ? { background: `${teamColor}25`, color: teamColor, borderColor: `${teamColor}50` }
+                        : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.1)" }
+                      }
+                    >
+                      {action === "none" && <><span className="me-1">—</span>{p.inviteNone}</>}
+                      {action === "send_email" && <><Mail className="h-3 w-3 inline me-1" />{p.inviteSendEmail}</>}
+                      {action === "generate_link" && <><Link2 className="h-3 w-3 inline me-1" />{p.inviteGenerateLink}</>}
+                    </button>
+                  ))}
+                </div>
+                {form.invitationAction === "send_email" && !form.email && (
+                  <p className="text-xs text-amber-400/70 mt-1">Add an email address above to send an invite.</p>
+                )}
+              </div>
+
+              {form.invitationAction !== "none" && (
+                <div>
+                  <label className="stat-label text-white/50 block mb-1">{p.personalMessage}</label>
+                  <Input value={form.personalMessage} onChange={e => setForm(f => ({ ...f, personalMessage: e.target.value }))}
+                    placeholder={p.personalMessagePlaceholder}
+                    className="bg-white/6 border-white/10 text-white placeholder:text-white/20 rounded-xl" />
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="ghost" className="flex-1 rounded-xl border border-white/10 text-white/50"
+                  onClick={() => { setAddOpen(false); resetForm(); }}>
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  onClick={handleAdd}
+                  disabled={submitting || !form.fullName.trim()}
+                  className="flex-1 rounded-xl font-semibold"
+                  style={{ background: teamColor, color: "white" }}>
+                  <Send className="h-3.5 w-3.5 me-1.5" />
+                  {submitting ? t.common.saving : p.addToSquad}
                 </Button>
               </div>
-            ) : (
-              <>
-                {/* Identifier field */}
-                <div>
-                  <label className="stat-label text-white/50 block mb-1.5">{ti.emailOrPhoneLabel}</label>
-                  <Input
-                    value={identifier}
-                    onChange={e => { setIdentifier(e.target.value); setStatus("idle"); }}
-                    placeholder={ti.emailOrPhonePlaceholder}
-                    className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
-                    onKeyDown={e => { if (e.key === "Enter" && isEmail) sendEmailInvite(); }}
-                  />
-                </div>
-
-                {/* Optional details toggle */}
-                <button
-                  type="button"
-                  onClick={() => setShowOptional(v => !v)}
-                  className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/60 transition-colors"
-                >
-                  <span className={`w-3 h-3 rounded border border-white/20 flex items-center justify-center transition-all ${showOptional ? "bg-white/20" : ""}`}>
-                    {showOptional && <Check className="h-2 w-2 text-white" />}
-                  </span>
-                  {ti.optionalDetails}
-                </button>
-
-                {showOptional && (
-                  <div className="space-y-3 p-3 rounded-xl border border-white/6" style={{ background: "rgba(255,255,255,0.02)" }}>
-                    <div>
-                      <label className="stat-label text-white/40 block mb-1">{ti.prefillName}</label>
-                      <Input
-                        value={prefillName}
-                        onChange={e => setPrefillName(e.target.value)}
-                        className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm"
-                        placeholder="Player name"
-                      />
-                    </div>
-                    <div>
-                      <label className="stat-label text-white/40 block mb-1">{ti.personalMessage}</label>
-                      <Input
-                        value={personalNote}
-                        onChange={e => setPersonalNote(e.target.value)}
-                        className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm"
-                        placeholder="Optional note..."
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {status === "error" && (
-                  <p className="text-xs text-red-400">{ti.inviteError}</p>
-                )}
-
-                {/* Two action buttons */}
-                <div className="space-y-2">
-                  {/* Send email button */}
-                  <Button
-                    onClick={sendEmailInvite}
-                    disabled={isLoading || !isEmail}
-                    className="w-full font-semibold rounded-xl h-10 border border-white/10"
-                    style={{ background: isEmail ? teamColor : "rgba(255,255,255,0.04)", color: isEmail ? "white" : "rgba(255,255,255,0.3)" }}
-                  >
-                    {status === "sending" ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                        {ti.sending}
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <Send className="h-3.5 w-3.5" />
-                        {ti.sendEmail}
-                      </span>
-                    )}
-                  </Button>
-
-                  {/* Generate link button */}
-                  <Button
-                    onClick={generateLink}
-                    disabled={isLoading}
-                    variant="ghost"
-                    className="w-full font-semibold rounded-xl h-10 border border-white/10 text-white/70 hover:text-white hover:border-white/20"
-                  >
-                    {status === "generating" ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-transparent animate-spin" />
-                        {ti.sending}
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <Link2 className="h-3.5 w-3.5" />
-                        {ti.generateLink}
-                      </span>
-                    )}
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* Active invitations list */}
-            {activeInvites.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-white/6">
-                <p className="stat-label text-white/40">{ti.activeInvites}</p>
-                {invitesLoading ? (
-                  <Skeleton className="h-10 w-full rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />
-                ) : (
-                  <div className="space-y-1.5">
-                    {activeInvites.map(inv => (
-                      <div key={inv.id} className="rounded-xl px-3 py-2 flex items-center gap-2"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            {inv.inviteType === "email" ? (
-                              <Mail className="h-3 w-3 text-white/30 shrink-0" />
-                            ) : (
-                              <Link2 className="h-3 w-3 text-white/30 shrink-0" />
-                            )}
-                            <p className="text-xs text-white/60 truncate">
-                              {inv.email ?? inv.phone ?? ti.linkTab}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex gap-1 shrink-0">
-                          {inv.inviteType === "link" && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-white/30 hover:text-white/60"
-                              onClick={() => copyInviteLink(inv.url, inv.id)}
-                              title={ti.copyLink}>
-                              {copied === inv.id ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
-                            </Button>
-                          )}
-                          {inv.inviteType === "email" && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-white/30 hover:text-white/60"
-                              disabled={resending === inv.id}
-                              onClick={() => resendInvite(inv.id)}
-                              title={ti.resend}>
-                              {resending === inv.id
-                                ? <span className="w-3 h-3 rounded-full border border-white/40 border-t-transparent animate-spin" />
-                                : <RotateCcw className="h-3 w-3" />}
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="icon" className="h-6 w-6 text-red-400/50 hover:text-red-400"
-                            disabled={revoking === inv.id}
-                            onClick={() => revokeInvite(inv.id)}
-                            title={ti.revoke}>
-                            {revoking === inv.id
-                              ? <span className="w-3 h-3 rounded-full border border-red-400/40 border-t-transparent animate-spin" />
-                              : <X className="h-3 w-3" />}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
-      {linkResult && (
-        <LinkResultModal
-          open={true}
-          onClose={() => { setLinkResult(null); handleClose(); }}
-          url={linkResult.url}
-          recipientHint={linkResult.recipient}
-          teamName={teamName}
-          teamColor={teamColor}
-        />
-      )}
-    </>
-  );
-}
-
-/* ─── Main component ──────────────────────────────────────────── */
-
-export default function PlayersTab({ teamId, teamColor, teamName }: { teamId: number; teamColor: string; teamName?: string }) {
-  const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { t } = useI18n();
-  const p = t.players;
-  const ti = t.teamInvite;
-
-  const { data: players = [], isLoading } = useListPlayers(teamId, {
-    query: { enabled: !!teamId, queryKey: getListPlayersQueryKey(teamId) },
-  });
-  const createPlayer = useCreatePlayer();
-  const updatePlayer = useUpdatePlayer();
-  const deletePlayer = useDeletePlayer();
-
-  const form = useForm<PlayerForm>({
-    resolver: zodResolver(playerSchema),
-    defaultValues: { name: "", number: "", position: "", email: "", phone: "", status: "active", notes: "" },
-  });
-
-  function openCreate() { form.reset(); setEditingId(null); setOpen(true); }
-  function openEdit(player: typeof players[0]) {
-    form.reset({ name: player.name, number: player.number?.toString() || "", position: player.position || "", email: player.email || "", phone: player.phone || "", status: player.status, notes: player.notes || "" });
-    setEditingId(player.id);
-    setOpen(true);
-  }
-
-  function onSubmit(values: PlayerForm) {
-    const payload = {
-      name: values.name,
-      number: values.number ? parseInt(values.number) : null,
-      position: values.position || null,
-      email: values.email || null,
-      phone: values.phone || null,
-      status: values.status,
-      notes: values.notes || null,
-    };
-    if (editingId) {
-      updatePlayer.mutate({ playerId: editingId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); setOpen(false); toast({ title: p.playerUpdated }); },
-        onError: () => toast({ title: p.failedUpdate, variant: "destructive" }),
-      });
-    } else {
-      createPlayer.mutate({ teamId, data: payload }, {
-        onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); setOpen(false); toast({ title: p.playerAdded }); },
-        onError: () => toast({ title: p.failedAdd, variant: "destructive" }),
-      });
-    }
-  }
-
-  function handleDelete(playerId: number) {
-    if (!confirm(p.confirmRemove)) return;
-    deletePlayer.mutate({ playerId }, {
-      onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey(teamId) }); toast({ title: p.playerRemoved }); },
-      onError: () => toast({ title: p.failedRemove, variant: "destructive" }),
-    });
-  }
-
-  const statusLabel = (s: string) => {
-    if (s === "active") return p.statusActive;
-    if (s === "inactive") return p.statusInactive;
-    return p.statusInjured;
-  };
-
-  const isPending = createPlayer.isPending || updatePlayer.isPending;
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="section-label"><span className="ltr-num">{players.length}</span> {p.athletesOnSquad}</p>
-        <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setInviteOpen(true)}
-            className="font-semibold rounded-xl border border-white/10 text-white/60 hover:text-white hover:border-white/20"
-            data-testid="button-invite-player">
-            <Mail className="h-3.5 w-3.5 me-1.5" />
-            {ti.invitePlayer}
-          </Button>
-          <Button size="sm" onClick={openCreate} className="font-semibold rounded-xl" style={{ background: teamColor, color: "white" }} data-testid="button-add-player">
-            <Plus className="h-3.5 w-3.5 me-1.5" />
-            {p.addAthlete}
-          </Button>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-2xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}</div>
-      ) : players.length === 0 ? (
-        <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
-          <Users className="h-10 w-10 mx-auto text-white/15 mb-3" />
-          <p className="font-display text-xl text-white/30 tracking-wide">{p.emptySquad.toUpperCase()}</p>
-          <p className="text-xs text-white/25 mt-1 mb-4">{p.addToGetStarted}</p>
-          <div className="flex gap-2 justify-center">
-            <Button size="sm" variant="ghost" onClick={() => setInviteOpen(true)}
-              className="rounded-xl font-semibold border border-white/10 text-white/50">
-              <Mail className="h-3.5 w-3.5 me-1" />
-              {ti.invitePlayer}
-            </Button>
-            <Button size="sm" onClick={openCreate} style={{ background: teamColor, color: "white" }} className="rounded-xl font-semibold">{p.addAthlete}</Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {players.map(player => {
-            const color = STATUS_COLORS[player.status];
-            const waUrl = player.phone ? getWhatsAppUrl(player.phone) : null;
-            return (
-              <div key={player.id} className="rounded-2xl border border-border p-4 flex items-center gap-4 group hover:bg-white/3 transition-all" style={{ background: "var(--surface-card)" }} data-testid={`card-player-${player.id}`}>
-                <div className="jersey-tile text-lg relative" style={{ background: `linear-gradient(135deg, ${teamColor}, ${teamColor}88)` }}>
-                  <span className="ltr-num">{player.number ?? player.name.charAt(0).toUpperCase()}</span>
-                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-card" style={{ background: color }} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-white text-sm" data-testid={`text-player-name-${player.id}`}>{player.name}</span>
-                    {player.position && <span className="text-xs text-white/40">{player.position}</span>}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color }}>{statusLabel(player.status)}</span>
-                    {player.phone && (
-                      <span className="text-[10px] text-white/25 flex items-center gap-0.5">
-                        <Phone className="h-2.5 w-2.5" />{player.phone}
-                      </span>
-                    )}
-                    {!player.phone && player.email && (
-                      <span className="text-[10px] text-white/25">{player.email}</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {waUrl && (
-                    <a href={waUrl} target="_blank" rel="noopener noreferrer"
-                      className="h-8 w-8 flex items-center justify-center rounded-lg text-[#25d366] hover:bg-[#25d366]/10 transition-colors"
-                      title="WhatsApp"
-                      data-testid={`button-whatsapp-${player.id}`}>
-                      <MessageCircle className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-white/40 hover:text-white hover:bg-white/8" onClick={() => openEdit(player)} data-testid={`button-edit-player-${player.id}`}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400/60 hover:text-red-400 hover:bg-red-400/10" onClick={() => handleDelete(player.id)} data-testid={`button-delete-player-${player.id}`}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Invite Player modal */}
-      <InvitePlayerModal
-        teamId={teamId}
-        teamColor={teamColor}
-        teamName={teamName}
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-      />
-
-      {/* Add / Edit player dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md border-border" style={{ background: "var(--surface-card)" }}>
+      {/* Edit Player Dialog */}
+      <Dialog open={!!editMember} onOpenChange={open => { if (!open) setEditMember(null); }}>
+        <DialogContent className="max-w-sm border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl text-white tracking-wide">
-              {editingId ? p.editAthlete.toUpperCase() : p.addAthlete.toUpperCase()}
-            </DialogTitle>
+            <DialogTitle className="font-display text-xl text-white tracking-wide">{p.editAthlete.toUpperCase()}</DialogTitle>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField control={form.control} name="name" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="stat-label text-white/50">{p.fullName}</FormLabel>
-                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-name" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="number" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="stat-label text-white/50">{p.jerseyNumber}</FormLabel>
-                    <FormControl><Input type="number" placeholder="00" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl font-display text-xl ltr-num" data-testid="input-jersey-number" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="position" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="stat-label text-white/50">{p.position}</FormLabel>
-                    <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-position" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
+          <div className="space-y-3">
+            {editMember?.userId === null && (
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.fullName}</label>
+                <Input value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
+                  className="bg-white/6 border-white/10 text-white rounded-xl" />
               </div>
-              <FormField control={form.control} name="status" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="stat-label text-white/50">{p.statusLabel}</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl" data-testid="select-player-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
-                      <SelectItem value="active" className="text-white">{p.statusActive}</SelectItem>
-                      <SelectItem value="inactive" className="text-white">{p.statusInactive}</SelectItem>
-                      <SelectItem value="injured" className="text-white">{p.statusInjured}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="stat-label text-white/50">{p.email} ({t.common.optional})</FormLabel>
-                  <FormControl><Input type="email" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-email" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="phone" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="stat-label text-white/50">{p.phone} ({t.common.optional})</FormLabel>
-                  <FormControl><Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-phone" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="notes" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="stat-label text-white/50">{p.notes} ({t.common.optional})</FormLabel>
-                  <FormControl><Textarea className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" data-testid="input-player-notes" {...field} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <Button type="submit" className="w-full font-semibold rounded-xl h-11" style={{ background: teamColor, color: "white" }} disabled={isPending} data-testid="button-submit-player">
-                {isPending ? t.common.saving : editingId ? p.updateAthlete : p.addToSquad}
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.jerseyNumber}</label>
+                <Input type="number" value={form.jerseyNumber} onChange={e => setForm(f => ({ ...f, jerseyNumber: e.target.value }))}
+                  className="bg-white/6 border-white/10 text-white rounded-xl" />
+              </div>
+              <div>
+                <label className="stat-label text-white/50 block mb-1">{p.position}</label>
+                <Input value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
+                  className="bg-white/6 border-white/10 text-white rounded-xl" />
+              </div>
+            </div>
+            {editMember?.userId === null && (
+              <>
+                <div>
+                  <label className="stat-label text-white/50 block mb-1">{p.email}</label>
+                  <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    className="bg-white/6 border-white/10 text-white rounded-xl" />
+                </div>
+                <div>
+                  <label className="stat-label text-white/50 block mb-1">{p.phone}</label>
+                  <Input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    className="bg-white/6 border-white/10 text-white rounded-xl" />
+                </div>
+              </>
+            )}
+            <div>
+              <label className="stat-label text-white/50 block mb-1">{p.notes}</label>
+              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                rows={2}
+                className="bg-white/6 border-white/10 text-white rounded-xl resize-none" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button variant="ghost" className="flex-1 rounded-xl border border-white/10 text-white/50"
+                onClick={() => setEditMember(null)}>
+                {t.common.cancel}
               </Button>
-            </form>
-          </Form>
+              <Button onClick={handleEdit} disabled={submitting}
+                className="flex-1 rounded-xl font-semibold" style={{ background: teamColor, color: "white" }}>
+                {submitting ? t.common.saving : t.common.save}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

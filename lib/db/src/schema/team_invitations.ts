@@ -16,6 +16,7 @@ export const teamInvitationsTable = pgTable("team_invitations", {
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
   acceptedByUserId: integer("accepted_by_user_id"),
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
+  emailSendCount: integer("email_send_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

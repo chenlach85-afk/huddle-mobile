@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import {
   db, usersTable, teamsTable, teamInvitationsTable, teamMembersTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
 import type { Request, Response } from "express";
@@ -269,8 +269,27 @@ router.post("/team-invite/:token/accept", requireAuth, async (req: AuthedRequest
   if (!team) { res.status(404).json({ error: "Team not found" }); return; }
 
   const memberRole = (inv.invitedRole ?? "player") as "player" | "coach" | "assistant";
-  await db.insert(teamMembersTable).values({ teamId: inv.teamId, userId, role: memberRole })
-    .onConflictDoNothing();
+
+  const [placeholder] = await db.select().from(teamMembersTable)
+    .where(and(
+      eq(teamMembersTable.teamId, inv.teamId),
+      eq(teamMembersTable.invitationId, inv.id),
+      isNull(teamMembersTable.userId),
+    ));
+
+  if (placeholder) {
+    await db.update(teamMembersTable).set({
+      userId,
+      placeholderFullName: null,
+      placeholderEmail: null,
+      placeholderPhone: null,
+      status: "active",
+    }).where(eq(teamMembersTable.id, placeholder.id));
+  } else {
+    await db.insert(teamMembersTable).values({
+      teamId: inv.teamId, userId, role: memberRole, status: "active",
+    }).onConflictDoNothing();
+  }
 
   await db.update(teamInvitationsTable).set({
     status: "accepted", acceptedAt: new Date(), acceptedByUserId: userId,

@@ -45,6 +45,7 @@ router.get("/teams/:teamId/coaches", requireAuth, async (req: AuthedRequest, res
     id: teamMembersTable.id,
     userId: teamMembersTable.userId,
     role: teamMembersTable.role,
+    coachTitle: teamMembersTable.coachTitle,
     createdAt: teamMembersTable.createdAt,
     name: usersTable.name,
     email: usersTable.email,
@@ -151,6 +152,29 @@ router.post("/teams/:teamId/coaches/invite", requireAuth, async (req: AuthedRequ
   }
 
   res.json({ id: inv.id, token, url, type, email, phone, invitedRole: validRole, expiresAt, emailSent });
+});
+
+/* ─── PATCH /teams/:teamId/coaches/:coachUserId/title ──────── */
+
+router.patch("/teams/:teamId/coaches/:coachUserId/title", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
+  const requesterId = req.userId!;
+  const teamId = parseInt(req.params.teamId as string);
+  const targetUserId = parseInt(req.params.coachUserId as string);
+  if (isNaN(teamId) || isNaN(targetUserId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  if (!(await canManageTeam(requesterId, teamId))) {
+    res.status(403).json({ error: "Not authorized" }); return;
+  }
+
+  const { title } = req.body as { title?: string | null };
+
+  const [updated] = await db.update(teamMembersTable)
+    .set({ coachTitle: title ?? null })
+    .where(and(eq(teamMembersTable.teamId, teamId), eq(teamMembersTable.userId, targetUserId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Coach not found on this team" }); return; }
+  res.json({ success: true, coachTitle: updated.coachTitle });
 });
 
 /* ─── PATCH /teams/:teamId/coaches/:userId/role  ────────── */

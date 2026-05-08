@@ -24,6 +24,7 @@ type CoachMember = {
   email: string;
   role: "coach" | "player" | "assistant";
   isOwner: boolean;
+  coachTitle?: string | null;
 };
 
 type PendingInvite = {
@@ -85,6 +86,9 @@ export default function TeamManagementTab({
 
   const [copiedJoinCode, setCopiedJoinCode] = useState(false);
 
+  const [titleEditUserId, setTitleEditUserId] = useState<number | null>(null);
+  const [titleInput, setTitleInput] = useState("");
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -103,6 +107,19 @@ export default function TeamManagementTab({
   }, [teamId]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  async function updateTitle(userId: number) {
+    const res = await fetch(`/api/teams/${teamId}/coaches/${userId}/title`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: titleInput.trim() || null }),
+    });
+    if (res.ok) {
+      toast({ title: mg.titleUpdated });
+      setTitleEditUserId(null);
+      loadData();
+    } else toast({ title: mg.failedAction, variant: "destructive" });
+  }
 
   async function changeRole(userId: number, role: string) {
     const res = await fetch(`/api/teams/${teamId}/coaches/${userId}/role`, {
@@ -170,7 +187,7 @@ export default function TeamManagementTab({
     const res = await fetch(`/api/teams/${teamId}/transfer-ownership`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ toUserId: parseInt(transferTargetId) }),
+      body: JSON.stringify({ newOwnerId: parseInt(transferTargetId), confirm: true }),
     });
     if (res.ok) {
       toast({ title: mg.ownershipTransferred });
@@ -199,12 +216,12 @@ export default function TeamManagementTab({
   }
 
   async function deleteTeam() {
-    if (deletePhrase !== "DELETE") return;
+    if (deletePhrase !== "DELETE PERMANENTLY") return;
     setDeleteLoading(true);
-    const res = await fetch(`/api/teams/${teamId}`, {
+    const res = await fetch(`/api/teams/${teamId}/destroy`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmPhrase: "DELETE" }),
+      body: JSON.stringify({ confirmPhrase: "DELETE PERMANENTLY" }),
     });
     if (res.ok) {
       toast({ title: mg.teamDeleted });
@@ -281,13 +298,60 @@ export default function TeamManagementTab({
                       <p className="text-sm font-semibold text-white truncate">{coach.name}</p>
                       {isMe && <span className="text-[10px] text-white/30">(you)</span>}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <RoleIcon className="h-3 w-3 shrink-0" style={{ color: coach.isOwner ? "#f7b538" : "rgba(255,255,255,0.35)" }} />
                       <span className="text-[10px] font-bold uppercase tracking-wider"
                         style={{ color: coach.isOwner ? "#f7b538" : "rgba(255,255,255,0.35)" }}>
                         {coach.isOwner ? mg.youOwner : roleLabel(coach.role)}
                       </span>
+                      {coach.coachTitle && (
+                        <span className="text-[10px] text-white/40 font-medium px-1.5 py-0.5 rounded"
+                          style={{ background: "rgba(255,255,255,0.06)" }}>
+                          {coach.coachTitle}
+                        </span>
+                      )}
+                      {isOwner && !coach.isOwner && (
+                        <button
+                          onClick={() => { setTitleEditUserId(coach.userId); setTitleInput(coach.coachTitle ?? ""); }}
+                          className="text-[9px] text-white/20 hover:text-white/50 transition-colors">
+                          {mg.editTitle}
+                        </button>
+                      )}
                     </div>
+                    {/* Inline title editor */}
+                    {titleEditUserId === coach.userId && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex gap-1.5 flex-wrap">
+                          {(mg.coachTitleChips as string[]).map(chip => (
+                            <button key={chip} onClick={() => setTitleInput(chip)}
+                              className="px-2 py-0.5 rounded text-[9px] font-semibold transition-all border"
+                              style={titleInput === chip
+                                ? { background: `${teamColor}25`, color: teamColor, borderColor: `${teamColor}50` }
+                                : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.1)" }
+                              }>
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex gap-1">
+                          <input
+                            value={titleInput}
+                            onChange={e => setTitleInput(e.target.value)}
+                            placeholder={mg.coachTitlePlaceholder}
+                            className="flex-1 h-7 rounded-lg px-2 text-xs bg-white/6 border border-white/10 text-white placeholder:text-white/20 outline-none"
+                          />
+                          <button onClick={() => updateTitle(coach.userId)}
+                            className="h-7 px-2 rounded-lg text-xs font-semibold text-white"
+                            style={{ background: teamColor }}>
+                            {t.common.save}
+                          </button>
+                          <button onClick={() => setTitleEditUserId(null)}
+                            className="h-7 px-2 rounded-lg text-xs text-white/40 border border-white/10">
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {isOwner && !coach.isOwner && (
                     <div className="flex items-center gap-1 shrink-0">
@@ -558,7 +622,7 @@ export default function TeamManagementTab({
             </div>
             <Button
               onClick={deleteTeam}
-              disabled={deleteLoading || deletePhrase !== "DELETE"}
+              disabled={deleteLoading || deletePhrase !== "DELETE PERMANENTLY"}
               className="w-full font-semibold rounded-xl h-10 bg-red-600 hover:bg-red-500 text-white disabled:opacity-30">
               <Trash2 className="h-3.5 w-3.5 me-2" />
               {deleteLoading ? t.common.saving : mg.deleteTeam}

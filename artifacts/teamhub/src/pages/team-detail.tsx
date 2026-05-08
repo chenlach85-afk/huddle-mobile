@@ -42,10 +42,11 @@ import {
 import {
   ArrowLeft, Users, Calendar, CheckSquare, MessageSquare,
   AlertCircle, Activity, Link2, Check, Zap, MapPin, Pencil,
-  ImageIcon, FileText, Settings,
+  ImageIcon, FileText, Settings, Trophy,
 } from "lucide-react";
 import PlayersTab from "@/components/team/players-tab";
 import TeamManagementTab from "@/pages/team-management";
+import NextGameTab from "@/pages/next-game";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import EventsTab from "@/components/team/events-tab";
 import TasksTab from "@/components/team/tasks-tab";
@@ -300,6 +301,7 @@ export default function TeamDetailPage() {
 
   const tabs = [
     { value: "players", label: td.tabSquad, icon: Users },
+    { value: "next-game", label: t.nextGame.tabLabel, icon: Trophy },
     { value: "events", label: td.tabLineup, icon: Calendar },
     { value: "tasks", label: td.tabTasks, icon: CheckSquare },
     { value: "messages", label: td.tabHuddle, icon: MessageSquare },
@@ -532,6 +534,7 @@ export default function TeamDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
           <div className="lg:col-span-3">
             <TabsContent value="players" className="mt-0"><PlayersTab teamId={id} teamColor={teamColor} teamName={team?.name} /></TabsContent>
+            <TabsContent value="next-game" className="mt-0"><NextGameTab teamId={id} teamColor={teamColor} isOwner={isOwner} /></TabsContent>
             <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} /></TabsContent>

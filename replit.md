@@ -37,9 +37,9 @@ Tables:
 - `admin_audit_log` — id, admin_id, action, target_user_id, target_team_id, metadata (jsonb), created_at
 - `platform_invitations` — id, token (UUID), email, invited_role, invited_by_user_id, status, notes, expires_at, accepted_at, email_sent_at, created_at
 - `notifications` — id, user_id (FK→users), type, title, body, read, related_id, related_type, created_at
-- `team_members` — id, team_id (FK→teams), user_id (FK→users), role (coach/player/assistant), created_at
+- `team_members` — id, team_id (FK→teams), user_id nullable (FK→users), role (coach/player/assistant), status enum (active/inactive/pending_invitation/invited/declined), placeholder_full_name, placeholder_email, placeholder_phone, invitation_id (FK→team_invitations), jersey_number, position, member_notes, coach_title, created_at; partial unique index on (team_id, user_id) WHERE user_id IS NOT NULL
 - `files` — id, uploader_id, team_id, filename, original_name, mime_type, size, url, related_type, related_id, created_at
-- `team_invitations` — id, token (UUID), team_id, invited_by_user_id, invite_type (email/link), email (nullable), phone (nullable), invited_role (default "player"), status, expires_at, accepted_at, email_sent_at, created_at
+- `team_invitations` — id, token (UUID), team_id, invited_by_user_id, invite_type (email/link), email (nullable), phone (nullable), invited_role (default "player"), status, expires_at, accepted_at, email_sent_at, email_send_count, created_at
 
 ## API Routes
 
@@ -51,9 +51,20 @@ All under `/api/` base path. See `artifacts/api-server/src/routes/index.ts` for 
 | POST | /api/teams/:teamId/coaches/invite | Invite coach via team_invitations |
 | PATCH | /api/teams/:teamId/coaches/:userId/role | Change coach role |
 | DELETE | /api/teams/:teamId/coaches/:userId | Remove coach |
-| POST | /api/teams/:teamId/transfer-ownership | Transfer team ownership |
+| PATCH | /api/teams/:teamId/coaches/:id/title | Set coach custom title |
+| POST | /api/teams/:teamId/transfer-ownership | Transfer team ownership (body: {newOwnerId, confirm:true}) |
+| DELETE | /api/teams/:teamId/destroy | Permanently delete team (body: {confirmPhrase:"DELETE PERMANENTLY"}) |
 | POST | /api/teams/:teamId/archive | Archive team |
 | POST | /api/teams/:teamId/unarchive | Unarchive team |
+| GET | /api/teams/:teamId/roster | List all team_members (players only used by squad tab) |
+| POST | /api/teams/:teamId/roster | Add placeholder player |
+| PATCH | /api/teams/:teamId/roster/:id | Update player info |
+| DELETE | /api/teams/:teamId/roster/:id | Remove from roster |
+| POST | /api/teams/:teamId/roster/:id/send-invite | Send/resend invite (email or link) |
+| POST | /api/teams/:teamId/roster/:id/cancel-invite | Cancel pending invitation |
+| POST | /api/teams/:teamId/roster/:id/deactivate | Deactivate active member |
+| POST | /api/teams/:teamId/roster/:id/reactivate | Reactivate inactive member |
+| GET | /api/teams/:teamId/next-game | Next upcoming game + attendance breakdown |
 
 ## Frontend Pages
 
@@ -62,7 +73,7 @@ All under `/api/` base path. See `artifacts/api-server/src/routes/index.ts` for 
 - `/sign-up/*?` — Clerk sign-up (themed dark navy)
 - `/dashboard` — Scoreboard hero card + stats (auth required)
 - `/teams` — Team list with create-team dialog (auth required)
-- `/teams/:teamId` — Team detail with 7 tabs: Squad, Schedule, Tasks, Messages, Albums, Docs, **Management** (auth required)
+- `/teams/:teamId` — Team detail with 8 tabs: Squad, **Next Game**, Schedule, Tasks, Messages, Albums, Docs, **Management** (auth required)
 - `/calendar` — Month grid + upcoming sidebar + day detail panel; type filter row (auth required)
 - `/settings` — Profile, language, notification prefs, security (auth required)
 - `/member/:joinCode` — Public read-only player view (no auth)
@@ -75,7 +86,7 @@ Language switcher in Settings: English, Hebrew (RTL), Spanish.
 - Context: `artifacts/teamhub/src/lib/i18n.tsx` — `I18nProvider`, `useI18n()`, `Language` type
 - Stored in `localStorage` and synced to the DB user record
 - RTL support via `document.dir` and `flex-row-reverse` on layout
-- Sections: nav, common, squads, teamDetail, teamInvite, events, tasks, messages, settings, files, **management**, **whatsapp**, admin, notifications, invite
+- Sections: nav, common, squads, teamDetail, teamInvite, events, tasks, messages, settings, files, **management**, **nextGame**, **whatsapp**, admin, notifications, invite
 
 ## Notifications
 
@@ -93,19 +104,32 @@ In-app notification bell (top-right) polling every 30s. Notifications are now fi
 ## Team Management Tab
 
 `artifacts/teamhub/src/pages/team-management.tsx` — tab within team-detail.
-- Coaching staff list with role badges (Owner/Head Coach/Assistant)
+- Coaching staff list with role badges (Owner/Head Coach/Assistant) + custom `coachTitle` chip
+- Inline title editor with quick-pick preset chips (Head Coach, GK Coach, etc.) — PATCH .../coaches/:id/title
 - Invite coach via email or generate link
 - Change coach role, remove coach (owner only)
-- Transfer ownership, archive team, delete team with phrase confirmation (owner only)
-- Join code display + copy
+- Transfer ownership: body `{newOwnerId, confirm:true}` → POST .../transfer-ownership
+- Delete team: phrase `"DELETE PERMANENTLY"` → DELETE .../destroy
+- Archive team, join code display + copy
 
-## Player Invite Revamp
+## Squad / Roster System
 
-`artifacts/teamhub/src/components/team/players-tab.tsx`
-- Single `emailOrPhone` field + two action buttons (Send Email / Generate Link)
-- Link result modal with WhatsApp / Copy Text / Email share options
-- WhatsApp icon shown on player cards for players with a phone number
-- `normalizePhone` + `getWhatsAppUrl` utilities in same file
+`artifacts/teamhub/src/components/team/players-tab.tsx` — complete rewrite using `team_members` roster API.
+- Players stored in `team_members` (not `players` table) — userId nullable for placeholder/pre-invite players
+- Status badges: active (green) / invited (blue) / pending_invitation (amber) / declined (red) / inactive (gray)
+- Filter chips: All / Active / Pending
+- Add Player dialog: name + jersey + position + email + phone + notes + invitation action (None / Send Email / Generate Link)
+- Kebab menu per player: Edit, Send Invite, Resend Email, Generate Link, Cancel Invite, Deactivate/Reactivate, Remove
+- WhatsApp quick-link on player cards for players with phone
+- Invite acceptance (POST /team-invite/:token/accept) converts placeholder team_member to real user
+
+## Next Game Tab
+
+`artifacts/teamhub/src/pages/next-game.tsx` — hero card for nearest upcoming league/friendly/tournament.
+- Countdown timer (d/h/m/s) to kickoff
+- Squad attendance grid: Confirmed / Maybe / Can't Make It / No Response
+- WhatsApp reminder button for non-responders
+- Link to full schedule
 
 ## File Uploads
 
@@ -129,5 +153,8 @@ Huddle aesthetic — dark navy stadium theme:
 ## Gotchas
 
 - Event type enum lives in `lib/db/src/schema/events.ts` AND `lib/api-spec/openapi.yaml` — keep both in sync, then run codegen
-- `team_invitations` now has `phone` and `invited_role` columns — schema push required after any schema change
+- `team_members` now has many new columns (status, placeholder fields, jersey_number, position, coach_title, etc.) — schema push required after any schema change
+- `team_invitations` now has `email_send_count` — schema push required after any schema change
+- Roster API uses `/api/teams/:teamId/roster` — NOT the old `/api/teams/:teamId/players`
+- `canManageTeam` helper is duplicated in roster.ts / team-invitations.ts / team-management.ts by design
 - Albums route has pre-existing TS errors (string | string[] params) — unrelated to app features, doesn't affect runtime
