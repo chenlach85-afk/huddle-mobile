@@ -469,6 +469,60 @@ router.post("/admin/invitations/:id/resend", requireAuth, requireAdminMiddleware
   res.json({ success: true, inviteLink });
 });
 
+/* ─── Admin: email diagnostic ──────────────────────────── */
+
+router.get("/admin/email-diagnostic", requireAuth, requireAdminMiddleware, async (_req: AuthedRequest, res): Promise<void> => {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL ?? "Huddle <onboarding@resend.dev>";
+
+  const diagnostic: Record<string, unknown> = {
+    env: {
+      RESEND_API_KEY_exists: !!apiKey,
+      RESEND_API_KEY_length: apiKey?.length ?? 0,
+      RESEND_API_KEY_prefix: apiKey ? apiKey.substring(0, 4) : null,
+      RESEND_FROM_EMAIL: fromEmail,
+      NODE_ENV: process.env.NODE_ENV,
+      REPLIT_DOMAINS: process.env.REPLIT_DOMAINS,
+    },
+  };
+
+  if (!apiKey) {
+    res.json({ ...diagnostic, error: "NO_API_KEY" });
+    return;
+  }
+
+  // Test 1: direct fetch to Resend API
+  try {
+    const directResponse = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: ["delivered@resend.dev"],
+        subject: "Huddle diagnostic test",
+        html: "<p>Test from diagnostic endpoint</p>",
+      }),
+    });
+    let body: unknown = null;
+    try { body = await directResponse.json(); } catch { body = null; }
+    diagnostic.direct_fetch = {
+      status: directResponse.status,
+      statusText: directResponse.statusText,
+      body,
+    };
+  } catch (e: unknown) {
+    diagnostic.direct_fetch = {
+      error: e instanceof Error ? e.message : String(e),
+      name: e instanceof Error ? e.name : "UnknownError",
+    };
+  }
+
+  res.json(diagnostic);
+});
+
 /* ─── Admin: send test email ────────────────────────────── */
 
 router.post("/admin/test-email", requireAuth, requireAdminMiddleware, async (req: AuthedRequest, res): Promise<void> => {

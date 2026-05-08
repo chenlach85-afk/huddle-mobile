@@ -1,0 +1,771 @@
+Six changes to fix the player/coach management workflow. They're connected; build them as one coordinated change.Critical contextThe current "Add player" and "Invite player" actions are confusing and the management page is broken. We're consolidating into a cleaner mental model:
+Add player = one button, one form, that creates a team_members row immediately. Optionally also creates an invitation. Player shows in roster instantly with status reflecting whether they've registered.
+Coach management has its own clean section under team settings/management with role flexibility.
+Next game is its own focused page so players know what they need without hunting through a calendar.
+Change 1 — Unified "Add player" flow (replaces "Add" and "Invite" separately)GoalONE button on the squad page: "+ Add player". Opens a single form that:
+
+Always adds the player to team_members immediately (so they show in the squad list)
+Lets the coach optionally invite them (email or link) in the same form
+Tracks invitation status visibly in the squad list
+DatabaseUpdate team_members so it can represent a "placeholder" player who hasn't registered yet:sql-- Allow user_id to be null for placeholder players
+alter table public.team_members
+  alter column user_id drop not null;
+
+-- Add fields for placeholder players (set when user_id is null)
+alter table public.team_members
+  add column if not exists placeholder_full_name text,
+  add column if not exists placeholder_email text,
+  add column if not exists placeholder_phone text,
+  add column if not exists invitation_id uuid references team_invitations(id) on delete set null;
+
+-- Constraint: either user_id OR placeholder fields must be set
+alter table public.team_members
+  drop constraint if exists team_members_user_or_placeholder_check;
+
+alter table public.team_members
+  add constraint team_members_user_or_placeholder_check
+  check (
+    user_id is not null
+    or placeholder_full_name is not null
+  );
+
+-- New check on status: 'active', 'inactive', 'pending_invitation', 'invited', 'declined'
+alter table public.team_members
+  drop constraint if exists team_members_status_check;
+
+alter table public.team_members
+  add constraint team_members_status_check
+  check (status in ('active', 'inactive', 'pending_invitation', 'invited', 'declined'));
+
+-- Drop the old unique(team_id, user_id) constraint and replace
+-- (because user_id can now be null)
+alter table public.team_members
+  drop constraint if exists team_members_team_id_user_id_key;
+
+-- Replace with a partial unique index that only enforces uniqueness when user_id is not null
+create unique index if not exists team_members_team_user_unique
+  on public.team_members(team_id, user_id)
+  where user_id is not null;Status meaningsA team_member row's status field now represents:StatusMeaningWhen it's setactiveReal registered user, fully activeAfter invitation accepted, or after coach added them and they registeredinactiveReal user, marked inactive by coachCoach manually toggled them offpending_invitationPlaceholder, no invitation sent yetCoach added player without invitinginvitedPlaceholder, invitation sent, waitingCoach added player + sent invitationdeclinedPlayer declined the invitationFuture feature, leave as a valid status for nowAdd player form┌────────────────────────────────────────────────────┐
+│  Add player to Lightning FC                         │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Player details                                     │
+│                                                      │
+│  Full name *                                        │
+│  [                                                ] │
+│                                                      │
+│  Jersey number                                      │
+│  [   ]                                              │
+│                                                      │
+│  Position                                           │
+│  [ Forward / Midfielder / Defender / Goalkeeper ▼ ] │
+│                                                      │
+│  Notes (private to coach)                           │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Contact (for invitation, optional)                 │
+│                                                      │
+│  Email                                              │
+│  [                                                ] │
+│                                                      │
+│  Phone                                              │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Send invitation now?                               │
+│                                                      │
+│  ◉ Don't invite yet (add to squad only)             │
+│  ○ Send email invitation now                        │
+│  ○ Generate personal link (I'll share via WhatsApp) │
+│                                                      │
+│  Personal message (if inviting):                    │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  [Cancel]                          [Add player]    │
+└────────────────────────────────────────────────────┘Behavior on submittypescript// API: POST /api/teams/[teamId]/players
+// Body: {
+//   full_name: string;
+//   jersey_number?: number;
+//   position?: string;
+//   notes?: string;
+//   email?: string;
+//   phone?: string;
+//   invitation_action: 'none' | 'send_email' | 'generate_link';
+//   personal_message?: string;
+// }
+
+async function addPlayer(req) {
+  // 1. Verify caller is coach of this team
+  // 2. Validate: at least full_name; if invitation_action != 'none', email or phone required
+  // 3. Insert team_members placeholder row:
+  const { data: member } = await supabase.from('team_members').insert({
+    team_id: teamId,
+    user_id: null,
+    role: 'player',
+    placeholder_full_name: full_name,
+    placeholder_email: email,
+    placeholder_phone: phone,
+    jersey_number,
+    position,
+    notes,
+    status: invitation_action === 'none' ? 'pending_invitation' : 'invited'
+  }).select().single();
+
+  // 4. If invitation requested, create the invitation:
+  if (invitation_action !== 'none') {
+    if (!email && !phone) throw new Error('Email or phone required for invitation');
+
+    const { data: invitation } = await supabase.from('team_invitations').insert({
+      team_id: teamId,
+      email,
+      phone,
+      invited_role: 'player',
+      prefill_full_name: full_name,
+      prefill_jersey_number: jersey_number,
+      prefill_position: position,
+      personal_message,
+      invited_by: caller.id,
+      status: 'pending'
+    }).select().single();
+
+    // Link the team_member row to the invitation
+    await supabase.from('team_members').update({
+      invitation_id: invitation.id
+    }).eq('id', member.id);
+
+    // Send the email if requested
+    if (invitation_action === 'send_email') {
+      await sendTeamInvitationEmail({ to: email, invitation, team, coach });
+      await supabase.from('team_invitations').update({
+        email_sent_at: new Date(),
+        email_send_count: 1
+      }).eq('id', invitation.id);
+    }
+    // For 'generate_link', just return the link in the response
+  }
+
+  return { player: member, invitation, invite_url: invitation ? `${APP_URL}/team-invite/${invitation.token}` : null };
+}When invited player accepts the invitationThe existing accept-team-invitation flow needs to ALSO update the placeholder team_member row:typescript// In /api/auth/accept-team-invitation, after creating user:
+// Find the placeholder team_member and replace with the real user
+const { data: placeholder } = await supabaseAdmin
+  .from('team_members')
+  .select('id')
+  .eq('invitation_id', invitation.id)
+  .eq('user_id', null)
+  .maybeSingle();
+
+if (placeholder) {
+  // Update the existing placeholder row instead of creating new
+  await supabaseAdmin.from('team_members').update({
+    user_id: newUser.id,
+    status: 'active',
+    placeholder_full_name: null,
+    placeholder_email: null,
+    placeholder_phone: null,
+    // Keep jersey/position from placeholder unless overridden
+    jersey_number: body.jersey_number ?? placeholder.jersey_number,
+    position: body.position ?? placeholder.position
+  }).eq('id', placeholder.id);
+} else {
+  // No placeholder existed, create new (legacy path, shouldn't happen with new flow)
+  await supabaseAdmin.from('team_members').insert({
+    team_id: invitation.team_id,
+    user_id: newUser.id,
+    role: invitation.invited_role,
+    jersey_number: body.jersey_number,
+    position: body.position,
+    status: 'active'
+  });
+}This is critical — the placeholder row must convert to a real row, not duplicate. Otherwise you end up with two roster entries for the same person.Change 2 — Squad list shows invitation status inlineIn /team/[id]/squad, each player row in the list shows their invitation status and per-row actions:┌──────────────────────────────────────────────────────┐
+│  SQUAD · 12 players                  [+ Add player]  │
+│  ────────────────────────────────────────────────── │
+│                                                       │
+│  [10] Yossi Cohen                  [ACTIVE]    [...] │
+│       Forward · Captain                              │
+│                                                       │
+│  [7]  Amir Levi                    [ACTIVE]    [...] │
+│       Midfielder                                     │
+│                                                       │
+│  [9]  Daniel Mizrachi    [INVITED · 2 days ago] [...]│
+│       Forward · daniel@gmail.com                     │
+│       Status: invitation sent, waiting for response  │
+│                                                       │
+│  [3]  Eitan Mor          [PENDING INVITATION]   [...]│
+│       Defender · eitan@gmail.com                     │
+│       Status: in roster, no invitation sent yet      │
+│                                                       │
+│  [—]  Avi Sharon         [INACTIVE]             [...]│
+│       (struck through)                              │
+│                                                       │
+└──────────────────────────────────────────────────────┘Status badges with colors:StatusBadge colorVisual treatmentactivegreennormal displayinactivegraystrikethrough namepending_invitationtrophy goldnormal display, "in roster" hintinvitedkit_blue"invitation sent X days ago" hintdeclinedkit_redstrikethrough name (rare)Kebab menu actions per rowThe [...] button on each row opens a context menu with role-appropriate actions:For active players
+View profile
+Edit details (jersey, position, notes)
+Mark as captain / Remove captain
+Send WhatsApp message (if phone set)
+Move to inactive
+Remove from team (with confirmation)
+For inactive players
+View profile
+Move to active
+Remove from team
+For pending_invitation placeholder
+Edit details
+Send email invitation (if email set, otherwise prompt for email)
+Generate invitation link (works with email or phone)
+Send WhatsApp message with link (auto-opens wa.me with pre-filled text)
+Remove from team
+For invited placeholder
+Edit details
+Resend email invitation (counter shows X of 5 sends)
+Copy invitation link (so coach can share via different channel)
+Send WhatsApp message with link
+View invitation details (expires at, send count, etc.)
+Cancel invitation (deletes the invitation but keeps placeholder in roster as pending_invitation)
+Remove from team (deletes both the placeholder and the invitation)
+Edit player modalThe "Edit details" action opens a form similar to Add Player but with all current values pre-filled. Coach can edit name (for placeholders only — real users edit their own name), jersey, position, notes, email, phone.If the row is a placeholder and the coach changes the email, also update the linked invitation if pending.Inline invitation expandFor invited rows, a small expand caret next to the badge reveals:[9] Daniel Mizrachi   [INVITED · 2 days ago]   [...]
+    Forward · daniel@gmail.com
+    ▼ Invitation details
+       Sent: 2 days ago (1 of 5 sends)
+       Expires: in 12 days
+       Link: huddle.app/team-invite/abc123... [Copy]
+       [Resend email] [Cancel invitation]API endpoints to support thisGET /api/teams/[teamId]/players
+  Returns the full roster including placeholders with their invitation status
+
+PATCH /api/teams/[teamId]/players/[memberId]
+  Edit player details (placeholder or real user via team_member fields like jersey_number)
+
+POST /api/teams/[teamId]/players/[memberId]/invite
+  Body: { method: 'email' | 'link', personal_message? }
+  Creates a team_invitation for an existing placeholder, or resends if invitation exists
+
+POST /api/teams/[teamId]/players/[memberId]/resend
+  Resends the existing invitation, increments counter, extends expiration
+
+POST /api/teams/[teamId]/players/[memberId]/deactivate
+  Sets status to 'inactive'
+
+POST /api/teams/[teamId]/players/[memberId]/reactivate
+  Sets status to 'active'
+
+DELETE /api/teams/[teamId]/players/[memberId]
+  Removes from team. Also cancels any pending invitation linked to this row.Change 3 — Email invitations actually work this timeDiagnose properly. The previous attempts were too narrow.Step 1: Show me the actual errorAdd this debug endpoint and hit it:typescript// app/api/admin/email-diagnostic/route.ts
+import { Resend } from 'resend';
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL;
+
+  const diagnostic: any = {
+    env: {
+      RESEND_API_KEY_exists: !!apiKey,
+      RESEND_API_KEY_length: apiKey?.length,
+      RESEND_API_KEY_prefix: apiKey?.substring(0, 4),
+      RESEND_FROM_EMAIL: fromEmail,
+      NODE_ENV: process.env.NODE_ENV,
+    }
+  };
+
+  if (!apiKey) {
+    return NextResponse.json({ ...diagnostic, error: 'NO_API_KEY' });
+  }
+
+  // Test 1: direct fetch to Resend API
+  try {
+    const directResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromEmail || 'HUDDLE <onboarding@resend.dev>',
+        to: ['delivered@resend.dev'], // Resend's test inbox that always accepts
+        subject: 'HUDDLE diagnostic test',
+        html: '<p>Test from diagnostic endpoint</p>'
+      })
+    });
+
+    diagnostic.direct_fetch = {
+      status: directResponse.status,
+      statusText: directResponse.statusText,
+      body: await directResponse.json().catch(() => null),
+    };
+  } catch (e: any) {
+    diagnostic.direct_fetch = { error: e.message, name: e.name };
+  }
+
+  // Test 2: via Resend SDK
+  try {
+    const resend = new Resend(apiKey);
+    const sdkResult = await resend.emails.send({
+      from: fromEmail || 'HUDDLE <onboarding@resend.dev>',
+      to: ['delivered@resend.dev'],
+      subject: 'HUDDLE diagnostic test (SDK)',
+      html: '<p>Test from SDK</p>'
+    });
+    diagnostic.sdk_send = sdkResult;
+  } catch (e: any) {
+    diagnostic.sdk_send = { error: e.message, name: e.name, stack: e.stack };
+  }
+
+  return NextResponse.json(diagnostic);
+}I'll hit https://huddle-app/api/admin/email-diagnostic and paste the output. Show me the JSON.Step 2: Interpret the result and fixIf RESEND_API_KEY_exists: false:
+
+Replit Secret isn't set or didn't propagate
+Solution: Set the secret again, then stop and restart the Replit instance (Stop button, then Run). Env vars don't update without restart.
+If direct_fetch.status: 401:
+
+API key is invalid or revoked
+Solution: Generate a new API key at resend.com → API Keys → Create. Update Replit Secret. Restart.
+If direct_fetch.status: 403 with "domain_not_verified":
+
+The from address uses a domain you haven't verified
+Solution: Either set RESEND_FROM_EMAIL=HUDDLE <onboarding@resend.dev> (Resend's pre-verified test sender), or add and verify your own domain in Resend dashboard
+Note: with onboarding@resend.dev, you can only send to the email address tied to your Resend account, OR to delivered@resend.dev (their test inbox)
+If direct_fetch.status: 422 with "you can only send testing emails to...":
+
+Free tier restriction with onboarding@resend.dev sender
+Solution: Add a domain to Resend, verify with DNS records (3 records: SPF, DKIM, DMARC), wait ~10 minutes, then update RESEND_FROM_EMAIL to use that domain
+If direct_fetch.status: 200 but sdk_send errors:
+
+API key works directly but SDK has issue — possibly version mismatch
+Solution: Update resend package to latest
+If both succeed:
+
+Email sending works fine. Bug is elsewhere — probably in the application code that's supposed to call the send function. Show me the code in /api/teams/[teamId]/players/[memberId]/invite (or wherever invitations get sent from). That's the broken path.
+Step 3: Add error visibility to the userCurrently when invitations fail, the user sees a generic error. Replace with specific messaging:typescript// When sending an invitation
+try {
+  const result = await sendInvitationEmail({...});
+  if (!result.data?.id) {
+    throw new Error(result.error?.message || 'Unknown email error');
+  }
+  return { success: true };
+} catch (err: any) {
+  console.error('Email send failed:', err);
+
+  // Determine user-facing message based on error type
+  let userMessage = 'Email could not be sent.';
+  if (err.message?.includes('domain_not_verified')) {
+    userMessage = 'Email service domain not configured. Please use the link option instead.';
+  } else if (err.message?.includes('rate_limit')) {
+    userMessage = 'Too many emails sent recently. Please try again in a few minutes.';
+  } else if (err.message?.includes('invalid_email')) {
+    userMessage = 'The email address looks invalid.';
+  } else if (err.statusCode === 401) {
+    userMessage = 'Email service authentication failed. An admin needs to fix this.';
+  }
+
+  // ALWAYS return the invite URL as fallback so coach can share manually
+  return {
+    success: false,
+    email_error: userMessage,
+    fallback_url: `${process.env.NEXT_PUBLIC_APP_URL}/team-invite/${invitation.token}`,
+    technical_detail: err.message
+  };
+}In the UI, when success: false, show:⚠ Could not send email: {userMessage}
+
+But the invitation is still valid. Share it manually:
+
+[ huddle.app/team-invite/abc123...           ] [Copy] [WhatsApp]
+
+The player can use this link to join.This way email failures don't block the workflow.Change 4 — Fix the Team Management buttonThe previous prompt added /team/[id]/management but it's not working. Diagnose and fix.Step 1: DiagnosticShow me:
+
+The page file (app/team/[id]/management/page.tsx or similar) — does it exist?
+The link/button that navigates to it — what does its href look like?
+Any errors in browser console when clicking the button
+Any errors in server logs
+Common causes:
+
+Page file missing (404 in network tab)
+Wrong path in the navigation link (e.g., /team/management instead of /team/[id]/management)
+Permission redirect loop (page checks for coach role, fails, redirects, fails again)
+Unhandled error in the page component that crashes the render
+Step 2: Rebuild it cleanlyWhatever the diagnosis, ensure the page exists at /team/[teamId]/management with this clean structure:typescript// app/team/[teamId]/management/page.tsx
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { redirect, notFound } from 'next/navigation';
+
+export default async function TeamManagementPage({ params }: { params: { teamId: string } }) {
+  const supabase = createServerClient(/* ... */);
+
+  // Verify caller is at least a coach (RLS will also enforce this in queries)
+  const { data: membership } = await supabase
+    .from('team_members')
+    .select('role, team_id')
+    .eq('team_id', params.teamId)
+    .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+    .single();
+
+  if (!membership || !['coach', 'assistant_coach'].includes(membership.role)) {
+    redirect(`/team/${params.teamId}`);
+  }
+
+  const { data: team } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('id', params.teamId)
+    .single();
+
+  if (!team) notFound();
+
+  const isOwner = team.created_by === (await supabase.auth.getUser()).data.user?.id;
+
+  return (
+    <ManagementLayout team={team} isOwner={isOwner}>
+      <CoachingStaffSection teamId={team.id} isOwner={isOwner} />
+      <TeamInfoSection team={team} isOwner={isOwner} />
+      <TeamJoinSettingsSection team={team} isOwner={isOwner} />
+      {isOwner && <DangerZoneSection team={team} />}
+    </ManagementLayout>
+  );
+}The link to it from elsewhere in the app:tsx// In team header, sidebar, or any nav component
+<Link href={`/team/${team.id}/management`}>
+  {t('management.title')}
+</Link>Make sure the link template literal uses the actual team ID, not a placeholder.VerifyAfter fix:
+
+Click "Team Management" button as team owner — page loads
+Click as coach (non-owner) — page loads but danger zone hidden
+Click as player — redirects away
+Direct URL access by non-member — redirects away
+Change 5 — Coach roles with custom titlesReal teams have varied coaching roles: assistant head coach, defensive coordinator, position coaches, S&C coaches, video analyst, etc. The current coach / assistant_coach distinction is too coarse.ApproachKeep the database-level role simple (it drives permissions), but add a free-text coach_title field that's purely display.Databasesql-- Add coach_title to team_members
+alter table public.team_members
+  add column if not exists coach_title text;The role column stays as the permission gate:
+
+coach = full management rights (can do everything except owner-only actions)
+assistant_coach = limited (can manage events/players/messages but NOT team settings or other coaches)
+player, parent unchanged
+The coach_title column is human-readable role description, only meaningful when role is coach or assistant_coach. Examples:
+"Head Coach" (the owner usually)
+"Assistant Head Coach"
+"Offensive Coordinator"
+"Defensive Coordinator"
+"Goalkeeping Coach"
+"Strength & Conditioning"
+"Performance Coach"
+"Video Analyst"
+"Team Manager"
+Or anything the owner types
+UI in coaching staff sectionWhen inviting a coach:┌────────────────────────────────────────────────────┐
+│  Invite a coaching staff member                     │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  Email *                                            │
+│  [                                                ] │
+│                                                      │
+│  Permission level *                                 │
+│  ◉ Coach (full management)                          │
+│  ○ Assistant coach (limited — see below)            │
+│                                                      │
+│  Title (their role on the team)                     │
+│  Quick picks:                                       │
+│  [Assistant Head Coach] [Coordinator]               │
+│  [Position Coach] [S&C Coach] [Other]               │
+│                                                      │
+│  Or type a custom title:                            │
+│  [                                                ] │
+│                                                      │
+│  Personal message (optional)                        │
+│  [                                                ] │
+│                                                      │
+│  [📧 Send email invitation]  [🔗 Generate link]    │
+└────────────────────────────────────────────────────┘The quick-pick chips populate the title field when clicked. "Other" clears the field for custom input.Pre-defined title options (translated)typescriptconst coachTitlePresets = {
+  he: [
+    'מאמן ראשי',
+    'מאמן ראשי משנה',
+    'רכז התקפה',
+    'רכז הגנה',
+    'מאמן עמדה',
+    'מאמן כושר',
+    'מאמן ביצועים',
+    'אנליסט וידאו',
+    'מנהל קבוצה',
+    'אחר'
+  ],
+  en: [
+    'Head Coach',
+    'Associate Head Coach',
+    'Assistant Head Coach',
+    'Offensive Coordinator',
+    'Defensive Coordinator',
+    'Position Coach',
+    'Strength & Conditioning',
+    'Performance Coach',
+    'Video Analyst',
+    'Team Manager',
+    'Other'
+  ],
+  es: [
+    'Entrenador Principal',
+    'Entrenador Asistente',
+    'Coordinador Ofensivo',
+    'Coordinador Defensivo',
+    'Entrenador de Posición',
+    'Preparador Físico',
+    'Entrenador de Rendimiento',
+    'Analista de Video',
+    'Manager del Equipo',
+    'Otro'
+  ]
+};Display in coaching staff listCOACHING STAFF (4)
+─────────────────────────────────────
+[Avatar] Yossi Cohen           [OWNER]
+         Head Coach
+         yossi@example.com
+
+[Avatar] Liran Eldar           [COACH]      [...]
+         Associate Head Coach
+         liran@example.com
+
+[Avatar] Dana Levi              [ASSISTANT] [...]
+         Strength & Conditioning
+         dana@example.com
+
+[Avatar] Avi Mor                [ASSISTANT] [...]
+         Goalkeeping Coach
+         avi@example.com
+
+[+ Invite another coach]The coach_title shows under the name. The [OWNER] / [COACH] / [ASSISTANT] badge is the permission level (not editable except via "change role" action).Edit existing coach titleClick [...] next to a coach → "Edit title" → small modal with title input + preset chips. Save updates team_members.coach_title.The team owner can edit anyone's title. Other coaches see the section but can't modify.Translation keysjson{
+  "coach_titles": {
+    "head_coach": "מאמן ראשי",
+    "associate_head_coach": "מאמן ראשי משנה",
+    "offensive_coordinator": "רכז התקפה",
+    "defensive_coordinator": "רכז הגנה",
+    "position_coach": "מאמן עמדה",
+    "strength_conditioning": "מאמן כושר",
+    "performance_coach": "מאמן ביצועים",
+    "video_analyst": "אנליסט וידאו",
+    "team_manager": "מנהל קבוצה",
+    "other": "אחר"
+  },
+  "management": {
+    "edit_title": "ערוך תפקיד",
+    "title_label": "תפקיד בקבוצה",
+    "title_quick_picks": "בחירות מהירות",
+    "title_custom": "או הקלד תפקיד מותאם",
+    "title_helper": "התפקיד יוצג בצוות האימון. לא משפיע על הרשאות."
+  }
+}Change 6 — "Next Game" pageA focused view of the upcoming game. Visible to all team members.Where it livesAdd a new tab in the team navigation: "המשחק הבא" / "Next Game" / "Próximo partido".URL: /team/[teamId]/next-gameWhat's a "game"For this page, "game" means events with type:
+
+league_game
+friendly_game
+tournament
+(Trainings, meetings, celebrations are NOT shown here — those have other dedicated views.)Page logictypescript// Find next event of type league_game, friendly_game, or tournament
+// where starts_at >= now()
+// ordered by starts_at asc
+// limit 1
+const { data: nextGame } = await supabase
+  .from('events')
+  .select(`
+    *,
+    attendance (
+      user_id,
+      status,
+      profile:profiles (id, full_name, avatar_url)
+    )
+  `)
+  .eq('team_id', teamId)
+  .in('type', ['league_game', 'friendly_game', 'tournament'])
+  .gte('starts_at', new Date().toISOString())
+  .order('starts_at', { ascending: true })
+  .limit(1)
+  .maybeSingle();If no upcoming game: show "No upcoming game scheduled" with a "Schedule a game" CTA (coach only).Page layout┌─────────────────────────────────────────────────────────────┐
+│  THE NEXT GAME                                               │
+│  ──────────────────────────────────────────────────────────  │
+│                                                                │
+│  [Big hero card with team color gradient]                    │
+│                                                                │
+│  LEAGUE GAME                                                  │
+│  Lightning FC  vs  Riverside United                           │
+│                                                                │
+│  📅 Saturday, March 22 · 19:30                                │
+│  📍 Field 3, Sports Complex                                   │
+│                                                                │
+│  In 4 days · 12:00:42:30 (live countdown)                    │
+│                                                                │
+│  [  I'M IN  ] [  MAYBE  ] [  CAN'T MAKE IT  ]                │
+│  (Player view: large RSVP buttons in green/gold/red)         │
+│                                                                │
+│  ──────────────────────────────────────────────────────────  │
+│                                                                │
+│  GAME DETAILS                                                 │
+│                                                                │
+│  Venue: Field 3, Sports Complex                              │
+│         123 Stadium Road                                      │
+│         [Open in Maps]                                        │
+│                                                                │
+│  Arrival: 18:30 (1 hour before kickoff)                       │
+│                                                                │
+│  Uniform: White home kit                                      │
+│           Black shorts, white socks                          │
+│                                                                │
+│  What to bring: Both jerseys (home + away),                  │
+│                 water bottle, shin guards, cleats             │
+│                                                                │
+│  Notes: Cup quarter-final. Win to advance.                   │
+│         Bring extra socks — last week's field was muddy.     │
+│                                                                │
+│  ──────────────────────────────────────────────────────────  │
+│                                                                │
+│  THE SQUAD                                                    │
+│                                                                │
+│  Confirmed (12)                                               │
+│  [10 Yossi]  [7 Amir]  [3 Eitan]  [4 Daniel]  [1 Avi]        │
+│  [9 David]  [8 Ilan]  [11 Roi]  [6 Or]  [2 Nadav]            │
+│  [5 Tomer]  [GK Liron]                                        │
+│                                                                │
+│  Maybe (2)                                                    │
+│  [12 Adam]  [13 Shai]                                        │
+│                                                                │
+│  Can't make it (3)                                            │
+│  [14 Idan]  [15 Yotam]  [16 Dor]                              │
+│                                                                │
+│  No response yet (3)                                          │
+│  [17 Lior]  [18 Niv]  [19 Erez]                               │
+│                                                                │
+│  [Coach: Send WhatsApp reminder to non-responders]            │
+│                                                                │
+│  ──────────────────────────────────────────────────────────  │
+│                                                                │
+│  [Coach only: Edit game] [Coach only: Cancel game]            │
+└─────────────────────────────────────────────────────────────┘Component breakdownHero card:
+
+Type badge (LEAGUE GAME / FRIENDLY / TOURNAMENT) with the type's color
+Match title: "{home_team} vs {opponent}" if is_home, else "{opponent} vs {home_team}"
+Date + time in user's locale
+Live countdown timer ("In 4 days · 12:00:42:30")
+Location with maps link
+RSVP section (player view only):
+
+Three large buttons: I'M IN (green) / MAYBE (gold) / CAN'T MAKE IT (red)
+After RSVP, shows current status with "Change response" link
+Game details section:
+
+Each detail shown only if filled in
+Maps link uses https://www.google.com/maps/search/?api=1&query={encoded_address}
+Squad section:
+
+Players grouped by RSVP status: Confirmed / Maybe / Can't make it / No response yet
+Each player shown as a jersey number tile (small, like the existing player tile component)
+Counts shown next to group label
+For coach: "Send WhatsApp reminder to non-responders" button — opens WhatsApp tabs for each non-responder with pre-filled message
+Coach actions (bottom):
+
+"Edit game" → opens the existing event edit form
+"Cancel game" → opens confirmation, sets event to cancelled status (or deletes), notifies all players
+WhatsApp reminder template for non-responderstypescriptconst reminderTemplates = {
+  he: `שלום {player_name}! 👋
+
+עוד לא אישרת הגעה למשחק הקרוב:
+*{opponent}* {is_home ? 'בבית' : 'בחוץ'}
+{day} {date} בשעה {time}
+
+אנא אשר הגעה באפליקציה:
+{event_url}
+
+תודה!`,
+  en: `Hi {player_name}! 👋
+
+You haven't RSVPd yet for the upcoming game:
+*{opponent}* ({is_home ? 'home' : 'away'})
+{day} {date} at {time}
+
+Please respond in the app:
+{event_url}
+
+Thanks!`,
+  es: `¡Hola {player_name}! 👋
+
+Todavía no confirmaste asistencia para el próximo partido:
+*{opponent}* ({is_home ? 'local' : 'visitante'})
+{day} {date} a las {time}
+
+Por favor responde en la app:
+{event_url}
+
+¡Gracias!`
+};Translation keysjson{
+  "next_game": {
+    "tab_label": "המשחק הבא",
+    "title": "המשחק הבא",
+    "no_game": "אין משחק קרוב",
+    "schedule_game": "תזמן משחק",
+    "in_days": "בעוד {n} ימים",
+    "in_hours": "בעוד {n} שעות",
+    "today": "היום",
+    "tomorrow": "מחר",
+    "vs": "נגד",
+    "home": "בית",
+    "away": "חוץ",
+    "game_details": "פרטי המשחק",
+    "venue": "מגרש",
+    "open_in_maps": "פתח במפות",
+    "arrival": "שעת הגעה",
+    "before_kickoff": "{n} לפני שריקת פתיחה",
+    "uniform": "מדים",
+    "what_to_bring": "מה להביא",
+    "notes": "הערות",
+    "the_squad": "הסגל",
+    "confirmed": "מגיעים ({n})",
+    "maybe": "אולי ({n})",
+    "cant_make_it": "לא מגיעים ({n})",
+    "no_response": "לא הגיבו ({n})",
+    "send_reminder": "שלח תזכורת ב-וואטסאפ ללא מגיבים",
+    "edit_game": "ערוך משחק",
+    "cancel_game": "בטל משחק",
+    "cancel_game_confirm": "לבטל את המשחק? כל השחקנים יקבלו עדכון.",
+    "rsvp_in": "מגיע",
+    "rsvp_maybe": "אולי",
+    "rsvp_out": "לא מגיע",
+    "change_response": "שנה תשובה",
+    "live_countdown": "בעוד"
+  }
+}Add equivalents for English and Spanish.Acceptance criteriaUnified add player flow:
+
+✓ ONE "+ Add player" button on squad page (no separate Add and Invite)
+✓ Form lets coach add player to roster optionally with invitation
+✓ Player appears in squad list immediately after submit
+✓ Status reflects whether invitation was sent (pending_invitation / invited / active)
+✓ Database handles placeholder rows (user_id null, full_name set)
+Squad list with invitation status:
+6. ✓ Each row shows status badge with appropriate color
+7. ✓ Kebab menu shows status-appropriate actions
+8. ✓ Coach can send/resend invitations directly from row
+9. ✓ Coach can edit, deactivate, remove players from row
+10. ✓ Inline expand shows invitation details for invited status
+11. ✓ When player accepts invitation, placeholder row converts to real user (no duplication)Email invitations work:
+12. ✓ Diagnostic endpoint runs and returns full diagnostic JSON
+13. ✓ Root cause identified and fixed
+14. ✓ Test invitation actually arrives in admin's inbox
+15. ✓ User-facing error messages are specific (not generic)
+16. ✓ Email failure doesn't block workflow — fallback link always providedTeam Management button works:
+17. ✓ /team/[id]/management page loads without error
+18. ✓ Shows all 5 sections (coaching staff, squad summary, team info, join settings, danger zone)
+19. ✓ Owner sees danger zone; non-owner coaches don't
+20. ✓ Players redirected awayCoach titles:
+21. ✓ coach_title field added to schema
+22. ✓ Invitation form has quick picks + custom input
+23. ✓ Title displays under coach name in staff list
+24. ✓ Owner can edit any coach's title
+25. ✓ Translations work in he/en/esNext game page:
+26. ✓ New tab/route at /team/[id]/next-game
+27. ✓ Shows next event of type league_game/friendly_game/tournament
+28. ✓ Hero card with countdown
+29. ✓ All game details rendered (uniform, arrival, what to bring, notes)
+30. ✓ Squad section grouped by RSVP status
+31. ✓ Player view shows large RSVP buttons
+32. ✓ Coach view shows edit/cancel actions
+33. ✓ "Send WhatsApp reminder" opens tabs for non-responders
+34. ✓ "No upcoming game" empty state when no future gamesBuild sequence — strict
+Change 3 first — fix email invitations. The diagnostic will tell us why it's broken. Don't build new invitation features on a broken foundation.
+Change 4 — fix the management button. Quick fix, unblocks Change 5.
+Change 1 — unified add player flow with placeholder rows.
+Change 2 — squad list status display and inline actions (depends on Change 1).
+Change 5 — coach titles with quick picks.
+Change 6 — next game page (independent, can be parallel).
+Pause after Change 3 (email diagnostic) before continuing — show me the diagnostic JSON output. The result determines what other changes are needed.Don't break: existing schedule view, existing platform invitation flow, existing admin features.
