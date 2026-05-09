@@ -101,6 +101,13 @@ router.post("/teams/:teamId/events", requireAuth, async (req: AuthedRequest, res
       startsAt: new Date(d.startsAt as unknown as string),
       endsAt: d.endsAt ? new Date(d.endsAt as unknown as string) : null,
       notes: d.notes ?? null,
+      opponent: (d as any).opponent ?? null,
+      isHome: (d as any).isHome ?? null,
+      arrivalTime: (d as any).arrivalTime ? new Date((d as any).arrivalTime) : null,
+      uniformColor: (d as any).uniformColor ?? null,
+      uniformSecondaryColor: (d as any).uniformSecondaryColor ?? null,
+      uniformNotes: (d as any).uniformNotes ?? null,
+      whatToBring: (d as any).whatToBring ?? null,
     })
     .returning();
 
@@ -139,6 +146,13 @@ router.patch("/events/:eventId", requireAuth, async (req: AuthedRequest, res): P
   if (d.startsAt !== undefined) updates.startsAt = d.startsAt;
   if ("endsAt" in d) updates.endsAt = d.endsAt;
   if ("notes" in d) updates.notes = d.notes;
+  if ("opponent" in d) updates.opponent = (d as any).opponent;
+  if ("isHome" in d) updates.isHome = (d as any).isHome;
+  if ("arrivalTime" in d) updates.arrivalTime = (d as any).arrivalTime ? new Date((d as any).arrivalTime) : null;
+  if ("uniformColor" in d) updates.uniformColor = (d as any).uniformColor;
+  if ("uniformSecondaryColor" in d) updates.uniformSecondaryColor = (d as any).uniformSecondaryColor;
+  if ("uniformNotes" in d) updates.uniformNotes = (d as any).uniformNotes;
+  if ("whatToBring" in d) updates.whatToBring = (d as any).whatToBring;
 
   const [event] = await db
     .update(eventsTable)

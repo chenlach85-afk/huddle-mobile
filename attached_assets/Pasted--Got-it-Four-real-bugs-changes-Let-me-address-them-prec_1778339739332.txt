@@ -1,0 +1,742 @@
+
+Got it. Four real bugs/changes. Let me address them precisely without over-scoping.
+
+A quick note on the last one — sending invitation via email when adding a player is something we've specced multiple times now but it apparently still isn't working. Let me make this prompt direct and prescriptive so the agent can't half-build it again.
+
+Four bugs to fix. Don't add new features. Don't redesign anything that's working. Be precise.
+
+Bug 1 — Team Management page is broken (empty page)
+Clicking the Management button redirects to an empty page. Diagnose and fix.
+
+Step 1: Diagnostic
+Show me:
+
+Does the file exist? Run:
+bash
+   find . -type f -name "page.tsx" -path "*management*"
+   find . -type f -name "page.tsx" -path "*team*"
+Report what's found.
+
+What does the navigation link look like? Find the management link/button:
+bash
+   grep -rn "management" --include="*.tsx" --include="*.ts" -l
+Show me the actual <Link href={...}> or router.push(...) call. The href must be a properly interpolated string with the team ID, not a literal /team/[id]/management.
+
+Browser console errors when clicking Management — open DevTools → Console → click the button → paste any errors here.
+Server logs — show any 404s or render errors from the server when the management URL is hit.
+Verify route renders:
+bash
+   curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/team/SOME_REAL_TEAM_ID/management
+Report the status code (should be 200, not 404).
+
+Step 2: Fix based on diagnostic
+If the page file doesn't exist — create it at app/team/[teamId]/management/page.tsx:
+
+typescript
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { redirect, notFound } from 'next/navigation';
+import { ManagementSections } from '@/components/management/ManagementSections';
+
+export default async function TeamManagementPage({
+  params
+}: {
+  params: { teamId: string }
+}) {
+  const cookieStore = cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get: (n) => cookieStore.get(n)?.value } }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/auth/signin');
+
+  // Fetch team — RLS will return null if user has no access
+  const { data: team } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('id', params.teamId)
+    .maybeSingle();
+
+  if (!team) {
+    redirect(`/teams`);
+  }
+
+  // Check membership and role
+  const { data: membership } = await supabase
+    .from('team_members')
+    .select('role')
+    .eq('team_id', params.teamId)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!membership || !['coach', 'assistant_coach'].includes(membership.role)) {
+    redirect(`/team/${params.teamId}`);
+  }
+
+  const isOwner = team.created_by === user.id;
+
+  return <ManagementSections team={team} isOwner={isOwner} userRole={membership.role} />;
+}
+If the page exists but renders empty — show me the JSX. Likely cause is a guard that returns null instead of redirecting, or a data fetch that fails silently.
+
+If the navigation link is wrong — fix the href to be \/team/${team.id}/management`` (template literal with actual ID).
+
+Step 3: Make the link visible and obvious
+The Management button should appear:
+
+In the team page header for coaches/owners (not players)
+In the bottom tab bar's "More" tab
+As a link in the team switcher dropdown when the user is a coach of that team
+If it's missing from any of these, add it.
+
+Step 4: Verify
+After fix, walk through:
+
+As team owner, click Management button → page loads with all 5 sections (coaching staff, squad summary, team info, join settings, danger zone)
+As non-owner coach, click → page loads but danger zone is hidden
+As player, attempt to navigate → redirected to team home
+Direct URL access by non-member → redirected to /teams
+Show screenshots of the working management page.
+
+Bug 2 — Next Game page is empty / no event creation form
+The Next Game page shows nothing because no event has all the fields filled. Players need a way to see complete game info and the event creation form must capture all the fields the Next Game page displays.
+
+Diagnostic
+Show me:
+
+Existing event creation form — show the JSX of the modal/form. List every field it currently captures.
+Existing event database schema:
+sql
+   select column_name, data_type, is_nullable
+   from information_schema.columns
+   where table_schema = 'public' and table_name = 'events'
+   order by ordinal_position;
+The Next Game page query — show the database query and what it expects to receive.
+Schema additions if needed
+The events table should have all these columns. Add any missing:
+
+sql
+alter table public.events
+  add column if not exists opponent text,
+  add column if not exists is_home boolean default true,
+  add column if not exists arrival_time timestamptz,
+  add column if not exists uniform_color text,
+  add column if not exists uniform_secondary_color text,
+  add column if not exists uniform_notes text,
+  add column if not exists what_to_bring text,
+  add column if not exists notes text,
+  add column if not exists location_address text,
+  add column if not exists location_lat numeric,
+  add column if not exists location_lng numeric;
+Event creation form — full version
+Replace the existing event creation form with this complete version. The form changes its visible fields based on selected event type.
+
+┌─────────────────────────────────────────────────────┐
+│  Create event                                        │
+│  ──────────────────────────────────────────────────  │
+│                                                       │
+│  TYPE *                                              │
+│                                                       │
+│  [🏋 Training]  [🏆 League]   [🤝 Friendly]         │
+│  [🥇 Tournament][✨ Celebration][👥 Meeting]         │
+│  [📅 Other]                                          │
+│                                                       │
+│  ──────────────────────────────────────────────────  │
+│                                                       │
+│  TITLE *                                             │
+│  [                                                ]  │
+│  (Auto-fills based on type, e.g., "League Game")    │
+│                                                       │
+│  WHEN *                                              │
+│  Date: [______]  Start: [______]  End: [______]      │
+│                                                       │
+│  WHERE                                               │
+│  Venue name: [                                    ]  │
+│  Address: [                                       ]  │
+│  [Pick on map]                                       │
+│                                                       │
+│  ──────────────────────────────────────────────────  │
+│  (Game-specific fields shown only for league_game,   │
+│   friendly_game, tournament types)                   │
+│                                                       │
+│  OPPONENT                                            │
+│  Opponent name: [                                 ]  │
+│                                                       │
+│  Home or away?                                       │
+│  ◉ Home   ○ Away                                    │
+│                                                       │
+│  ARRIVAL TIME                                        │
+│  Be there at: [______] (defaults to 60 min before)  │
+│                                                       │
+│  ──────────────────────────────────────────────────  │
+│                                                       │
+│  UNIFORM (skip for celebrations and meetings)        │
+│  Primary color: [color picker]                       │
+│  Secondary color: [color picker]                     │
+│  Notes: [                                         ]  │
+│  (e.g., "white home jersey, black shorts")          │
+│                                                       │
+│  WHAT TO BRING                                       │
+│  [                                                ]  │
+│  (e.g., "water bottle, shin guards, both jerseys")  │
+│                                                       │
+│  NOTES                                               │
+│  [                                                ]  │
+│  [                                                ]  │
+│  (Free text — extra context, instructions)          │
+│                                                       │
+│  ──────────────────────────────────────────────────  │
+│                                                       │
+│  SQUAD SELECTION (optional)                          │
+│  ☑ All players invited                               │
+│  ○ Select specific players                           │
+│   (If selected, multi-select list of team players)   │
+│                                                       │
+│  ──────────────────────────────────────────────────  │
+│                                                       │
+│  [Cancel]                          [Create event]   │
+└─────────────────────────────────────────────────────┘
+Field visibility by type
+Field	Training	League/Friendly	Tournament	Celebration	Meeting	Other
+Title	yes	yes	yes	yes	yes	yes
+Date/Time	yes	yes	yes	yes	yes	yes
+Venue	yes	yes	yes	yes	yes	yes
+Opponent	no	yes	optional	no	no	optional
+Home/Away	no	yes	optional	no	no	no
+Arrival time	yes	yes	yes	yes	optional	optional
+Uniform	yes	yes	yes	no	no	optional
+What to bring	yes	yes	yes	yes	no	yes
+Notes	yes	yes	yes	yes	yes	yes
+Squad selection	yes	yes	yes	yes	yes	yes
+Default title by type
+When a type is selected, auto-fill the title field with a sensible default (coach can edit):
+
+Training → "אימון" / "Training" / "Entrenamiento"
+League game → "משחק נגד ___" / "Game vs ___" / "Partido vs ___"
+Friendly game → "משחק ידידות נגד ___" / "Friendly vs ___" / "Amistoso vs ___"
+Tournament → "טורניר" / "Tournament" / "Torneo"
+Celebration → empty (coach types)
+Meeting → "פגישה" / "Meeting" / "Reunión"
+Other → empty
+Default arrival time by type
+When a date/time is set, auto-set arrival_time:
+
+Training → 15 min before start
+League/friendly game → 60 min before
+Tournament → 90 min before
+Celebration/meeting/other → same as start
+Coach can override.
+
+Next Game page query
+The Next Game page (/team/[teamId]/next-game) shows the next upcoming game. Make sure the query gets ALL the fields:
+
+typescript
+const { data: nextGame } = await supabase
+  .from('events')
+  .select(`
+    id, title, type, description,
+    starts_at, ends_at, arrival_time,
+    location_name, location_address, location_lat, location_lng,
+    opponent, is_home,
+    uniform_color, uniform_secondary_color, uniform_notes,
+    what_to_bring, notes,
+    created_at, created_by,
+    attendance (
+      user_id,
+      status,
+      profile:profiles (id, full_name, avatar_url)
+    )
+  `)
+  .eq('team_id', teamId)
+  .in('type', ['league_game', 'friendly_game', 'tournament'])
+  .gte('starts_at', new Date().toISOString())
+  .order('starts_at', { ascending: true })
+  .limit(1)
+  .maybeSingle();
+If the page is rendering empty even though there's a future game, the bug is in either:
+
+The query (selects wrong fields, wrong filter)
+The component (uses wrong field names — e.g., game.location when database has location_name)
+RLS (player can't see events they're invited to — verify policies)
+Show me the actual query and component code, and which field names mismatch.
+
+Empty state when no game exists
+When no future game is scheduled:
+
+┌─────────────────────────────────────────────────────┐
+│                                                       │
+│                  🏟                                  │
+│                                                       │
+│         No upcoming game scheduled                   │
+│                                                       │
+│   Your next league or tournament game will appear   │
+│   here when scheduled.                               │
+│                                                       │
+│   [Coach only: + Schedule a game]                   │
+│                                                       │
+└─────────────────────────────────────────────────────┘
+Coach button opens the event creation form pre-filtered to game types.
+
+Acceptance for next game
+After fixing:
+
+Coach creates a league game with ALL fields filled (opponent, home/away, arrival, uniform, what to bring, notes)
+Coach navigates to Next Game tab → sees full hero card with all info
+Player navigates to Next Game tab → sees same info plus large RSVP buttons
+Coach edits the game → changes save → page reflects update
+When the game's starts_at passes, page updates to show the next future game (or empty state if no more games)
+Bug 3 — Files & albums into one unified tab
+Currently files and albums (photos) are separate. Combine into one tab where albums are containers and files live inside.
+
+Conceptual model
+Files & Photos tab
+├── Albums (container)
+│   ├── "Match vs Hapoel - April 15"
+│   │   ├── photo1.jpg
+│   │   ├── photo2.jpg
+│   │   └── video1.mp4
+│   ├── "Training session - March 10"
+│   │   └── photo3.jpg
+│   └── "Season banquet 2025"
+│       └── photo4.jpg
+├── Documents (container, but flat — no albums for docs)
+│   ├── season_schedule.pdf
+│   ├── tournament_rules.pdf
+│   └── parent_consent_form.docx
+└── (Files not in any album, just floating)
+    └── random_image.jpg
+Database
+The existing team_files table has an album column (text). Convert this to a proper relationship:
+
+sql
+-- Create albums table
+create table if not exists public.team_albums (
+  id uuid primary key default uuid_generate_v4(),
+  team_id uuid not null references teams(id) on delete cascade,
+  name text not null,
+  description text,
+  cover_file_id uuid,  -- will reference team_files.id, set after upload
+  created_by uuid references auth.users(id),
+  created_at timestamptz default now()
+);
+
+create index if not exists team_albums_team_idx on team_albums(team_id, created_at desc);
+
+alter table public.team_albums enable row level security;
+
+create policy "members view albums" on public.team_albums
+  for select to authenticated using (is_team_member(team_id));
+
+create policy "coaches manage albums" on public.team_albums
+  for all to authenticated using (is_team_coach(team_id));
+
+-- Update team_files to reference album by ID
+alter table public.team_files
+  add column if not exists album_id uuid references team_albums(id) on delete set null;
+
+-- Migrate existing string album values to actual album rows
+do $$
+declare
+  rec record;
+  album_id uuid;
+begin
+  for rec in (
+    select distinct team_id, album
+    from team_files
+    where album is not null and album != ''
+  ) loop
+    insert into team_albums (team_id, name, created_by)
+    values (rec.team_id, rec.album,
+            (select created_by from teams where id = rec.team_id))
+    returning id into album_id;
+
+    update team_files
+    set album_id = album_id
+    where team_id = rec.team_id and album = rec.album;
+  end loop;
+end $$;
+
+-- After migration, drop the old column (optional — can keep for backwards compat)
+-- alter table public.team_files drop column album;
+
+-- Add file type categorization
+alter table public.team_files
+  drop constraint if exists team_files_type_check;
+
+alter table public.team_files
+  add constraint team_files_type_check
+  check (type in ('photo', 'video', 'pdf', 'document', 'spreadsheet', 'other'));
+
+-- Helper: which files are documents vs media
+-- Documents: pdf, document, spreadsheet
+-- Media: photo, video
+-- Other: other
+Storage bucket
+Files go in the existing team-files Supabase Storage bucket. Path format:
+
+team-files/{team_id}/albums/{album_id}/{filename}    -- inside an album
+team-files/{team_id}/documents/{filename}             -- documents (no album)
+team-files/{team_id}/loose/{filename}                 -- floating media
+UI: /team/[teamId]/files
+Replace the current Files and Albums tabs (or pages) with one unified Files page:
+
+┌──────────────────────────────────────────────────────┐
+│  FILES & PHOTOS                          [Upload]    │
+│                                                        │
+│  Tabs:                                                │
+│  [📷 Photos & Videos]  [📄 Documents]                │
+│                                                        │
+│  ── Photos & Videos tab ───────────────────────────── │
+│                                                        │
+│  Albums                                  [+ New album]│
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐              │
+│  │ [cover]  │ │ [cover]  │ │ [cover]  │              │
+│  │          │ │          │ │          │              │
+│  │ Match vs │ │ Training │ │ Banquet  │              │
+│  │ Hapoel   │ │ Mar 10   │ │ 2025     │              │
+│  │ 12 items │ │ 5 items  │ │ 18 items │              │
+│  └──────────┘ └──────────┘ └──────────┘              │
+│                                                        │
+│  All photos & videos                                  │
+│  [grid of thumbnails — newest first]                 │
+│                                                        │
+│  ── Documents tab ──────────────────────────────────  │
+│                                                        │
+│  All documents                          [Upload doc]  │
+│  📄 season_schedule.pdf      2.3 MB   2 weeks ago   │
+│  📄 parent_consent_form.docx 145 KB   1 month ago   │
+│  📊 stats_template.xlsx      87 KB    2 months ago  │
+│                                                        │
+└──────────────────────────────────────────────────────┘
+Upload flow
+The "Upload" button opens a modal:
+
+┌──────────────────────────────────────┐
+│  Upload files                         │
+│  ────────────────────────────────── │
+│                                        │
+│  [Drag files here or click to browse] │
+│                                        │
+│  Selected files:                      │
+│  ✓ team_photo.jpg (2.3 MB)           │
+│  ✓ training_clip.mp4 (45 MB)         │
+│                                        │
+│  Add to album:                        │
+│  ◉ No album (floating)                │
+│  ○ Existing album: [Select ▼]         │
+│  ○ New album: [____________]          │
+│                                        │
+│  [Cancel]                  [Upload]   │
+└──────────────────────────────────────┘
+After upload, show progress per file. Auto-categorize by extension:
+
+.jpg .jpeg .png .heic .gif .webp → type photo
+.mp4 .mov .webm → type video
+.pdf → type pdf
+.doc .docx → type document
+.xls .xlsx .csv → type spreadsheet
+everything else → type other
+Album detail page
+/team/[teamId]/files/album/[albumId] shows a single album:
+
+┌──────────────────────────────────────────────────────┐
+│  ← Back to Files                                       │
+│                                                        │
+│  Match vs Hapoel - April 15            [...]          │
+│  12 photos · 2 videos · uploaded by Coach Yossi       │
+│                                                        │
+│  [Upload more]  [Edit album]  [Delete album]          │
+│                                                        │
+│  [Grid of thumbnails]                                 │
+│                                                        │
+└──────────────────────────────────────────────────────┘
+Click thumbnail → lightbox view with prev/next navigation, swipe gestures on mobile.
+
+Permissions
+Members: read all files and albums in their team
+Coaches: full management — upload, create albums, delete, organize
+Players: can upload to "All photos" (no album) but can't delete others' uploads or create/delete albums
+Players can delete their own uploads
+API endpoints
+GET /api/teams/[teamId]/albums
+  Returns all albums in team with cover image and file count
+
+POST /api/teams/[teamId]/albums
+  Body: { name, description? }
+  Creates new album. Coaches only.
+
+GET /api/teams/[teamId]/albums/[albumId]
+  Returns album with all files in it
+
+PATCH /api/teams/[teamId]/albums/[albumId]
+  Body: { name?, description?, cover_file_id? }
+  Edit album. Coaches only.
+
+DELETE /api/teams/[teamId]/albums/[albumId]
+  Body: { delete_files: boolean }
+  If delete_files=true: deletes album AND all files in it
+  If delete_files=false: deletes album, files become "no album" (album_id=null)
+  Coaches only.
+
+POST /api/teams/[teamId]/files
+  Multipart upload, optionally with album_id
+  Returns the created file row
+
+PATCH /api/teams/[teamId]/files/[fileId]
+  Body: { album_id?, name? }
+  Move file to different album, or rename
+
+DELETE /api/teams/[teamId]/files/[fileId]
+  Delete file from storage and database
+Translations
+json
+{
+  "files": {
+    "tab_title": "קבצים ותמונות",
+    "tab_media": "תמונות וסרטונים",
+    "tab_documents": "מסמכים",
+    "albums": "אלבומים",
+    "new_album": "אלבום חדש",
+    "all_media": "כל התמונות והסרטונים",
+    "all_documents": "כל המסמכים",
+    "upload": "העלה",
+    "upload_files_modal_title": "העלאת קבצים",
+    "drag_or_browse": "גרור קבצים או לחץ לבחירה",
+    "selected_files": "קבצים שנבחרו",
+    "add_to_album": "הוסף לאלבום",
+    "no_album": "ללא אלבום (צף)",
+    "existing_album": "אלבום קיים",
+    "new_album_input": "אלבום חדש",
+    "album_items_count": "{n} פריטים",
+    "edit_album": "ערוך אלבום",
+    "delete_album": "מחק אלבום",
+    "delete_album_confirm": "מחק אלבום \"{name}\"?",
+    "delete_album_with_files": "מחק גם את הקבצים בתוכו",
+    "delete_album_keep_files": "השאר את הקבצים (יעברו ל\"ללא אלבום\")",
+    "uploaded_by": "הועלה על ידי {name}",
+    "uploaded_ago": "הועלה {time} ago",
+    "back_to_files": "חזרה לקבצים",
+    "no_albums": "אין אלבומים עדיין",
+    "no_files": "אין קבצים עדיין",
+    "create_first_album": "צור את האלבום הראשון",
+    "upload_first_file": "העלה את הקובץ הראשון"
+  }
+}
+Add equivalents for English and Spanish.
+
+Bug 4 — Email invitation when adding a player ACTUALLY works
+This has been specced multiple times and still isn't working. Time to fix it definitively.
+
+Step 1: Run the email diagnostic from the previous prompt
+If the diagnostic endpoint /api/admin/email-diagnostic doesn't exist yet, create it:
+
+typescript
+// app/api/admin/email-diagnostic/route.ts
+import { Resend } from 'resend';
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESEND_FROM_EMAIL;
+
+  const result: any = {
+    env: {
+      RESEND_API_KEY_exists: !!apiKey,
+      RESEND_API_KEY_length: apiKey?.length,
+      RESEND_API_KEY_prefix: apiKey?.substring(0, 4),
+      RESEND_FROM_EMAIL: fromEmail,
+    }
+  };
+
+  if (!apiKey) {
+    return NextResponse.json({ ...result, error: 'NO_API_KEY' });
+  }
+
+  try {
+    const resend = new Resend(apiKey);
+    const sendResult = await resend.emails.send({
+      from: fromEmail || 'HUDDLE <onboarding@resend.dev>',
+      to: ['delivered@resend.dev'],  // Resend's permanent test inbox
+      subject: 'HUDDLE diagnostic',
+      html: '<p>Diagnostic test</p>'
+    });
+    result.send_attempt = sendResult;
+  } catch (e: any) {
+    result.send_attempt = { error: e.message, name: e.name };
+  }
+
+  return NextResponse.json(result);
+}
+I'll hit this URL and paste the JSON response. Show it.
+
+Step 2: Fix based on the diagnostic JSON
+If RESEND_API_KEY_exists: false: The Replit Secret isn't propagating. Steps:
+
+Open Replit → Secrets panel → confirm RESEND_API_KEY is set with a value starting with re_
+Click "Stop" on the deployment
+Click "Run" again
+Re-test the diagnostic
+If still false, the secret is being read from somewhere wrong — show me how the code reads process.env.RESEND_API_KEY in lib/email.ts or wherever
+If send_attempt returns { error: ... }: The error message will tell us what to fix. The most common cases:
+
+"You can only send testing emails to your own email address" → using onboarding@resend.dev from address restricts you to your own email. Either:
+Set RESEND_FROM_EMAIL=HUDDLE <onboarding@resend.dev> and only send to your account email (not other addresses), OR
+Verify a domain in Resend dashboard and use that domain in RESEND_FROM_EMAIL
+"Invalid 'from' address" → fix the format. Must be Display Name <email@domain.com> or just email@domain.com
+"API key invalid" → regenerate the key in Resend dashboard, update Replit Secret, restart
+"Rate limit exceeded" → wait, you've burned through the daily limit during testing
+"Domain not verified" → either use Resend's onboarding@resend.dev (with restrictions) or add+verify a domain
+If send_attempt returns { data: { id: 'xxx' } }: The diagnostic SUCCEEDED. So email infrastructure works. The bug is in the application code path that sends invitations. Continue to Step 3.
+
+Step 3: Trace the actual invitation send path
+If the diagnostic works but invitation emails don't arrive, the bug is in the application code that's supposed to send them. Find it.
+
+Show me the route that handles "Add player with invitation":
+Likely path: app/api/teams/[teamId]/players/route.ts (POST handler)
+Show me the function that's called when invitation_action === 'send_email':
+Likely a function in lib/email.ts like sendTeamInvitationEmail
+Trace what happens when a coach clicks "Add player" with email invitation:
+Form submits to the POST route
+Route validates, creates team_members row, creates team_invitations row
+Then calls sendTeamInvitationEmail
+Then returns success
+If any step is missing or fails silently, that's the bug. Add explicit logging at each step:
+
+typescript
+console.log('[invite] Creating team_members row');
+const member = await createMember(...);
+console.log('[invite] Creating team_invitations row');
+const invitation = await createInvitation(...);
+console.log('[invite] Sending email via Resend');
+const emailResult = await sendTeamInvitationEmail(...);
+console.log('[invite] Email result:', JSON.stringify(emailResult));
+if (emailResult.error) {
+  console.error('[invite] Email send failed:', emailResult.error);
+  return NextResponse.json({
+    success: false,
+    error: 'email_failed',
+    detail: emailResult.error.message,
+    fallback_url: `${process.env.NEXT_PUBLIC_APP_URL}/team-invite/${invitation.token}`
+  });
+}
+console.log('[invite] Email sent successfully:', emailResult.data?.id);
+Show me the server logs after triggering an invitation. The logs will tell us exactly where it fails.
+
+Step 4: Surface the error to the user
+When email fails, the UI must:
+
+NOT show generic "success" toast
+Show the actual error message from Resend
+Show the fallback link so coach can share via WhatsApp
+The player IS added to the squad regardless (placeholder row exists)
+tsx
+// In the AddPlayerModal component, after submit:
+const result = await fetch('/api/teams/' + teamId + '/players', {
+  method: 'POST',
+  body: JSON.stringify(form),
+  headers: { 'Content-Type': 'application/json' }
+}).then(r => r.json());
+
+if (result.success && result.email_sent) {
+  toast.success(`✓ Player added and invitation sent to ${form.email}`);
+  closeModal();
+} else if (result.success && !result.email_sent && result.email_error) {
+  // Player added but email failed — show fallback
+  setShowFallback({
+    error: result.email_error,
+    fallback_url: result.fallback_url,
+    email: form.email
+  });
+} else if (result.success && form.invitation_action === 'generate_link') {
+  setShowLinkResult({
+    invite_url: result.invite_url,
+    email: form.email,
+    phone: form.phone
+  });
+} else {
+  toast.error(result.error || 'Failed to add player');
+}
+The fallback modal:
+
+┌──────────────────────────────────────────────────────┐
+│  Player added, but email didn't send                  │
+│  ─────────────────────────────────────────────────   │
+│                                                        │
+│  ⚠ {error_message}                                   │
+│                                                        │
+│  Don't worry — the invitation is valid. Share the    │
+│  link with {email} manually:                         │
+│                                                        │
+│  [ huddle.app/team-invite/abc123...           ]      │
+│  [Copy link]  [Share via WhatsApp]                   │
+│                                                        │
+│  You can also retry sending the email later from    │
+│  the squad list.                                     │
+│                                                        │
+│  [Done]                                              │
+└──────────────────────────────────────────────────────┘
+Step 5: Test end-to-end with a real email
+After applying fixes, test:
+
+As coach, click + Add player on the squad page
+Fill: name "Test Player", email "yourname+test@gmail.com" (Gmail ignores +alias so it goes to your inbox), select "Send email invitation"
+Click Add player
+Expected: success toast, player appears in roster as "INVITED" status
+Open the inbox of yourname+test@gmail.com
+Expected: Email from HUDDLE arrives within 30 seconds
+Click the invitation link in email
+Expected: lands on team-invite page with email pre-filled
+Complete signup
+Expected: now logged in as test player, on team page; squad row updates from placeholder to real user
+If any step fails, paste the failure point + relevant logs. Don't claim "done" until step 10 works.
+
+Acceptance criteria
+Management page:
+
+✓ Diagnostic output shown
+✓ Page file exists at correct path
+✓ Navigation link uses correct interpolated team ID
+✓ Page loads without redirect to empty page
+✓ All 5 sections render
+✓ Owner sees danger zone, non-owner coach doesn't
+✓ Player redirected away
+Next game with full event creation: 8. ✓ Event creation form has ALL fields (type, title, when, where, opponent, home/away, arrival, uniform, what to bring, notes, squad selection) 9. ✓ Field visibility changes based on event type 10. ✓ Default title and arrival time auto-fill based on type 11. ✓ Schema has all required columns 12. ✓ Coach creates a league game with all fields → saves successfully 13. ✓ Next Game page renders ALL the info (hero card, details, squad) 14. ✓ Player view shows large RSVP buttons 15. ✓ Empty state shown when no future game
+
+Files & albums unified: 16. ✓ One Files tab with two sub-tabs (Media / Documents) 17. ✓ Albums section shows existing albums with cover thumbnails 18. ✓ Upload modal supports adding to existing album, new album, or no album 19. ✓ Album detail page shows files in lightbox-capable grid 20. ✓ Coaches can create/edit/delete albums; players can only upload 21. ✓ File type auto-categorization works 22. ✓ Documents tab shows non-media files in a list 23. ✓ Translations work in he/en/es
+
+Email invitations work: 24. ✓ Diagnostic endpoint runs and returns JSON 25. ✓ Diagnostic JSON pasted for inspection 26. ✓ Root cause identified (API key / from address / domain / app code) 27. ✓ Fix applied 28. ✓ Test invitation actually arrives in real Gmail inbox within 30 seconds 29. ✓ Email failure doesn't block — fallback link shown to coach 30. ✓ End-to-end flow from invite → click → register → land in team works
+
+Build sequence — strict
+Bug 4 first — email diagnostic. We need to know if email is fundamentally broken or just disconnected. The diagnostic answers this in 2 minutes.
+Bug 1 — fix the management page (small, unblocks visibility of management features).
+Bug 2 — full event creation form + Next Game render (depends on schema being right).
+Bug 3 — files & albums unification (largest UI change, independent).
+After bug 4 step 1 (running the diagnostic), PAUSE and show me the JSON. Don't proceed to step 2 of bug 4 until I've seen the diagnostic output. The output determines what specific fix is needed.
+
+Don't break existing features. Don't add scope beyond what's listed.
+
+That's the prompt. A few honest notes:
+
+On the email situation — we've been around this loop multiple times. The reason it keeps half-fixing is that "the API key works" and "invitations actually arrive" are different things. The diagnostic endpoint forces a definitive answer. If you hit it and see send_attempt: { data: { id: '...' } }, email works at the API level — meaning the bug is in the application code that's supposed to call it. If you see an error, that's the actual blocker.
+
+Hit the diagnostic URL yourself — open https://[your-app]/api/admin/email-diagnostic in your browser. Don't trust the agent's interpretation of the result. Read the JSON yourself and tell me what you see. Most likely outcomes:
+
+"You can only send testing emails to your own email address" — Resend free tier with their default sender. Fix: send only to your own email for testing, OR verify your own domain.
+data: { id: '...' } — email works, app code is broken. The agent will fix that.
+RESEND_API_KEY_exists: false — secret not loaded, restart the Replit instance.
+On the management page being empty — this is almost always a missing page file or a wrong link href. Five-minute fix once diagnosed.
+
+On the next game page — the bug here is probably that events get created without all the necessary fields, so when the page tries to render them, half the sections are empty. The fix is making the form actually capture everything and the page render gracefully when fields are empty (don't show "Uniform: " with nothing after — just skip that section).
+
+On files & albums — this is the biggest single change in this prompt. Migrating existing files into the new schema is the riskiest part. The migration SQL I included tries to do this safely but verify after — query team_files and confirm any rows that had an album value now have a corresponding album_id pointing at a real album row.
+
+Paste it. Send me the diagnostic JSON output once you've got it.
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.

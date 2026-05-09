@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
   Trophy, MapPin, Clock, Calendar, Users, MessageCircle, Pencil, ArrowRight,
+  Home, Plane, Shirt, Package,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { formatDistanceToNow } from "date-fns";
@@ -16,6 +17,13 @@ type EventRow = {
   startsAt: string;
   endsAt: string | null;
   notes: string | null;
+  opponent: string | null;
+  isHome: boolean | null;
+  arrivalTime: string | null;
+  uniformColor: string | null;
+  uniformSecondaryColor: string | null;
+  uniformNotes: string | null;
+  whatToBring: string | null;
 };
 
 type AttendanceRow = {
@@ -189,10 +197,19 @@ export default function NextGameTab({
         </div>
 
         <div className="px-5 py-5 space-y-5">
-          {/* Title */}
-          <h2 className="font-display text-2xl text-white tracking-wide leading-tight">
-            {event.title.toUpperCase()}
-          </h2>
+          {/* Title + opponent */}
+          <div>
+            <h2 className="font-display text-2xl text-white tracking-wide leading-tight">
+              {event.title.toUpperCase()}
+            </h2>
+            {event.opponent && (
+              <div className="flex items-center gap-2 mt-2">
+                {event.isHome === true && <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold" style={{ background: "#2ecc7118", color: "#2ecc71", border: "1px solid #2ecc7130" }}><Home className="h-2.5 w-2.5" /> {t.events.home}</span>}
+                {event.isHome === false && <span className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold" style={{ background: "#3498db18", color: "#3498db", border: "1px solid #3498db30" }}><Plane className="h-2.5 w-2.5" /> {t.events.away}</span>}
+                <span className="text-sm text-white/60">vs <span className="text-white font-semibold">{event.opponent}</span></span>
+              </div>
+            )}
+          </div>
 
           {/* Meta row */}
           <div className="space-y-2">
@@ -200,13 +217,19 @@ export default function NextGameTab({
               <Calendar className="h-3.5 w-3.5 shrink-0" style={{ color: typeColor }} />
               <span className="text-sm text-white/80 font-semibold">{formatDateTime(event.startsAt)}</span>
             </div>
+            {event.arrivalTime && (
+              <div className="flex items-center gap-2">
+                <Clock className="h-3.5 w-3.5 shrink-0text-[#f7b538]" style={{ color: "#f7b538" }} />
+                <span className="text-xs text-white/60">{t.events.arrivalTime}: <span className="font-semibold text-white/80">{formatDateTime(event.arrivalTime)}</span></span>
+              </div>
+            )}
             {event.location && (
               <div className="flex items-center gap-2">
                 <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: typeColor }} />
                 <span className="text-sm text-white/60">{event.location}</span>
               </div>
             )}
-            {!isPast && (
+            {!isPast && !event.arrivalTime && (
               <div className="flex items-center gap-2">
                 <Clock className="h-3.5 w-3.5 shrink-0" style={{ color: typeColor }} />
                 <span className="text-xs text-white/40">
@@ -215,6 +238,32 @@ export default function NextGameTab({
               </div>
             )}
           </div>
+
+          {/* Uniform + what to bring */}
+          {(event.uniformColor || event.uniformNotes || event.whatToBring) && (
+            <div className="space-y-2">
+              {(event.uniformColor || event.uniformNotes) && (
+                <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <Shirt className="h-3.5 w-3.5 shrink-0 text-white/40" />
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    {event.uniformColor && (
+                      <span className="w-4 h-4 rounded-full border border-white/20 shrink-0" style={{ background: event.uniformColor }} />
+                    )}
+                    {event.uniformSecondaryColor && (
+                      <span className="w-4 h-4 rounded-full border border-white/20 shrink-0" style={{ background: event.uniformSecondaryColor }} />
+                    )}
+                    {event.uniformNotes && <span className="text-xs text-white/60">{event.uniformNotes}</span>}
+                  </div>
+                </div>
+              )}
+              {event.whatToBring && (
+                <div className="flex items-start gap-2 rounded-xl px-3 py-2.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                  <Package className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />
+                  <span className="text-xs text-white/60">{event.whatToBring}</span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Countdown */}
           {!isPast && (

@@ -167,6 +167,20 @@ export interface Event {
   endsAt?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  opponent?: string | null;
+  /** @nullable */
+  isHome?: boolean | null;
+  /** @nullable */
+  arrivalTime?: string | null;
+  /** @nullable */
+  uniformColor?: string | null;
+  /** @nullable */
+  uniformSecondaryColor?: string | null;
+  /** @nullable */
+  uniformNotes?: string | null;
+  /** @nullable */
+  whatToBring?: string | null;
   attendingCount: number;
   totalCount: number;
   createdAt: string;
@@ -196,6 +210,20 @@ export interface CreateEventBody {
   endsAt?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  opponent?: string | null;
+  /** @nullable */
+  isHome?: boolean | null;
+  /** @nullable */
+  arrivalTime?: string | null;
+  /** @nullable */
+  uniformColor?: string | null;
+  /** @nullable */
+  uniformSecondaryColor?: string | null;
+  /** @nullable */
+  uniformNotes?: string | null;
+  /** @nullable */
+  whatToBring?: string | null;
 }
 
 export type UpdateEventBodyType =
@@ -221,6 +249,20 @@ export interface UpdateEventBody {
   endsAt?: string | null;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  opponent?: string | null;
+  /** @nullable */
+  isHome?: boolean | null;
+  /** @nullable */
+  arrivalTime?: string | null;
+  /** @nullable */
+  uniformColor?: string | null;
+  /** @nullable */
+  uniformSecondaryColor?: string | null;
+  /** @nullable */
+  uniformNotes?: string | null;
+  /** @nullable */
+  whatToBring?: string | null;
 }
 
 export type AttendanceStatus =

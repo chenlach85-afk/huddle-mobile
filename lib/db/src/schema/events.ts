@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { teamsTable } from "./teams";
@@ -24,6 +24,13 @@ export const eventsTable = pgTable("events", {
   startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
   endsAt: timestamp("ends_at", { withTimezone: true }),
   notes: text("notes"),
+  opponent: text("opponent"),
+  isHome: boolean("is_home"),
+  arrivalTime: timestamp("arrival_time", { withTimezone: true }),
+  uniformColor: text("uniform_color"),
+  uniformSecondaryColor: text("uniform_secondary_color"),
+  uniformNotes: text("uniform_notes"),
+  whatToBring: text("what_to_bring"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

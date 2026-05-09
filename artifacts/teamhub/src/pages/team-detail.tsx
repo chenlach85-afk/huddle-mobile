@@ -42,7 +42,7 @@ import {
 import {
   ArrowLeft, Users, Calendar, CheckSquare, MessageSquare,
   AlertCircle, Activity, Link2, Check, Zap, MapPin, Pencil,
-  ImageIcon, FileText, Settings, Trophy,
+  Settings, Trophy, FolderOpen,
 } from "lucide-react";
 import PlayersTab from "@/components/team/players-tab";
 import TeamManagementTab from "@/pages/team-management";
@@ -51,8 +51,7 @@ import { useCurrentUser } from "@/lib/useCurrentUser";
 import EventsTab from "@/components/team/events-tab";
 import TasksTab from "@/components/team/tasks-tab";
 import MessagesTab from "@/components/team/messages-tab";
-import AlbumsTab from "@/components/team/albums-tab";
-import DocsTab from "@/components/team/docs-tab";
+import FilesTab from "@/components/team/files-tab";
 import { formatDistanceToNow } from "date-fns";
 import { he, es, enUS } from "date-fns/locale";
 import { useState, useRef } from "react";
@@ -305,8 +304,7 @@ export default function TeamDetailPage() {
     { value: "events", label: td.tabLineup, icon: Calendar },
     { value: "tasks", label: td.tabTasks, icon: CheckSquare },
     { value: "messages", label: td.tabHuddle, icon: MessageSquare },
-    { value: "albums", label: td.tabAlbums, icon: ImageIcon },
-    { value: "docs", label: td.tabDocs, icon: FileText },
+    { value: "files", label: td.tabFiles, icon: FolderOpen },
     { value: "management", label: td.tabManagement, icon: Settings },
   ];
 
@@ -538,8 +536,7 @@ export default function TeamDetailPage() {
             <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} /></TabsContent>
-            <TabsContent value="albums" className="mt-0"><AlbumsTab teamId={id} teamColor={teamColor} /></TabsContent>
-            <TabsContent value="docs" className="mt-0"><DocsTab teamId={id} teamColor={teamColor} /></TabsContent>
+            <TabsContent value="files" className="mt-0"><FilesTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="management" className="mt-0">
               <TeamManagementTab
                 teamId={id}

@@ -1136,6 +1136,21 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        opponent:
+          type: ["string", "null"]
+        isHome:
+          type: ["boolean", "null"]
+        arrivalTime:
+          type: ["string", "null"]
+          format: date-time
+        uniformColor:
+          type: ["string", "null"]
+        uniformSecondaryColor:
+          type: ["string", "null"]
+        uniformNotes:
+          type: ["string", "null"]
+        whatToBring:
+          type: ["string", "null"]
         attendingCount:
           type: integer
         totalCount:
@@ -1174,6 +1189,21 @@ components:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
+        opponent:
+          type: ["string", "null"]
+        isHome:
+          type: ["boolean", "null"]
+        arrivalTime:
+          type: ["string", "null"]
+          format: date-time
+        uniformColor:
+          type: ["string", "null"]
+        uniformSecondaryColor:
+          type: ["string", "null"]
+        uniformNotes:
+          type: ["string", "null"]
+        whatToBring:
+          type: ["string", "null"]
       required:
         - title
         - type
@@ -1195,6 +1225,21 @@ components:
         endsAt:
           type: ["string", "null"]
         notes:
+          type: ["string", "null"]
+        opponent:
+          type: ["string", "null"]
+        isHome:
+          type: ["boolean", "null"]
+        arrivalTime:
+          type: ["string", "null"]
+          format: date-time
+        uniformColor:
+          type: ["string", "null"]
+        uniformSecondaryColor:
+          type: ["string", "null"]
+        uniformNotes:
+          type: ["string", "null"]
+        whatToBring:
           type: ["string", "null"]
 
     Attendance:

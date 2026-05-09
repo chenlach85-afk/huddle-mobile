@@ -429,4 +429,37 @@ router.get("/admin/audit-log", requireAuth, requireAdminMiddleware, async (req, 
   res.json({ logs, total, page: pageNum, limit: limitNum });
 });
 
+/* ─── GET /api/admin/email-diagnostic ─────────────────────── */
+router.get("/admin/email-diagnostic", requireAuth, requireAdminMiddleware, async (req: AuthedRequest, res): Promise<void> => {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    res.json({ ok: false, error: "RESEND_API_KEY not set", keyPresent: false });
+    return;
+  }
+
+  const from = process.env.RESEND_FROM_EMAIL ?? "Huddle <onboarding@resend.dev>";
+  const to = "delivered@resend.dev";
+
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: "Huddle email diagnostic test",
+        html: "<p>This is a diagnostic test email from Huddle Pro. If you see this, email sending is configured correctly.</p>",
+      }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (r.ok) {
+      res.json({ ok: true, keyPresent: true, from, to, resendId: (body as any).id });
+    } else {
+      res.json({ ok: false, keyPresent: true, from, to, status: r.status, error: (body as any).message ?? JSON.stringify(body) });
+    }
+  } catch (err) {
+    res.json({ ok: false, keyPresent: true, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 export default router;
