@@ -92,14 +92,12 @@ export default function TeamManagementTab({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [coachRes, invRes] = await Promise.all([
-        fetch(`/api/teams/${teamId}/coaches`),
-        fetch(`/api/teams/${teamId}/invitations`),
-      ]);
-      if (coachRes.ok) setCoaches(await coachRes.json());
-      if (invRes.ok) {
-        const all = await invRes.json();
-        setPendingInvites(all.filter((i: PendingInvite) => i.status === "pending" && i.inviteType === "email"));
+      const coachRes = await fetch(`/api/teams/${teamId}/coaches`);
+      if (coachRes.ok) {
+        const data = await coachRes.json();
+        setCoaches(Array.isArray(data) ? data : (data.coaches ?? []));
+        const invites: PendingInvite[] = Array.isArray(data) ? [] : (data.pendingInvites ?? []);
+        setPendingInvites(invites.filter((i: PendingInvite) => i.status === "pending" && i.inviteType === "email"));
       }
     } finally {
       setLoading(false);
