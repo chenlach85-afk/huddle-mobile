@@ -47,7 +47,13 @@ function TeamInviteContent({ token }: { token: string }) {
     setAccepting(true);
     setAcceptError(null);
     try {
-      const res = await fetch(`/api/team-invite/${token}/accept`, { method: "POST" });
+      // Ensure the user record exists in our DB (needed for new registrations)
+      await fetch("/api/auth/sync", { method: "POST", credentials: "include" });
+
+      const res = await fetch(`/api/team-invite/${token}/accept`, {
+        method: "POST",
+        credentials: "include",
+      });
       const body = await res.json();
       if (!res.ok) {
         const msg = body.error === "invitation_revoked" ? "This invitation has been revoked."
