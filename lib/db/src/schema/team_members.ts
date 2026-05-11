@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, uniqueIndex, boolean } from "drizzle-orm/pg-core";
 import { isNotNull } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -20,6 +20,7 @@ export const teamMembersTable = pgTable("team_members", {
   memberNotes: text("member_notes"),
   status: text("status", { enum: ["active", "inactive", "pending_invitation", "invited", "declined"] }).default("active"),
   coachTitle: text("coach_title"),
+  canManageTeamSettings: boolean("can_manage_team_settings").default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("team_members_team_user_unique").on(t.teamId, t.userId).where(isNotNull(t.userId)),

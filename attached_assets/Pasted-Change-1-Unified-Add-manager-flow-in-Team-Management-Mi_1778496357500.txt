@@ -1,0 +1,883 @@
+Change 1 — Unified "Add manager" flow in Team Management
+Mirror the player flow we built before, but for coaching staff. ONE button, ONE form, optional invitation, placeholder rows, action items.
+Goal
+In /team/[teamId]/management → Coaching Staff section, replace whatever invite UI exists with this:
+
+"+ Add manager" button (owner only)
+Single form: name + family name + role title + notes + email + phone + invitation choice + permission toggle
+Manager appears in staff list immediately as a placeholder
+Status reflects whether they've registered: pending_invitation / invited / active
+Each row has action menu: edit / delete / resend or send invitation / copy link
+
+Database — placeholder coaching staff
+The team_members table already supports placeholders (we added this in the previous prompt for players). Verify and extend:
+sql-- Verify placeholder support exists for coaches too
+-- The check should already be there, but make sure roles include coach/assistant_coach in placeholder paths
+
+-- The current check is: user_id is not null OR placeholder_full_name is not null
+-- This already works for coaches as placeholders
+
+-- Add can_manage_team_settings flag (the "toggle for full management rights")
+alter table public.team_members
+  add column if not exists can_manage_team_settings boolean default false;
+
+-- For existing data: owner gets true automatically, everyone else false
+update public.team_members tm
+set can_manage_team_settings = true
+where role in ('coach', 'assistant_coach')
+  and exists(select 1 from teams t where t.id = tm.team_id and t.created_by = tm.user_id);
+The permission model now becomes:
+Rolecan_manage_team_settingsCan docoach with toggle ON (or created_by of team)trueEverything including invite/remove coaches, change team settings, transfer ownership (if owner), delete team (if owner)coach with toggle OFFfalseManage events, players, tasks, messages — but NOT team settings, NOT add/remove other coachesassistant_coachalways false (UI hides toggle)Manage events, players, tasks, messages — same scope as coach with toggle offplayer / parentn/aRead only, RSVP own attendance, complete own tasks
+Update RLS to use the new toggle
+sql-- Drop existing policies that gate by role only
+drop policy if exists "owner updates team" on teams;
+drop policy if exists "owner deletes team" on teams;
+drop policy if exists "owner manages coach roles" on team_members;
+drop policy if exists "owner removes coaches" on team_members;
+
+-- Helper: can the current user manage team settings (owner OR coach with the flag)?
+create or replace function public.can_manage_team(team_uuid uuid)
+returns boolean language sql security definer stable
+set search_path = public as $$
+  select
+    exists(select 1 from teams where id = team_uuid and created_by = auth.uid())
+    OR
+    exists(
+      select 1 from team_members
+      where team_id = team_uuid
+        and user_id = auth.uid()
+        and status = 'active'
+        and role in ('coach', 'assistant_coach')
+        and can_manage_team_settings = true
+    );
+$$;
+
+-- Updated policies
+create policy "managers update team" on teams for update
+  using (can_manage_team(id));
+
+-- Only the original owner can delete the team or transfer ownership
+create policy "owner deletes team" on teams for delete
+  using (created_by = auth.uid());
+
+-- Managers (or owner) can manage coaches; assistant coaches and regular coaches without toggle cannot
+create policy "managers manage coach rows" on team_members for all
+  using (
+    can_manage_team(team_id)
+    and role in ('coach', 'assistant_coach')
+  );
+The distinction:
+
+Owner (teams.created_by) — can do absolutely everything including transfer ownership and delete team
+Manager (can_manage_team_settings = true) — can do everything the owner can EXCEPT delete team or transfer ownership
+Coach without toggle — manage day-to-day (events, players, tasks, messages) but not the team itself
+Assistant coach — same as coach without toggle (the toggle is hidden in UI for assistant role)
+
+UI — "Add manager" form
+┌────────────────────────────────────────────────────┐
+│  Add coaching staff member                          │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  PERSONAL INFO                                      │
+│                                                      │
+│  First name *                                       │
+│  [                                                ] │
+│                                                      │
+│  Family name *                                      │
+│  [                                                ] │
+│                                                      │
+│  Role title                                         │
+│  Quick picks:                                       │
+│  [Assistant Head Coach] [Coordinator]               │
+│  [Position Coach] [S&C Coach] [Other]               │
+│                                                      │
+│  Custom title:                                      │
+│  [                                                ] │
+│                                                      │
+│  Notes (private to other managers)                  │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  CONTACT                                            │
+│                                                      │
+│  Email                                              │
+│  [                                                ] │
+│                                                      │
+│  Phone                                              │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  PERMISSIONS                                        │
+│                                                      │
+│  Permission level *                                 │
+│  ◉ Coach                                            │
+│  ○ Assistant coach                                  │
+│                                                      │
+│  ☐ Can manage team settings (like the head coach)  │
+│                                                      │
+│  When checked, this manager can edit team info,    │
+│  invite other coaches, and manage everything       │
+│  except transferring ownership or deleting the team.│
+│  (Hidden when "Assistant coach" is selected.)      │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  SEND INVITATION                                    │
+│                                                      │
+│  ◉ Don't invite yet (add to staff only)             │
+│  ○ Send email invitation now                        │
+│  ○ Generate personal link (share via WhatsApp)      │
+│                                                      │
+│  Personal message (if inviting):                    │
+│  [                                                ] │
+│                                                      │
+│  ─────────────────────────────────────────────────  │
+│                                                      │
+│  [Cancel]                          [Add manager]    │
+└────────────────────────────────────────────────────┘
+When "Assistant coach" is selected, the "Can manage team settings" toggle is hidden (assistants can't have it). When "Coach" is selected, the toggle is visible and defaults to unchecked.
+Backend — POST /api/teams/[teamId]/managers
+typescript// Body: {
+//   first_name: string;
+//   family_name: string;
+//   coach_title?: string;
+//   notes?: string;
+//   email?: string;
+//   phone?: string;
+//   role: 'coach' | 'assistant_coach';
+//   can_manage_team_settings: boolean;  // forced to false if role === 'assistant_coach'
+//   invitation_action: 'none' | 'send_email' | 'generate_link';
+//   personal_message?: string;
+// }
+
+// Behavior:
+// 1. Verify caller can manage team (owner OR manager with toggle)
+// 2. Validate: first_name and family_name required; email or phone required if invitation_action != 'none'
+// 3. If role === 'assistant_coach', force can_manage_team_settings = false
+// 4. Insert team_members placeholder row (user_id null)
+// 5. If invitation requested, insert team_invitations row with invited_role from body
+// 6. Send email or just return the link, same pattern as add player
+// 7. Return { manager, invitation?, invite_url? }
+When the invited manager accepts their invitation, the existing accept-invite flow converts the placeholder to a real user (same pattern as players).
+UI — Coaching staff list with action items
+┌──────────────────────────────────────────────────────┐
+│  COACHING STAFF (4)            [+ Add manager]       │
+│  ────────────────────────────────────────────────── │
+│                                                       │
+│  [Y] Yossi Cohen              [OWNER]      [...]    │
+│      Head Coach                                      │
+│      yossi@example.com                               │
+│      ACTIVE · Joined 3 months ago                    │
+│                                                       │
+│  [L] Liran Eldar              [COACH][MGR][...]      │
+│      Associate Head Coach                            │
+│      liran@example.com                               │
+│      ACTIVE · Joined 2 weeks ago                     │
+│      ✓ Can manage team settings                      │
+│                                                       │
+│  [D] Dana Levi                [ASSISTANT]  [...]    │
+│      Strength & Conditioning                         │
+│      dana@example.com                                │
+│      ACTIVE · Joined 1 month ago                     │
+│                                                       │
+│  [A] Avi Mor                  [COACH]      [...]    │
+│      Goalkeeping Coach                              │
+│      avi@example.com                                 │
+│      INVITED · 2 days ago · 1 of 5 sends            │
+│                                                       │
+│  [N] Noa Sharon               [COACH]      [...]    │
+│      Position Coach                                 │
+│      noa@example.com                                 │
+│      PENDING INVITATION · not sent yet              │
+│                                                       │
+└──────────────────────────────────────────────────────┘
+Avatar tiles use first letter of first name. [MGR] badge appears for managers with can_manage_team_settings = true.
+Per-row action menu
+The [...] button reveals different actions based on row status:
+For active managers (registered, real user):
+
+View profile
+Edit details (name, title, notes, role, manage_team_settings toggle if role is coach)
+Send WhatsApp message (if phone set)
+Change role: Coach ↔ Assistant
+Toggle "Can manage team settings" (visible only if role is coach)
+Remove from team (with confirmation)
+
+For owner:
+
+View profile
+Edit details (limited — can edit notes and title, can't remove themselves)
+(No remove option — owner is removed only via "Transfer ownership" flow)
+
+For invited placeholders:
+
+Edit details
+Resend email invitation (counter shows X of 5)
+Copy invitation link
+Send WhatsApp message with link
+View invitation details (expires at, send count)
+Cancel invitation (drops back to pending_invitation status)
+Remove from staff (deletes placeholder and invitation)
+
+For pending_invitation placeholders:
+
+Edit details
+Send email invitation (now)
+Generate invitation link
+Send WhatsApp message with link
+Remove from staff
+
+Edit manager modal
+The Edit action opens a form with all fields pre-filled. Owner can edit anyone (except can't change own role or remove own toggle). Managers with can_manage_team_settings = true can edit other coaches (not the owner). Assistants cannot edit anyone.
+When editing a real (registered) manager: name is read-only (they own their profile); editable fields are title, notes, role, manage toggle.
+When editing a placeholder: all fields editable including name and contact.
+Translations
+Add to he.json:
+json{
+  "management": {
+    "add_manager_button": "הוסף מנהל",
+    "add_manager_title": "הוסף איש צוות אימון",
+    "personal_info": "פרטים אישיים",
+    "first_name": "שם פרטי",
+    "family_name": "שם משפחה",
+    "role_title": "תפקיד בקבוצה",
+    "title_quick_picks": "בחירות מהירות",
+    "title_custom": "תפקיד מותאם",
+    "notes_label": "הערות (פנימי בלבד)",
+    "notes_help": "נראה לשאר אנשי הצוות בלבד",
+    "contact": "פרטי קשר",
+    "permissions": "הרשאות",
+    "permission_level": "רמת הרשאה",
+    "role_coach": "מאמן",
+    "role_assistant": "מאמן עוזר",
+    "can_manage_toggle": "יכול לנהל את הגדרות הקבוצה",
+    "can_manage_help": "כאשר מסומן, המנהל יכול לערוך פרטי קבוצה, להזמין מאמנים אחרים, ולנהל הכל למעט העברת בעלות או מחיקת הקבוצה.",
+    "send_invitation": "שלח הזמנה",
+    "invite_none": "אל תזמין עכשיו",
+    "invite_email": "שלח הזמנה במייל",
+    "invite_link": "צור קישור אישי",
+    "personal_message": "הודעה אישית",
+    "add_manager": "הוסף מנהל",
+    "status_active": "פעיל",
+    "status_invited": "הוזמן · {days} ימים · {count} מתוך 5 שליחות",
+    "status_pending": "ממתין · עדיין לא נשלח",
+    "manager_badge": "מנהל",
+    "owner_badge": "בעלים",
+    "coach_badge": "מאמן",
+    "assistant_badge": "מאמן עוזר",
+    "joined_ago": "הצטרף לפני {time}",
+    "can_manage_active": "✓ יכול לנהל את הגדרות הקבוצה",
+    "edit_manager": "ערוך פרטים",
+    "view_profile": "צפה בפרופיל",
+    "change_role": "שנה תפקיד",
+    "toggle_manage": "החלף הרשאת ניהול",
+    "remove_manager": "הסר מהצוות",
+    "remove_manager_confirm": "להסיר את {name} מהצוות? הוא יאבד את כל ההרשאות לקבוצה.",
+    "resend_invite": "שלח הזמנה שוב",
+    "copy_link": "העתק קישור",
+    "send_whatsapp": "שלח ב-וואטסאפ",
+    "invitation_details": "פרטי ההזמנה",
+    "cancel_invitation": "בטל הזמנה",
+    "expires_in": "פג בעוד {days} ימים",
+    "send_count": "נשלח {n} פעמים"
+  }
+}
+Add equivalents for English and Spanish.
+Change 2 — Games tab (replaces "Next Game")
+Rename /team/[teamId]/next-game to /team/[teamId]/games. Show ALL games, not just the next one. Plus full game creation form. Plus per-game action items.
+Page structure
+┌──────────────────────────────────────────────────────────┐
+│  GAMES                                  [+ Schedule game] │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  Tabs:                                                    │
+│  [🔥 Next Game]  [📅 Upcoming]  [📜 Past Games]          │
+│                                                            │
+│  ── Next Game tab (default) ──────────────────────────── │
+│  (Full hero card with all info — same as before)         │
+│                                                            │
+│  ── Upcoming tab ──────────────────────────────────────  │
+│  List of future games:                                   │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ 🏆 LEAGUE GAME                                    │   │
+│  │ Saturday Mar 22 · 19:30 · Home                    │   │
+│  │ vs Riverside United                               │   │
+│  │ Field 3, Sports Complex                           │   │
+│  │ 12 confirmed · 3 maybe · 5 pending                │   │
+│  │ [View] [Edit] [Delete]                            │   │
+│  └──────────────────────────────────────────────────┘   │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ 🤝 FRIENDLY                                       │   │
+│  │ Tuesday Mar 25 · 18:00 · Away                     │   │
+│  │ vs Greenwood FC                                   │   │
+│  │ Greenwood Athletic Grounds                        │   │
+│  │ 8 confirmed · 4 maybe · 8 pending                 │   │
+│  │ [View] [Edit] [Delete]                            │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                            │
+│  ── Past Games tab ──────────────────────────────────── │
+│  List of past games with same card format               │
+│  (collapsed by default, expandable for details)         │
+│                                                            │
+└──────────────────────────────────────────────────────────┘
+"Schedule game" button
+Opens the full event creation form filtered to game types only (League / Friendly / Tournament). Same form as before but with type selector limited to those three:
+┌──────────────────────────────────────────────────────────┐
+│  Schedule a game                                          │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  GAME TYPE *                                              │
+│  [🏆 League]    [🤝 Friendly]    [🥇 Tournament]         │
+│                                                            │
+│  TITLE *                                                  │
+│  [                                                      ] │
+│  (Auto-fills, e.g., "Game vs ___" — coach can edit)     │
+│                                                            │
+│  OPPONENT *                                               │
+│  [                                                      ] │
+│                                                            │
+│  HOME OR AWAY *                                           │
+│  ◉ Home      ○ Away                                       │
+│                                                            │
+│  WHEN *                                                   │
+│  Date: [______]  Start time: [______]  End: [______]    │
+│                                                            │
+│  ARRIVAL TIME                                             │
+│  [______] (defaults to 60 min before start)              │
+│                                                            │
+│  WHERE                                                    │
+│  Venue name: [                                       ]   │
+│  Address: [                                          ]   │
+│  [Pick on map]                                            │
+│                                                            │
+│  UNIFORM                                                  │
+│  Primary color: [color picker]                            │
+│  Secondary color: [color picker]                          │
+│  Notes: [                                            ]   │
+│                                                            │
+│  WHAT TO BRING                                            │
+│  [                                                      ] │
+│                                                            │
+│  NOTES                                                    │
+│  [                                                      ] │
+│  [                                                      ] │
+│                                                            │
+│  SQUAD INVITED                                            │
+│  ☑ All active players                                     │
+│  ○ Select specific players                                │
+│                                                            │
+│  [Cancel]                            [Schedule game]     │
+└──────────────────────────────────────────────────────────┘
+Auto-add to calendar
+This already happens naturally if your code is correct. A game is an events row with type in ('league_game', 'friendly_game', 'tournament'). The calendar view at /team/[teamId]/schedule queries all events for the team. If a game is created and doesn't appear on the calendar, that's a bug:
+
+Verify the event is in events table after creation
+Verify the calendar query includes the new event types in its filter
+Verify RLS doesn't hide it from coaches (it shouldn't if they're team members)
+
+Diagnostic query:
+sql-- After creating a game, run this to verify it's stored properly
+select id, type, title, starts_at, team_id
+from events
+where team_id = 'YOUR_TEAM_ID'
+  and type in ('league_game', 'friendly_game', 'tournament')
+order by starts_at desc
+limit 10;
+If the row exists but isn't on the calendar, the bug is in the calendar's query/rendering. Show me the calendar component code.
+Per-game action items
+Each game card has three buttons:
+View — navigates to the focused game detail page (the hero card view that was the "Next Game" page). Shows uniform, arrival, what to bring, squad with RSVP status, notes, all the details.
+Edit — opens the event creation form pre-populated with this game's data. Submit updates the event in place.
+Delete — opens a confirmation modal:
+┌──────────────────────────────────────────┐
+│  Delete game?                             │
+│  ────────────────────────────────────── │
+│                                            │
+│  League Game vs Riverside United          │
+│  Saturday Mar 22 · 19:30                  │
+│                                            │
+│  This will:                               │
+│  • Remove the game from the calendar     │
+│  • Delete all RSVPs                       │
+│  • Notify all players who were invited    │
+│                                            │
+│  Cannot be undone.                        │
+│                                            │
+│  Reason (optional, included in notice):   │
+│  [                                      ] │
+│                                            │
+│  [Cancel]              [Delete game]      │
+└──────────────────────────────────────────┘
+On confirm:
+
+Delete the event (cascades to attendance rows)
+Send in-app notification to all players who were invited: "{coach} cancelled the {type} on {date}: {reason}"
+Optional: also send WhatsApp messages via the broadcast flow
+
+Page-level action items
+The Next Game hero card has a small action menu in the top corner (visible to coaches only):
+┌──────────────────────────────────────────────────┐
+│  LEAGUE GAME                              [...]   │
+│  Lightning FC vs Riverside United                 │
+│  ...                                              │
+└──────────────────────────────────────────────────┘
+The [...] reveals: Edit / Delete / Duplicate (to schedule a similar one) / Cancel (different from delete — keeps it on the calendar but marks as cancelled with notes).
+Backend — endpoints
+Most already exist (/api/events). Add:
+GET /api/teams/[teamId]/games?filter=upcoming|past|next
+  Returns games of types league_game, friendly_game, tournament
+
+PATCH /api/events/[eventId]
+  Edit an event (existing)
+
+DELETE /api/events/[eventId]
+  Delete event with optional reason + notification to players
+Translations
+json{
+  "games": {
+    "tab_title": "משחקים",
+    "tab_next": "המשחק הבא",
+    "tab_upcoming": "משחקים קרובים",
+    "tab_past": "משחקים שעברו",
+    "schedule_game": "תזמן משחק",
+    "schedule_game_title": "תזמן משחק חדש",
+    "game_type": "סוג משחק",
+    "league_game": "ליגה",
+    "friendly_game": "ידידות",
+    "tournament": "טורניר",
+    "opponent_required": "יריבה",
+    "home_away_required": "בית או חוץ",
+    "view_game": "צפה",
+    "edit_game": "ערוך",
+    "delete_game": "מחק",
+    "duplicate_game": "שכפל",
+    "cancel_game": "בטל",
+    "delete_game_confirm_title": "מחק משחק?",
+    "delete_game_warning": "פעולה זו תסיר את המשחק מהלו\"ז, תמחק את כל אישורי ההגעה, ותעדכן את כל השחקנים. לא ניתן לביטול.",
+    "delete_reason": "סיבה (אופציונלי, תוצג בהודעה)",
+    "confirm_delete": "מחק משחק",
+    "rsvp_summary": "{confirmed} מגיעים · {maybe} אולי · {pending} ממתינים",
+    "no_upcoming_games": "אין משחקים קרובים",
+    "no_past_games": "עדיין לא נערכו משחקים",
+    "all_active_players": "כל השחקנים הפעילים",
+    "select_specific": "בחר שחקנים ספציפיים"
+  }
+}
+Add equivalents.
+Change 3 — Messages redesign (one-way broadcasts)
+The current free-form messaging system gets replaced with a focused broadcast system. Coach sends, players read. No replies.
+Database
+sql-- Drop or repurpose existing message tables if they're truly unused
+-- The conversations / messages / conversation_members tables can stay for the existing announcements feature
+-- For broadcasts, we'll use the announcements table (already exists)
+
+-- Verify announcements table has what we need
+alter table public.announcements
+  add column if not exists message_type text default 'announcement'
+    check (message_type in ('announcement', 'reminder', 'urgent', 'general')),
+  add column if not exists target_audience text default 'all'
+    check (target_audience in ('all', 'players_only', 'parents_only', 'specific_players')),
+  add column if not exists target_user_ids uuid[],
+  add column if not exists channels jsonb default '{"in_app": true, "email": false, "whatsapp": false}'::jsonb,
+  add column if not exists email_sent_at timestamptz,
+  add column if not exists email_sent_count int default 0,
+  add column if not exists whatsapp_opened_at timestamptz,
+  add column if not exists whatsapp_opened_count int default 0;
+
+-- Track delivery per recipient (for analytics and read receipts)
+create table if not exists public.announcement_deliveries (
+  id uuid primary key default uuid_generate_v4(),
+  announcement_id uuid not null references announcements(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  channel text not null check (channel in ('in_app', 'email', 'whatsapp')),
+  status text default 'pending' check (status in ('pending', 'sent', 'delivered', 'read', 'failed', 'skipped')),
+  sent_at timestamptz,
+  read_at timestamptz,
+  error_detail text,
+  unique(announcement_id, user_id, channel)
+);
+
+create index if not exists announcement_deliveries_announcement_idx
+  on announcement_deliveries(announcement_id);
+create index if not exists announcement_deliveries_user_idx
+  on announcement_deliveries(user_id, status);
+
+alter table announcement_deliveries enable row level security;
+
+create policy "users see own deliveries" on announcement_deliveries
+  for select to authenticated
+  using (user_id = auth.uid());
+
+create policy "coaches see deliveries for their team announcements" on announcement_deliveries
+  for select to authenticated
+  using (
+    exists(
+      select 1 from announcements a
+      where a.id = announcement_deliveries.announcement_id
+        and is_team_coach(a.team_id)
+    )
+  );
+
+-- User preferences for which channels they receive
+alter table public.profiles
+  add column if not exists notification_preferences jsonb default '{"in_app": true, "email": true, "whatsapp": true}'::jsonb;
+Coach UI — Messages screen
+┌──────────────────────────────────────────────────────────┐
+│  MESSAGES                              [+ New message]   │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  Filter:                                                  │
+│  [All] [Sent today] [This week] [This month]             │
+│                                                            │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ 🔥 URGENT · Tomorrow's game moved to Field 5      │   │
+│  │ Sent 2 hours ago · 15 players                     │   │
+│  │                                                    │   │
+│  │ Quick reminder — tomorrow's league game has been  │   │
+│  │ moved from Field 3 to Field 5. Same time...      │   │
+│  │                                                    │   │
+│  │ Delivery: 📱 15 in-app · ✉ 15 email · 💬 12 WA   │   │
+│  │ Read by: 9 of 15                                  │   │
+│  │ [View details]                    [Resend]        │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                            │
+│  ┌──────────────────────────────────────────────────┐   │
+│  │ 📅 REMINDER · Don't forget gear for training      │   │
+│  │ Sent yesterday · 18 players                       │   │
+│  │ ...                                                │   │
+│  └──────────────────────────────────────────────────┘   │
+│                                                            │
+└──────────────────────────────────────────────────────────┘
+New message form
+┌──────────────────────────────────────────────────────────┐
+│  New broadcast                                            │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  MESSAGE TYPE                                             │
+│  ◉ 📢 Announcement (general)                              │
+│  ○ 📅 Reminder                                            │
+│  ○ 🔥 Urgent                                              │
+│  ○ 💬 General                                             │
+│                                                            │
+│  HEADLINE *                                               │
+│  [                                                      ] │
+│  (Short, appears as the message title)                   │
+│                                                            │
+│  MESSAGE *                                                │
+│  [                                                      ] │
+│  [                                                      ] │
+│  [                                                      ] │
+│                                                            │
+│  ─────────────────────────────────────────────────────── │
+│                                                            │
+│  AUDIENCE                                                 │
+│  ◉ Everyone in the team (players + parents)              │
+│  ○ Players only                                           │
+│  ○ Parents only                                           │
+│  ○ Specific people:                                       │
+│    [Multi-select dropdown of team members]               │
+│                                                            │
+│  ─────────────────────────────────────────────────────── │
+│                                                            │
+│  DELIVERY CHANNELS                                        │
+│  ☑ In-app notification (free, instant)                   │
+│  ☐ Email (sent immediately)                              │
+│  ☐ WhatsApp (opens tabs to send manually)                │
+│                                                            │
+│  ☐ Pin to top of recipient's home screen                 │
+│                                                            │
+│  ─────────────────────────────────────────────────────── │
+│                                                            │
+│  [Cancel]                              [Send broadcast]  │
+└──────────────────────────────────────────────────────────┘
+Send behavior
+When coach clicks "Send broadcast":
+
+Insert announcement row with channels JSON
+For each recipient, insert announcement_deliveries rows for selected channels with status pending
+In-app channel (if checked):
+
+For each recipient, insert a user_notifications row
+Send push notification to those who have push subscriptions
+Update deliveries to sent
+
+
+Email channel (if checked):
+
+For each recipient with an email, send via Resend
+Update each delivery individually based on send result
+If some emails fail, show coach which ones
+
+
+WhatsApp channel (if checked):
+
+After saving, show a follow-up modal with N WhatsApp tabs ready to open
+Coach clicks "Open WhatsApp for each player" which opens N tabs
+Mark each delivery as sent after the tab is opened (best-effort tracking)
+Track count of opened tabs in whatsapp_opened_count
+
+
+
+Delivery confirmation modal (after send)
+┌──────────────────────────────────────────────────────┐
+│  ✓ Broadcast sent                                     │
+│  ────────────────────────────────────────────────── │
+│                                                        │
+│  "Tomorrow's game moved to Field 5"                  │
+│                                                        │
+│  Delivery summary:                                    │
+│                                                        │
+│  📱 In-app:    15 of 15 sent                         │
+│  ✉ Email:     14 of 15 sent · 1 failed              │
+│  💬 WhatsApp:  Ready to open 12 tabs (3 players      │
+│                without phone numbers skipped)        │
+│                                                        │
+│  [Open WhatsApp tabs]                                │
+│                                                        │
+│  Email failure:                                       │
+│  ⚠ dani@example.com — domain bounced                 │
+│  [Copy message text to share manually]               │
+│                                                        │
+│  [Done]                                              │
+└──────────────────────────────────────────────────────┘
+Message detail view
+When coach clicks "View details" on a sent broadcast:
+┌──────────────────────────────────────────────────────────┐
+│  ← Back to Messages                                        │
+│                                                            │
+│  🔥 URGENT                                                 │
+│  Tomorrow's game moved to Field 5                         │
+│                                                            │
+│  Sent 2 hours ago by Coach Yossi                         │
+│  Audience: All team members (15)                         │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  Quick reminder — tomorrow's league game has been        │
+│  moved from Field 3 to Field 5. Same time, just         │
+│  different location. See you there!                      │
+│                                                            │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  DELIVERY STATUS                                          │
+│                                                            │
+│  [Avatar] Amir Levi                                       │
+│  📱 ✓ Read 1h ago    ✉ ✓ Delivered    💬 ✓ Sent        │
+│                                                            │
+│  [Avatar] Daniel Mizrachi                                │
+│  📱 ✓ Read 30min ago  ✉ ✓ Delivered    💬 ✓ Sent       │
+│                                                            │
+│  [Avatar] Eitan Mor                                       │
+│  📱 ✓ Read 15min ago  ✉ ✓ Delivered    💬 — Not sent   │
+│                                                            │
+│  [Avatar] Avi Sharon                                      │
+│  📱 ○ Unread          ✉ ⚠ Bounced     💬 ✓ Sent        │
+│                                                            │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  [Resend to unread] [Resend to all] [Duplicate]          │
+│                                                            │
+└──────────────────────────────────────────────────────────┘
+Player UI — Messages screen
+┌──────────────────────────────────────────────────────────┐
+│  MESSAGES                                                  │
+│  ────────────────────────────────────────────────────── │
+│                                                            │
+│  [Pinned: 🔥 Tomorrow's game moved to Field 5]            │
+│                                                            │
+│  ── Recent ────────────────────────────────────────────  │
+│                                                            │
+│  📅 Don't forget gear for training                        │
+│  Yesterday · From Coach Yossi                            │
+│  Quick reminder to bring your home jersey and...        │
+│  [Read more]                                              │
+│                                                            │
+│  📢 Welcome new player                                    │
+│  3 days ago · From Coach Yossi                           │
+│  ...                                                      │
+│                                                            │
+│  ── Older ────────────────────────────────────────────── │
+│  ...                                                      │
+│                                                            │
+└──────────────────────────────────────────────────────────┘
+Players cannot send messages from this screen. There's NO "+ New message" button for them.
+If a player wants to reach the coach, the page footer shows:
+─────────────────────────────────────
+Need to reach Coach Yossi?
+[💬 WhatsApp] [📞 Call] [✉ Email]
+─────────────────────────────────────
+These open the coach's contact options directly. Useful escape hatch — players don't need a separate messaging system to ask "what time?" — they just message the coach via WhatsApp like they would normally.
+Notification preferences
+In the player's profile, add a section:
+─────────────────────────────────────
+NOTIFICATIONS
+
+How would you like to receive messages from your coach?
+
+☑ In-app notifications
+☑ Email (chen@example.com)
+☑ WhatsApp (050-1234567)
+
+You can disable channels you don't want. The coach
+will still see whether their message reached you.
+─────────────────────────────────────
+Stored in profiles.notification_preferences JSON. When sending a broadcast, the system respects each player's preferences — if a player has email off, the email won't be sent to them even if the coach selected that channel.
+Backend endpoints
+GET /api/teams/[teamId]/announcements
+  Returns announcements with pagination, optional filter by type/date
+
+POST /api/teams/[teamId]/announcements
+  Body: {
+    message_type: 'announcement' | 'reminder' | 'urgent' | 'general';
+    title: string;
+    body: string;
+    target_audience: 'all' | 'players_only' | 'parents_only' | 'specific_players';
+    target_user_ids?: string[];
+    channels: { in_app: boolean; email: boolean; whatsapp: boolean };
+    pinned?: boolean;
+  }
+  Creates announcement, fires deliveries.
+
+GET /api/teams/[teamId]/announcements/[id]/deliveries
+  Returns per-recipient delivery status (coach only)
+
+POST /api/teams/[teamId]/announcements/[id]/resend
+  Body: { audience: 'unread' | 'all' | 'failed_email' }
+  Resends to specified audience subset
+
+POST /api/teams/[teamId]/announcements/[id]/whatsapp-tabs
+  Returns array of pre-formatted wa.me URLs for the coach's browser to open
+Translations
+json{
+  "messages": {
+    "title": "הודעות",
+    "new_broadcast": "הודעה חדשה",
+    "broadcast_type": "סוג הודעה",
+    "type_announcement": "הכרזה",
+    "type_reminder": "תזכורת",
+    "type_urgent": "דחוף",
+    "type_general": "כללי",
+    "headline": "כותרת",
+    "headline_help": "קצרה, מופיעה ככותרת ההודעה",
+    "message_body": "תוכן ההודעה",
+    "audience": "קהל יעד",
+    "audience_all": "כל הקבוצה (שחקנים והורים)",
+    "audience_players_only": "שחקנים בלבד",
+    "audience_parents_only": "הורים בלבד",
+    "audience_specific": "אנשים ספציפיים",
+    "select_recipients": "בחר נמענים",
+    "channels": "ערוצי הפצה",
+    "channel_in_app": "התראה באפליקציה (חינם, מיידי)",
+    "channel_email": "מייל (נשלח מיד)",
+    "channel_whatsapp": "וואטסאפ (פותח כרטיסיות לשליחה ידנית)",
+    "pin_to_top": "הצמד לראש המסך של הנמענים",
+    "send_broadcast": "שלח הודעה",
+    "delivery_summary_title": "ההודעה נשלחה",
+    "delivery_in_app": "באפליקציה",
+    "delivery_email": "במייל",
+    "delivery_whatsapp": "ב-וואטסאפ",
+    "delivery_status_sent": "נשלחו",
+    "delivery_status_failed": "נכשלו",
+    "delivery_status_unread": "לא נקראו",
+    "delivery_status_read": "נקראו",
+    "delivery_status_pending": "ממתינים",
+    "open_whatsapp_tabs": "פתח כרטיסיות וואטסאפ",
+    "without_phone_skipped": "{n} ללא טלפון דולגו",
+    "copy_message_text": "העתק טקסט להפצה",
+    "view_details": "צפה בפרטים",
+    "resend": "שלח שוב",
+    "resend_to_unread": "שלח לאלה שלא קראו",
+    "resend_to_all": "שלח לכולם",
+    "duplicate": "שכפל",
+    "delivery_status": "סטטוס הפצה",
+    "read_ago": "נקרא לפני {time}",
+    "unread": "לא נקרא",
+    "delivered": "נמסר",
+    "bounced": "חזר",
+    "filter_all": "הכל",
+    "filter_today": "היום",
+    "filter_week": "השבוע",
+    "filter_month": "החודש",
+    "need_to_reach_coach": "צריך להגיע למאמן?",
+    "contact_whatsapp": "וואטסאפ",
+    "contact_call": "התקשר",
+    "contact_email": "מייל",
+    "notification_preferences": "העדפות הודעות",
+    "notification_prefs_help": "איך תרצה לקבל הודעות מהמאמן?",
+    "prefs_in_app": "התראות באפליקציה",
+    "prefs_email": "מייל ({email})",
+    "prefs_whatsapp": "וואטסאפ ({phone})",
+    "prefs_help_footer": "ניתן לבטל ערוצים שאינך רוצה. המאמן עדיין יראה האם ההודעה הגיעה אליך."
+  }
+}
+Add equivalents for English and Spanish.
+Acceptance criteria
+Coach management (Change 1):
+
+✓ + Add manager button visible to owner and managers with can_manage_team_settings = true
+✓ Form captures: first name, family name, role title (with quick picks + custom), notes, email, phone, permission level, manage_team_settings toggle, invitation choice
+✓ Manager appears in staff list immediately as placeholder if invitation deferred
+✓ Status badge reflects: ACTIVE / INVITED · X days · Y of 5 sends / PENDING INVITATION
+✓ Per-row action menu has appropriate actions based on status
+✓ Edit / Delete / Resend invitation / Copy link / Send WhatsApp all work
+✓ "Can manage team settings" toggle works — flips RLS permission, hidden for assistants
+✓ Owner cannot remove themselves (transfer ownership only path)
+✓ When a manager with toggle = true edits team settings, the change goes through (test by editing team name as non-owner manager)
+✓ Translations work in he/en/es
+
+Games tab (Change 2):
+11. ✓ Route renamed to /team/[teamId]/games with three sub-tabs: Next / Upcoming / Past
+12. ✓ Schedule game form has all game-specific fields (opponent required, home/away required, full uniform/arrival/notes)
+13. ✓ Form pre-fills sensible defaults (title, arrival time, end time) based on game type
+14. ✓ Created game appears immediately in upcoming list AND in calendar at same time
+15. ✓ Calendar diagnostic query confirms event exists with correct type
+16. ✓ Each game card has View / Edit / Delete buttons
+17. ✓ Delete shows confirmation modal with reason field, notifies players, cascades RSVPs
+18. ✓ Edit reopens the form with all fields populated, save updates in place
+19. ✓ Hero card on Next Game tab shows all info filled in (no empty sections when fields were provided)
+20. ✓ Empty state when no upcoming games scheduled
+21. ✓ Past games tab shows historical games chronologically
+Messages redesign (Change 3):
+22. ✓ Messages page replaces old freeform chat with broadcast-focused UI
+23. ✓ Coach can compose broadcasts with type, headline, body, audience, channels
+24. ✓ Audience can be all / players only / parents only / specific people
+25. ✓ Channels: in-app (default on), email (opt-in per broadcast), WhatsApp (opt-in per broadcast)
+26. ✓ Player notification preferences respected — if they have email off, no email sent
+27. ✓ After sending, delivery summary modal shows per-channel results
+28. ✓ WhatsApp tab-opener works for selected recipients with phone numbers
+29. ✓ Message detail view shows per-recipient delivery status with read receipts
+30. ✓ Resend to unread / all / failed-email actions work
+31. ✓ Player view shows broadcasts (read-only, no compose button)
+32. ✓ Player view has "Need to reach coach?" footer with WhatsApp/Call/Email shortcuts
+33. ✓ Pinned messages appear at top of recipient's home screen
+34. ✓ Translations work in he/en/es
+Build sequence — strict
+
+Change 1 first — add manager flow mirrors existing add-player flow, lower risk, unblocks team setup
+Change 2 — games tab and form (depends on event schema being correct from prior prompts; verify before starting)
+Change 3 last — messages redesign is the biggest single change; do it after the smaller things land
+
+Pause after Change 1 to verify the can_manage_team_settings toggle actually grants/revokes permissions correctly. Test:
+
+Owner adds a coach with toggle OFF — that coach cannot edit team color
+Owner flips the toggle ON for that coach — coach can now edit team color
+Owner flips it back OFF — coach can't edit team color again
+
+If any of these fail, the toggle isn't wired to RLS properly; fix before moving on.
+Don't break: existing player flow, existing event schedule, existing invitation system, existing admin features.
+
+That's the prompt. A few honest notes:
+On the can_manage_team_settings toggle being the trickiest part — this is real permission elevation. If the agent gates it only in the UI (hides buttons but doesn't enforce in RLS), you have a security hole where a clever user could call the API directly. The RLS policies I included use a can_manage_team() helper function that does the right thing at the database level. Verify the agent uses this function in RLS, not just in React components.
+On the games tab being a rename — the work here is mostly "make the existing event form actually work" plus adding tabs for past/upcoming/next. If the agent says "I need to rebuild the events system," push back — the events table is fine, the form needs all the fields, the page needs all three tabs. Don't let scope creep.
+On the messaging design being one-way — this is intentional simplicity. If after a few months you decide you actually want player → coach DMs, that's a future addition. Don't pre-build it. The "Need to reach coach?" footer with WhatsApp/Call shortcuts handles 95% of "I need to ask the coach something" cases without building a chat system.
+On WhatsApp delivery being manual — the "open N tabs" approach is the same as before. Coach clicks one button, app opens 15 WhatsApp tabs, coach clicks send in each. Tedious but free. The alternative is paying for WhatsApp Business API (~$25/month minimum + per-message costs). Don't pay until you have paying customers.
+On notification preferences being per-player — this is a really important detail that's easy to skip. Some players' parents will hate getting 3 notifications for every message (push + email + WhatsApp). Letting them turn off email or WhatsApp at their preference level keeps the app from feeling spammy. Don't let the agent skip this.
+One specific test to do after Change 3 is done — send yourself a broadcast as a coach, including all three channels. Verify:
+
+You see an in-app notification (test on a registered player account, not your admin)
+You receive an email in your inbox
+The WhatsApp tab opener works (opens correct phone numbers with pre-filled message)
+
+If any of those don't work, the channel logic is broken. Don't ship until all three deliver to a real test player.
+Paste it. The toggle pause after Change 1 is the most important — verify those three permission tests pass before letting the agent continue.

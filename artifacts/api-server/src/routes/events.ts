@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count } from "drizzle-orm";
+import { eq, count, gt, lte, and as drizzleAnd, inArray } from "drizzle-orm";
 import { db, eventsTable, attendanceTable, playersTable, teamsTable, teamMembersTable } from "@workspace/db";
 import {
   ListEventsParams,
@@ -233,6 +233,41 @@ router.post("/events/:eventId/attendance", requireAuth, async (req: AuthedReques
 
   const [player] = await db.select({ name: playersTable.name }).from(playersTable).where(eq(playersTable.id, record.playerId));
   res.json({ ...record, playerName: player?.name ?? "" });
+});
+
+/* ─── GET /teams/:teamId/games?filter=upcoming|past|next ── */
+router.get("/teams/:teamId/games", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
+  const params = ListEventsParams.safeParse({ teamId: req.params.teamId });
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const teamId = params.data.teamId;
+
+  if (!(await assertTeamAccess(teamId, req, res))) return;
+
+  const gameTypes = ["league_game", "friendly_game", "tournament"] as const;
+  const filter = (req.query.filter as string) ?? "upcoming";
+  const now = new Date();
+
+  const games = await db.select().from(eventsTable).where(
+    filter === "past"
+      ? drizzleAnd(eq(eventsTable.teamId, teamId), inArray(eventsTable.type, gameTypes as unknown as string[]), lte(eventsTable.startsAt, now))
+      : drizzleAnd(eq(eventsTable.teamId, teamId), inArray(eventsTable.type, gameTypes as unknown as string[]), gt(eventsTable.startsAt, now))
+  ).orderBy(filter === "past" ? eventsTable.startsAt : eventsTable.startsAt);
+
+  const [{ total }] = await db.select({ total: count() }).from(playersTable).where(eq(playersTable.teamId, teamId));
+
+  const gamesWithCounts = await Promise.all(
+    games.map(async (event) => {
+      const [{ attending }] = await db.select({ attending: count() }).from(attendanceTable).where(eq(attendanceTable.eventId, event.id));
+      return { ...event, attendingCount: Number(attending), totalCount: Number(total) };
+    })
+  );
+
+  if (filter === "next") {
+    res.json(gamesWithCounts.length > 0 ? gamesWithCounts[0] : null);
+    return;
+  }
+
+  res.json(gamesWithCounts);
 });
 
 export default router;

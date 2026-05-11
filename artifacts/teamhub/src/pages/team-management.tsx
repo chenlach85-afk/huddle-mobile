@@ -1,76 +1,483 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   UserCog, Plus, Trash2, ArrowRightLeft, Archive, ArchiveRestore,
   Copy, Check, AlertTriangle, Mail, Link2, Crown, Shield, User,
-  ChevronDown,
+  MoreVertical, MessageCircle, Pencil, ToggleLeft, ToggleRight,
+  Send, Settings,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import { useUser } from "@clerk/react";
+import { formatDistanceToNow } from "date-fns";
 
-type CoachMember = {
-  userId: number;
-  clerkId: string;
-  name: string;
-  email: string;
-  role: "coach" | "player" | "assistant";
-  isOwner: boolean;
-  coachTitle?: string | null;
-};
-
-type PendingInvite = {
+type StaffMember = {
   id: number;
+  userId: number | null;
+  clerkId?: string | null;
+  name: string;
   email: string | null;
-  inviteType: string;
+  phone: string | null;
+  role: "coach" | "assistant" | "player";
+  isOwner: boolean;
+  isPlaceholder: boolean;
+  coachTitle?: string | null;
+  memberNotes?: string | null;
   status: string;
-  url: string;
+  canManageTeamSettings: boolean;
+  invitationId?: number | null;
+  inviteToken?: string | null;
+  inviteUrl?: string | null;
+  emailSendCount?: number;
+  inviteExpiresAt?: string | null;
+  inviteStatus?: string | null;
   createdAt: string;
-  expiresAt: string;
 };
 
 const ROLE_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  coach: Crown,
-  assistant: Shield,
-  player: User,
+  coach: Crown, assistant: Shield, player: User,
 };
 
-export default function TeamManagementTab({
-  teamId,
-  teamColor,
-  teamName,
-  joinCode,
-  isOwner,
-}: {
-  teamId: number;
-  teamColor: string;
-  teamName: string;
-  joinCode?: string;
-  isOwner: boolean;
+const TITLE_QUICK_PICKS = [
+  "Head Coach", "Associate Head Coach", "GK Coach", "Fitness Coach",
+  "Position Coach", "S&C Coach", "Analyst", "Assistant",
+];
+
+function StatusBadge({ status, emailSendCount, createdAt }: { status: string; emailSendCount?: number; createdAt?: string }) {
+  if (status === "active") return (
+    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#2ecc7115", color: "#2ecc71" }}>Active</span>
+  );
+  if (status === "invited") return (
+    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#3498db15", color: "#3498db" }}>
+      Invited · {emailSendCount ?? 0} of 5 sends
+    </span>
+  );
+  if (status === "pending_invitation") return (
+    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#f7b53815", color: "#f7b538" }}>Pending · not sent</span>
+  );
+  if (status === "declined") return (
+    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#e74c3c15", color: "#e74c3c" }}>Declined</span>
+  );
+  return <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.3)" }}>{status}</span>;
+}
+
+function AddManagerDialog({ open, onClose, teamId, teamColor, initialData, onSaved }: {
+  open: boolean; onClose: () => void; teamId: number; teamColor: string;
+  initialData?: StaffMember | null; onSaved: () => void;
 }) {
+  const { t } = useI18n();
+  const mg = t.management;
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+
+  const isEdit = !!initialData;
+
+  const [firstName, setFirstName] = useState(() => {
+    if (!initialData) return "";
+    const parts = initialData.name.split(" ");
+    return parts[0] ?? "";
+  });
+  const [familyName, setFamilyName] = useState(() => {
+    if (!initialData) return "";
+    const parts = initialData.name.split(" ");
+    return parts.slice(1).join(" ");
+  });
+  const [coachTitle, setCoachTitle] = useState(initialData?.coachTitle ?? "");
+  const [notes, setNotes] = useState(initialData?.memberNotes ?? "");
+  const [email, setEmail] = useState(initialData?.email ?? "");
+  const [phone, setPhone] = useState(initialData?.phone ?? "");
+  const [role, setRole] = useState<"coach" | "assistant">(
+    (initialData?.role === "assistant" ? "assistant" : "coach") as "coach" | "assistant"
+  );
+  const [canManage, setCanManage] = useState(initialData?.canManageTeamSettings ?? false);
+  const [inviteAction, setInviteAction] = useState<"none" | "send_email" | "generate_link">("none");
+  const [personalMessage, setPersonalMessage] = useState("");
+
+  useEffect(() => {
+    if (role === "assistant") setCanManage(false);
+  }, [role]);
+
+  async function handleSave() {
+    if (!firstName.trim() || !familyName.trim()) {
+      toast({ title: "First name and family name required", variant: "destructive" }); return;
+    }
+    if (inviteAction !== "none" && !email.includes("@") && !phone.trim()) {
+      toast({ title: "Email or phone required to send invitation", variant: "destructive" }); return;
+    }
+    setLoading(true);
+    try {
+      const body = {
+        first_name: firstName.trim(), family_name: familyName.trim(),
+        coach_title: coachTitle.trim() || null, notes: notes.trim() || null,
+        email: email.trim() || null, phone: phone.trim() || null,
+        role, can_manage_team_settings: canManage,
+        ...(isEdit ? {} : { invitation_action: inviteAction, personal_message: personalMessage.trim() || null }),
+      };
+      const url = isEdit ? `/api/teams/${teamId}/managers/${initialData!.id}` : `/api/teams/${teamId}/managers`;
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error ?? "Error"); }
+      toast({ title: isEdit ? mg.staffUpdated : "Manager added" });
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : mg.failedAction, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl text-white tracking-wide">
+            {(isEdit ? mg.editManager : mg.addManagerTitle).toUpperCase()}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5 pb-2">
+          {/* Personal info */}
+          <section className="space-y-3">
+            <p className="stat-label text-white/30 uppercase tracking-widest">{mg.personalInfo}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="stat-label text-white/40 block mb-1.5">{mg.firstName} *</label>
+                <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John"
+                  className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+              </div>
+              <div>
+                <label className="stat-label text-white/40 block mb-1.5">{mg.familyName} *</label>
+                <Input value={familyName} onChange={e => setFamilyName(e.target.value)} placeholder="Smith"
+                  className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+              </div>
+            </div>
+            <div>
+              <label className="stat-label text-white/40 block mb-1.5">{mg.roleTitle}</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {TITLE_QUICK_PICKS.map(chip => (
+                  <button key={chip} onClick={() => setCoachTitle(chip)}
+                    className="px-2 py-0.5 rounded text-[10px] font-semibold transition-all border"
+                    style={coachTitle === chip
+                      ? { background: `${teamColor}25`, color: teamColor, borderColor: `${teamColor}50` }
+                      : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.1)" }
+                    }>{chip}</button>
+                ))}
+              </div>
+              <Input value={coachTitle} onChange={e => setCoachTitle(e.target.value)} placeholder={mg.coachTitlePlaceholder}
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+            </div>
+            <div>
+              <label className="stat-label text-white/40 block mb-1.5">{mg.notesLabel}</label>
+              <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={mg.notesHelp} rows={2}
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm resize-none" />
+            </div>
+          </section>
+
+          {/* Contact */}
+          <section className="space-y-3">
+            <p className="stat-label text-white/30 uppercase tracking-widest">{mg.contact}</p>
+            <div>
+              <label className="stat-label text-white/40 block mb-1.5">Email</label>
+              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="coach@example.com"
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+            </div>
+            <div>
+              <label className="stat-label text-white/40 block mb-1.5">Phone</label>
+              <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 555 000 0000"
+                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+            </div>
+          </section>
+
+          {/* Permissions */}
+          <section className="space-y-3">
+            <p className="stat-label text-white/30 uppercase tracking-widest">{mg.permissions}</p>
+            <div>
+              <p className="stat-label text-white/40 mb-2">{mg.permissionLevel}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([{ v: "coach", label: mg.roleCoachOpt }, { v: "assistant", label: mg.roleAssistantOpt }] as const).map(opt => (
+                  <button key={opt.v} onClick={() => setRole(opt.v)}
+                    className="rounded-xl py-2.5 px-3 text-sm font-semibold border transition-all"
+                    style={role === opt.v
+                      ? { background: `${teamColor}20`, borderColor: `${teamColor}50`, color: "white" }
+                      : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }
+                    }>{opt.label}</button>
+                ))}
+              </div>
+            </div>
+            {role === "coach" && (
+              <button onClick={() => setCanManage(p => !p)}
+                className="w-full flex items-start gap-3 rounded-xl px-3 py-3 border transition-all text-start"
+                style={canManage
+                  ? { background: `${teamColor}15`, borderColor: `${teamColor}40` }
+                  : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)" }
+                }>
+                {canManage
+                  ? <ToggleRight className="h-4 w-4 shrink-0 mt-0.5" style={{ color: teamColor }} />
+                  : <ToggleLeft className="h-4 w-4 shrink-0 mt-0.5 text-white/30" />
+                }
+                <div>
+                  <p className="text-sm font-semibold text-white">{mg.canManageToggle}</p>
+                  <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed">{mg.canManageHelp}</p>
+                </div>
+              </button>
+            )}
+          </section>
+
+          {/* Send invitation — only for new staff */}
+          {!isEdit && (
+            <section className="space-y-3">
+              <p className="stat-label text-white/30 uppercase tracking-widest">{mg.sendInvitation}</p>
+              <div className="space-y-1.5">
+                {([
+                  { v: "none", label: mg.inviteNone, icon: <User className="h-3.5 w-3.5" /> },
+                  { v: "send_email", label: mg.inviteEmail, icon: <Mail className="h-3.5 w-3.5" /> },
+                  { v: "generate_link", label: mg.inviteLink, icon: <Link2 className="h-3.5 w-3.5" /> },
+                ] as const).map(opt => (
+                  <button key={opt.v} onClick={() => setInviteAction(opt.v)}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm border transition-all"
+                    style={inviteAction === opt.v
+                      ? { background: `${teamColor}15`, borderColor: `${teamColor}40`, color: "white" }
+                      : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }
+                    }>
+                    <span style={{ color: inviteAction === opt.v ? teamColor : "rgba(255,255,255,0.3)" }}>{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {inviteAction !== "none" && (
+                <div>
+                  <label className="stat-label text-white/40 block mb-1.5">{mg.personalMessage}</label>
+                  <Textarea value={personalMessage} onChange={e => setPersonalMessage(e.target.value)} rows={2}
+                    placeholder="Looking forward to working with you!"
+                    className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm resize-none" />
+                </div>
+              )}
+            </section>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="ghost" onClick={onClose} className="flex-1 border border-white/10 text-white/50 rounded-xl">Cancel</Button>
+            <Button onClick={handleSave} disabled={loading} className="flex-1 font-semibold rounded-xl h-10"
+              style={{ background: teamColor, color: "white" }}>
+              {loading ? "Saving…" : isEdit ? "Save Changes" : mg.addManager}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StaffRow({ coach, teamColor, isOwnerViewing, canManageSettings, onReload }: {
+  coach: StaffMember; teamColor: string; isOwnerViewing: boolean;
+  canManageSettings: boolean; onReload: () => void;
+}) {
+  const { t } = useI18n();
+  const mg = t.management;
+  const { toast } = useToast();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const { user: clerkUser } = useUser();
+
+  const isMe = clerkUser?.id === coach.clerkId;
+  const RoleIcon = coach.isOwner ? Crown : (ROLE_ICONS[coach.role] ?? User);
+  const roleColor = coach.isOwner ? "#f7b538" : "rgba(255,255,255,0.35)";
+
+  async function handleRemove() {
+    if (!confirm(mg.removeManagerConfirm?.replace("{name}", coach.name) ?? `Remove ${coach.name}?`)) return;
+    const url = coach.userId
+      ? `/api/teams/${coach.id}/placeholder-placeholder`
+      : `/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}`;
+    const res = await fetch(
+      coach.isPlaceholder
+        ? `/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}`
+        : `/api/teams/${(window as any).__currentTeamId}/coaches/${coach.userId}`,
+      { method: "DELETE" }
+    );
+    if (res.ok) { toast({ title: mg.staffUpdated }); onReload(); }
+    else toast({ title: mg.failedAction, variant: "destructive" });
+    setMenuOpen(false);
+  }
+
+  async function handleSendInvite(type: "send_email" | "generate_link") {
+    const res = await fetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}/send-invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: type === "send_email" ? "email" : "link" }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (type === "generate_link" && data.url) {
+        await navigator.clipboard.writeText(data.url).catch(() => {});
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2000);
+        toast({ title: "Link copied to clipboard" });
+      } else {
+        toast({ title: "Invitation sent" });
+      }
+      onReload();
+    } else toast({ title: mg.failedAction, variant: "destructive" });
+    setMenuOpen(false);
+  }
+
+  async function handleCancelInvite() {
+    const res = await fetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}/cancel-invite`, { method: "POST" });
+    if (res.ok) { toast({ title: "Invitation cancelled" }); onReload(); }
+    else toast({ title: mg.failedAction, variant: "destructive" });
+    setMenuOpen(false);
+  }
+
+  async function handleToggleSettings() {
+    const res = await fetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.userId ?? coach.id}/toggle-settings`, { method: "PATCH" });
+    if (res.ok) { toast({ title: mg.staffUpdated }); onReload(); }
+    else toast({ title: mg.failedAction, variant: "destructive" });
+    setMenuOpen(false);
+  }
+
+  const showActions = canManageSettings && !isMe && !coach.isOwner;
+
+  return (
+    <>
+      <div className="px-4 py-3 flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0"
+          style={{ background: `${teamColor}25`, color: teamColor }}>
+          {coach.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-white truncate">{coach.name}</p>
+            {isMe && <span className="text-[10px] text-white/30">(you)</span>}
+            {coach.isOwner && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#f7b53820", color: "#f7b538" }}>{mg.ownerBadge}</span>
+            )}
+            {!coach.isOwner && coach.canManageTeamSettings && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${teamColor}20`, color: teamColor }}>MGR</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <RoleIcon className="h-3 w-3 shrink-0" style={{ color: roleColor }} />
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: roleColor }}>
+              {coach.isOwner ? mg.youOwner : coach.role === "assistant" ? mg.roleAssistant : mg.roleCoach}
+            </span>
+            {coach.coachTitle && (
+              <span className="text-[10px] text-white/40 px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.06)" }}>
+                {coach.coachTitle}
+              </span>
+            )}
+          </div>
+          {coach.email && <p className="text-xs text-white/35 mt-0.5 truncate">{coach.email}</p>}
+          <div className="flex items-center gap-2 mt-1">
+            <StatusBadge status={coach.isPlaceholder ? (coach.status ?? "pending_invitation") : "active"} emailSendCount={coach.emailSendCount} createdAt={coach.createdAt} />
+            {coach.canManageTeamSettings && !coach.isOwner && (
+              <span className="text-[9px] text-white/40">✓ Can manage team settings</span>
+            )}
+          </div>
+        </div>
+        {showActions && (
+          <div className="relative shrink-0">
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-white/30 hover:text-white"
+              onClick={() => setMenuOpen(p => !p)}>
+              <MoreVertical className="h-3.5 w-3.5" />
+            </Button>
+            {menuOpen && (
+              <div className="absolute right-0 top-8 z-50 rounded-xl border border-white/10 overflow-hidden min-w-[180px]"
+                style={{ background: "var(--surface-elevated)" }}>
+                <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                  onClick={() => { setEditOpen(true); setMenuOpen(false); }}>
+                  <Pencil className="h-3 w-3" />{mg.editManager}
+                </button>
+                {!coach.isPlaceholder && coach.phone && (
+                  <a href={`https://wa.me/${coach.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer"
+                    className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                    onClick={() => setMenuOpen(false)}>
+                    <MessageCircle className="h-3 w-3" />WhatsApp
+                  </a>
+                )}
+                {!coach.isPlaceholder && coach.role === "coach" && (
+                  <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                    onClick={handleToggleSettings}>
+                    <Settings className="h-3 w-3" />{mg.toggleManage}
+                  </button>
+                )}
+                {coach.isPlaceholder && (coach.status === "pending_invitation" || coach.status === "invited") && (
+                  <>
+                    {coach.email && (
+                      <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                        onClick={() => handleSendInvite("send_email")}>
+                        <Mail className="h-3 w-3" />{mg.resendInvite}
+                      </button>
+                    )}
+                    <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                      onClick={() => handleSendInvite("generate_link")}>
+                      <Link2 className="h-3 w-3" />{copiedLink ? "Copied!" : mg.copyLink}
+                    </button>
+                    {coach.phone && (
+                      <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                        onClick={() => { handleSendInvite("generate_link"); setMenuOpen(false); }}>
+                        <MessageCircle className="h-3 w-3" />{mg.sendWhatsapp}
+                      </button>
+                    )}
+                    {coach.status === "invited" && (
+                      <button className="w-full px-3 py-2 text-xs text-red-400/70 hover:text-red-400 hover:bg-red-400/8 flex items-center gap-2 transition-colors"
+                        onClick={handleCancelInvite}>
+                        <Trash2 className="h-3 w-3" />{mg.cancelInvitation}
+                      </button>
+                    )}
+                  </>
+                )}
+                {coach.isPlaceholder && coach.status === "pending_invitation" && (
+                  <>
+                    {coach.email && (
+                      <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                        onClick={() => handleSendInvite("send_email")}>
+                        <Send className="h-3 w-3" />Send Email Invite
+                      </button>
+                    )}
+                    <button className="w-full px-3 py-2 text-xs text-white/70 hover:text-white hover:bg-white/8 flex items-center gap-2 transition-colors"
+                      onClick={() => handleSendInvite("generate_link")}>
+                      <Link2 className="h-3 w-3" />Generate Link
+                    </button>
+                  </>
+                )}
+                <div className="border-t border-white/8 mt-1 pt-1">
+                  <button className="w-full px-3 py-2 text-xs text-red-400/70 hover:text-red-400 hover:bg-red-400/8 flex items-center gap-2 transition-colors"
+                    onClick={handleRemove}>
+                    <Trash2 className="h-3 w-3" />{mg.removeManager}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <AddManagerDialog open={editOpen} onClose={() => setEditOpen(false)} teamId={(window as any).__currentTeamId}
+        teamColor={teamColor} initialData={coach} onSaved={onReload} />
+    </>
+  );
+}
+
+export default function TeamManagementTab({
+  teamId, teamColor, teamName, joinCode, isOwner,
+}: {
+  teamId: number; teamColor: string; teamName: string; joinCode?: string; isOwner: boolean;
+}) {
+  (window as any).__currentTeamId = teamId;
+
   const { t } = useI18n();
   const mg = t.management;
   const ti = t.teamInvite;
   const { toast } = useToast();
   const { user: clerkUser } = useUser();
 
-  const [coaches, setCoaches] = useState<CoachMember[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [ownerId, setOwnerId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
-
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [coachEmail, setCoachEmail] = useState("");
-  const [inviteStatus, setInviteStatus] = useState<"idle" | "sending" | "generating" | "sent" | "error">("idle");
-  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState<string>("");
@@ -86,98 +493,23 @@ export default function TeamManagementTab({
 
   const [copiedJoinCode, setCopiedJoinCode] = useState(false);
 
-  const [titleEditUserId, setTitleEditUserId] = useState<number | null>(null);
-  const [titleInput, setTitleInput] = useState("");
-
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const coachRes = await fetch(`/api/teams/${teamId}/coaches`);
-      if (coachRes.ok) {
-        const data = await coachRes.json();
-        setCoaches(Array.isArray(data) ? data : (data.coaches ?? []));
-        const invites: PendingInvite[] = Array.isArray(data) ? [] : (data.pendingInvites ?? []);
-        setPendingInvites(invites.filter((i: PendingInvite) => i.status === "pending" && i.inviteType === "email"));
+      const res = await fetch(`/api/teams/${teamId}/coaches`);
+      if (res.ok) {
+        const data = await res.json();
+        setStaff(Array.isArray(data) ? data : (data.coaches ?? []));
+        setOwnerId(data.ownerId ?? null);
       }
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [teamId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  async function updateTitle(userId: number) {
-    const res = await fetch(`/api/teams/${teamId}/coaches/${userId}/title`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: titleInput.trim() || null }),
-    });
-    if (res.ok) {
-      toast({ title: mg.titleUpdated });
-      setTitleEditUserId(null);
-      loadData();
-    } else toast({ title: mg.failedAction, variant: "destructive" });
-  }
-
-  async function changeRole(userId: number, role: string) {
-    const res = await fetch(`/api/teams/${teamId}/coaches/${userId}/role`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
-    });
-    if (res.ok) { toast({ title: mg.staffUpdated }); loadData(); }
-    else toast({ title: mg.failedAction, variant: "destructive" });
-  }
-
-  async function removeCoach(userId: number) {
-    if (!confirm(mg.confirmRemoveCoach)) return;
-    const res = await fetch(`/api/teams/${teamId}/coaches/${userId}`, { method: "DELETE" });
-    if (res.ok) { toast({ title: mg.staffUpdated }); loadData(); }
-    else toast({ title: mg.failedAction, variant: "destructive" });
-  }
-
-  async function sendCoachInvite() {
-    if (!coachEmail.includes("@")) return;
-    setInviteStatus("sending");
-    const res = await fetch(`/api/teams/${teamId}/coaches/invite`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: coachEmail, invitedRole: "coach" }),
-    });
-    if (res.ok) {
-      setInviteStatus("sent");
-      toast({ title: ti.inviteSent });
-      setCoachEmail("");
-      loadData();
-    } else {
-      setInviteStatus("error");
-    }
-  }
-
-  async function generateCoachLink() {
-    setInviteStatus("generating");
-    const res = await fetch(`/api/teams/${teamId}/coaches/invite`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "link", invitedRole: "coach" }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setGeneratedLink(data.url);
-      setInviteStatus("idle");
-      loadData();
-    } else {
-      setInviteStatus("error");
-    }
-  }
-
-  async function copyGeneratedLink() {
-    if (!generatedLink) return;
-    await navigator.clipboard.writeText(generatedLink).catch(() => {});
-    setCopiedLink(true);
-    toast({ title: ti.linkCopied });
-    setTimeout(() => setCopiedLink(false), 2000);
-  }
+  const myMember = staff.find(s => s.clerkId === clerkUser?.id);
+  const canManageSettings = isOwner || (myMember?.canManageTeamSettings === true);
+  const otherCoaches = staff.filter(c => !c.isOwner && c.clerkId !== clerkUser?.id && !c.isPlaceholder && c.userId !== null);
 
   async function transferOwnership() {
     if (!transferTargetId) return;
@@ -187,29 +519,19 @@ export default function TeamManagementTab({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ newOwnerId: parseInt(transferTargetId), confirm: true }),
     });
-    if (res.ok) {
-      toast({ title: mg.ownershipTransferred });
-      setTransferOpen(false);
-      loadData();
-    } else {
-      toast({ title: mg.failedAction, variant: "destructive" });
-    }
+    if (res.ok) { toast({ title: mg.ownershipTransferred }); setTransferOpen(false); loadData(); }
+    else toast({ title: mg.failedAction, variant: "destructive" });
     setTransferLoading(false);
   }
 
   async function archiveTeam() {
     setArchiveLoading(true);
     const res = await fetch(`/api/teams/${teamId}/archive`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason: archiveReason || null }),
     });
-    if (res.ok) {
-      toast({ title: mg.teamArchived });
-      setArchiveOpen(false);
-    } else {
-      toast({ title: mg.failedAction, variant: "destructive" });
-    }
+    if (res.ok) { toast({ title: mg.teamArchived }); setArchiveOpen(false); }
+    else toast({ title: mg.failedAction, variant: "destructive" });
     setArchiveLoading(false);
   }
 
@@ -217,16 +539,11 @@ export default function TeamManagementTab({
     if (deletePhrase !== "DELETE PERMANENTLY") return;
     setDeleteLoading(true);
     const res = await fetch(`/api/teams/${teamId}/destroy`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      method: "DELETE", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirmPhrase: "DELETE PERMANENTLY" }),
     });
-    if (res.ok) {
-      toast({ title: mg.teamDeleted });
-      window.location.href = "/teams";
-    } else {
-      toast({ title: mg.failedAction, variant: "destructive" });
-    }
+    if (res.ok) { toast({ title: mg.teamDeleted }); window.location.href = "/teams"; }
+    else toast({ title: mg.failedAction, variant: "destructive" });
     setDeleteLoading(false);
   }
 
@@ -239,159 +556,40 @@ export default function TeamManagementTab({
     toast({ title: ti.linkCopied });
   }
 
-  const roleLabel = (role: string) => {
-    if (role === "coach") return mg.roleCoach;
-    if (role === "assistant") return mg.roleAssistant;
-    return mg.rolePlayer;
-  };
-
-  const roleIcon = (role: string, isOwner: boolean) => {
-    if (isOwner) return Crown;
-    return ROLE_ICONS[role] ?? User;
-  };
-
-  const otherCoaches = coaches.filter(c => !c.isOwner && clerkUser?.id !== c.clerkId);
-
   return (
     <div className="space-y-6">
-
       {/* Coaching Staff */}
       <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
         <div className="px-4 py-3 border-b border-white/6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <UserCog className="h-4 w-4" style={{ color: teamColor }} />
-            <p className="font-semibold text-white text-sm">{mg.coachingStaff}</p>
+            <p className="font-semibold text-white text-sm">{mg.coachingStaff} {!loading && `(${staff.length})`}</p>
           </div>
-          {isOwner && (
-            <Button size="sm" variant="ghost"
-              onClick={() => { setInviteOpen(true); setInviteStatus("idle"); setGeneratedLink(null); setCoachEmail(""); }}
+          {canManageSettings && (
+            <Button size="sm" variant="ghost" onClick={() => setAddOpen(true)}
               className="text-xs text-white/50 hover:text-white border border-white/10 rounded-xl">
-              <Plus className="h-3 w-3 me-1" />
-              {mg.inviteCoach}
+              <Plus className="h-3 w-3 me-1" />{mg.addManagerButton}
             </Button>
           )}
         </div>
 
         {loading ? (
           <div className="p-4 space-y-2">
-            {[1,2].map(i => <Skeleton key={i} className="h-12 rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />)}
           </div>
-        ) : coaches.length === 0 ? (
+        ) : staff.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <p className="text-xs text-white/30">{mg.noCoaches}</p>
           </div>
         ) : (
           <div className="divide-y divide-white/5">
-            {coaches.map(coach => {
-              const RoleIcon = roleIcon(coach.role, coach.isOwner);
-              const isMe = clerkUser?.id === coach.clerkId;
-              return (
-                <div key={coach.userId} className="px-4 py-3 flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-sm"
-                    style={{ background: `${teamColor}25`, color: teamColor }}>
-                    {coach.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-white truncate">{coach.name}</p>
-                      {isMe && <span className="text-[10px] text-white/30">(you)</span>}
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <RoleIcon className="h-3 w-3 shrink-0" style={{ color: coach.isOwner ? "#f7b538" : "rgba(255,255,255,0.35)" }} />
-                      <span className="text-[10px] font-bold uppercase tracking-wider"
-                        style={{ color: coach.isOwner ? "#f7b538" : "rgba(255,255,255,0.35)" }}>
-                        {coach.isOwner ? mg.youOwner : roleLabel(coach.role)}
-                      </span>
-                      {coach.coachTitle && (
-                        <span className="text-[10px] text-white/40 font-medium px-1.5 py-0.5 rounded"
-                          style={{ background: "rgba(255,255,255,0.06)" }}>
-                          {coach.coachTitle}
-                        </span>
-                      )}
-                      {isOwner && !coach.isOwner && (
-                        <button
-                          onClick={() => { setTitleEditUserId(coach.userId); setTitleInput(coach.coachTitle ?? ""); }}
-                          className="text-[9px] text-white/20 hover:text-white/50 transition-colors">
-                          {mg.editTitle}
-                        </button>
-                      )}
-                    </div>
-                    {/* Inline title editor */}
-                    {titleEditUserId === coach.userId && (
-                      <div className="mt-2 space-y-1.5">
-                        <div className="flex gap-1.5 flex-wrap">
-                          {(mg.coachTitleChips as string[]).map(chip => (
-                            <button key={chip} onClick={() => setTitleInput(chip)}
-                              className="px-2 py-0.5 rounded text-[9px] font-semibold transition-all border"
-                              style={titleInput === chip
-                                ? { background: `${teamColor}25`, color: teamColor, borderColor: `${teamColor}50` }
-                                : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.1)" }
-                              }>
-                              {chip}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex gap-1">
-                          <input
-                            value={titleInput}
-                            onChange={e => setTitleInput(e.target.value)}
-                            placeholder={mg.coachTitlePlaceholder}
-                            className="flex-1 h-7 rounded-lg px-2 text-xs bg-white/6 border border-white/10 text-white placeholder:text-white/20 outline-none"
-                          />
-                          <button onClick={() => updateTitle(coach.userId)}
-                            className="h-7 px-2 rounded-lg text-xs font-semibold text-white"
-                            style={{ background: teamColor }}>
-                            {t.common.save}
-                          </button>
-                          <button onClick={() => setTitleEditUserId(null)}
-                            className="h-7 px-2 rounded-lg text-xs text-white/40 border border-white/10">
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {isOwner && !coach.isOwner && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Select value={coach.role} onValueChange={v => changeRole(coach.userId, v)}>
-                        <SelectTrigger className="h-7 text-xs bg-white/4 border-white/10 text-white/60 rounded-lg w-28">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
-                          <SelectItem value="coach" className="text-white text-xs">{mg.roleCoach}</SelectItem>
-                          <SelectItem value="assistant" className="text-white text-xs">{mg.roleAssistant}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400/50 hover:text-red-400"
-                        onClick={() => removeCoach(coach.userId)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {staff.map(coach => (
+              <StaffRow key={coach.id} coach={coach} teamColor={teamColor}
+                isOwnerViewing={isOwner} canManageSettings={canManageSettings} onReload={loadData} />
+            ))}
           </div>
         )}
       </div>
-
-      {/* Pending coach invitations */}
-      {pendingInvites.length > 0 && (
-        <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
-          <div className="px-4 py-3 border-b border-white/6">
-            <p className="font-semibold text-white/50 text-xs uppercase tracking-wider">{mg.pendingCoachInvites}</p>
-          </div>
-          <div className="divide-y divide-white/5">
-            {pendingInvites.map(inv => (
-              <div key={inv.id} className="px-4 py-3 flex items-center gap-3">
-                <Mail className="h-3.5 w-3.5 text-white/30 shrink-0" />
-                <p className="text-sm text-white/60 flex-1 truncate">{inv.email}</p>
-                <span className="text-[10px] text-amber-400/70 font-bold uppercase tracking-wider">Pending</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Squad Settings */}
       <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
@@ -405,8 +603,7 @@ export default function TeamManagementTab({
               <code className="flex-1 bg-white/4 border border-white/8 rounded-lg px-3 py-2 text-sm font-mono text-white/70">
                 {joinCode ?? "—"}
               </code>
-              <Button size="sm" variant="ghost"
-                onClick={copyJoinCode}
+              <Button size="sm" variant="ghost" onClick={copyJoinCode}
                 className="border border-white/10 rounded-xl text-white/50 hover:text-white">
                 {copiedJoinCode ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
               </Button>
@@ -425,144 +622,75 @@ export default function TeamManagementTab({
             </div>
           </div>
           <div className="px-4 py-4 space-y-3">
-            {/* Transfer ownership */}
             {otherCoaches.length > 0 && (
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-white/80">{mg.transferOwnership}</p>
                   <p className="text-xs text-white/40 mt-0.5">{mg.confirmTransfer}</p>
                 </div>
-                <Button size="sm" variant="ghost"
-                  onClick={() => setTransferOpen(true)}
+                <Button size="sm" variant="ghost" onClick={() => setTransferOpen(true)}
                   className="border border-white/15 text-white/60 hover:text-white rounded-xl shrink-0">
-                  <ArrowRightLeft className="h-3.5 w-3.5 me-1.5" />
-                  {mg.transferOwnership}
+                  <ArrowRightLeft className="h-3.5 w-3.5 me-1.5" />{mg.transferOwnership}
                 </Button>
               </div>
             )}
-
-            {/* Archive */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-white/80">{mg.archiveTeam}</p>
                 <p className="text-xs text-white/40 mt-0.5">{mg.confirmArchive}</p>
               </div>
-              <Button size="sm" variant="ghost"
-                onClick={() => setArchiveOpen(true)}
+              <Button size="sm" variant="ghost" onClick={() => setArchiveOpen(true)}
                 className="border border-amber-500/30 text-amber-400/70 hover:text-amber-400 rounded-xl shrink-0">
-                <Archive className="h-3.5 w-3.5 me-1.5" />
-                {mg.archiveTeam}
+                <Archive className="h-3.5 w-3.5 me-1.5" />{mg.archiveTeam}
               </Button>
             </div>
-
-            {/* Delete */}
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-red-400/80">{mg.deleteTeam}</p>
                 <p className="text-xs text-white/30 mt-0.5">Permanently destroy all team data</p>
               </div>
-              <Button size="sm" variant="ghost"
-                onClick={() => setDeleteOpen(true)}
+              <Button size="sm" variant="ghost" onClick={() => setDeleteOpen(true)}
                 className="border border-red-500/30 text-red-400/70 hover:text-red-400 rounded-xl shrink-0">
-                <Trash2 className="h-3.5 w-3.5 me-1.5" />
-                {mg.deleteTeam}
+                <Trash2 className="h-3.5 w-3.5 me-1.5" />{mg.deleteTeam}
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Invite Coach Dialog */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
-          <DialogHeader>
-            <DialogTitle className="font-display text-xl text-white tracking-wide">
-              {mg.inviteCoach.toUpperCase()}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {inviteStatus === "sent" ? (
-              <div className="rounded-xl p-4 text-center space-y-1.5"
-                style={{ background: "rgba(46,204,113,0.08)", border: "1px solid rgba(46,204,113,0.2)" }}>
-                <Check className="h-6 w-6 text-green-400 mx-auto" />
-                <p className="text-sm font-semibold text-green-400">{ti.inviteSent}</p>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label className="stat-label text-white/50 block mb-1.5">{mg.coachEmail}</label>
-                  <Input
-                    type="email"
-                    value={coachEmail}
-                    onChange={e => { setCoachEmail(e.target.value); setInviteStatus("idle"); }}
-                    placeholder={mg.coachEmailPlaceholder}
-                    className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
-                  />
-                </div>
-                {generatedLink && (
-                  <div className="rounded-xl p-3 flex items-center gap-2"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                    <p className="text-xs text-white/60 font-mono flex-1 truncate">{generatedLink}</p>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={copyGeneratedLink}>
-                      {copiedLink ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-white/50" />}
-                    </Button>
-                  </div>
-                )}
-                {inviteStatus === "error" && (
-                  <p className="text-xs text-red-400">{ti.inviteError}</p>
-                )}
-                <div className="space-y-2">
-                  <Button
-                    onClick={sendCoachInvite}
-                    disabled={inviteStatus === "sending" || !coachEmail.includes("@")}
-                    className="w-full font-semibold rounded-xl h-10"
-                    style={{ background: teamColor, color: "white" }}>
-                    {inviteStatus === "sending" ? ti.sending : mg.sendCoachInvite}
-                  </Button>
-                  <Button
-                    onClick={generateCoachLink}
-                    disabled={inviteStatus === "generating"}
-                    variant="ghost"
-                    className="w-full font-semibold rounded-xl h-10 border border-white/10 text-white/60">
-                    <Link2 className="h-3.5 w-3.5 me-2" />
-                    {inviteStatus === "generating" ? ti.sending : ti.generateLink}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Add Manager Dialog */}
+      <AddManagerDialog open={addOpen} onClose={() => setAddOpen(false)} teamId={teamId}
+        teamColor={teamColor} onSaved={loadData} />
 
       {/* Transfer Ownership Dialog */}
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-xl text-white tracking-wide">
-              {mg.transferOwnership.toUpperCase()}
-            </DialogTitle>
+            <DialogTitle className="font-display text-xl text-white tracking-wide">{mg.transferOwnership.toUpperCase()}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-xs text-white/50">{mg.confirmTransfer}</p>
-            <Select value={transferTargetId} onValueChange={setTransferTargetId}>
-              <SelectTrigger className="bg-white/6 border-white/10 text-white rounded-xl">
-                <SelectValue placeholder="Select a coach" />
-              </SelectTrigger>
-              <SelectContent className="border-border" style={{ background: "var(--surface-elevated)" }}>
-                {otherCoaches.map(c => (
-                  <SelectItem key={c.userId} value={String(c.userId)} className="text-white">
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={transferOwnership}
-              disabled={transferLoading || !transferTargetId}
-              className="w-full font-semibold rounded-xl h-10 bg-amber-500/80 hover:bg-amber-500 text-white">
-              <ArrowRightLeft className="h-3.5 w-3.5 me-2" />
-              {transferLoading ? t.common.saving : mg.transferOwnership}
-            </Button>
+            <div className="space-y-2">
+              {otherCoaches.map(c => (
+                <button key={c.userId} onClick={() => setTransferTargetId(String(c.userId))}
+                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border transition-all"
+                  style={transferTargetId === String(c.userId)
+                    ? { background: `${teamColor}15`, borderColor: `${teamColor}40` }
+                    : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.08)" }
+                  }>
+                  <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold" style={{ background: `${teamColor}25`, color: teamColor }}>
+                    {c.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm text-white">{c.name}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setTransferOpen(false)} className="flex-1 border border-white/10 text-white/50 rounded-xl">Cancel</Button>
+              <Button onClick={transferOwnership} disabled={!transferTargetId || transferLoading}
+                className="flex-1 font-semibold rounded-xl h-10" style={{ background: teamColor, color: "white" }}>
+                {transferLoading ? "…" : mg.transferOwnership}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -571,28 +699,19 @@ export default function TeamManagementTab({
       <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-xl text-white tracking-wide">
-              {mg.archiveTeam.toUpperCase()}
-            </DialogTitle>
+            <DialogTitle className="font-display text-xl text-white tracking-wide">{mg.archiveTeam.toUpperCase()}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-xs text-white/50">{mg.confirmArchive}</p>
-            <div>
-              <label className="stat-label text-white/40 block mb-1.5">{mg.archiveReason}</label>
-              <Input
-                value={archiveReason}
-                onChange={e => setArchiveReason(e.target.value)}
-                placeholder={mg.archiveReasonPlaceholder}
-                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
-              />
+            <p className="text-sm text-white/60">{mg.confirmArchive}</p>
+            <Input value={archiveReason} onChange={e => setArchiveReason(e.target.value)}
+              placeholder={mg.archiveReasonPlaceholder} className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setArchiveOpen(false)} className="flex-1 border border-white/10 text-white/50 rounded-xl">Cancel</Button>
+              <Button onClick={archiveTeam} disabled={archiveLoading}
+                className="flex-1 font-semibold rounded-xl h-10 bg-amber-500/80 hover:bg-amber-500 text-white">
+                {archiveLoading ? "…" : mg.archiveTeam}
+              </Button>
             </div>
-            <Button
-              onClick={archiveTeam}
-              disabled={archiveLoading}
-              className="w-full font-semibold rounded-xl h-10 bg-amber-500/80 hover:bg-amber-500 text-white">
-              <Archive className="h-3.5 w-3.5 me-2" />
-              {archiveLoading ? t.common.saving : mg.archiveTeam}
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -601,30 +720,19 @@ export default function TeamManagementTab({
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-xl text-red-400 tracking-wide">
-              {mg.deleteTeam.toUpperCase()}
-            </DialogTitle>
+            <DialogTitle className="font-display text-xl text-red-400 tracking-wide">{mg.deleteTeam.toUpperCase()}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="rounded-xl p-3" style={{ background: "rgba(231,76,60,0.08)", border: "1px solid rgba(231,76,60,0.2)" }}>
-              <p className="text-xs text-red-300/80">This will permanently delete <strong>{teamName}</strong> and all its players, events, tasks, and messages. This cannot be undone.</p>
+            <p className="text-sm text-white/60">{mg.deleteConfirmPhrase}</p>
+            <Input value={deletePhrase} onChange={e => setDeletePhrase(e.target.value)}
+              placeholder={mg.deletePhrasePlaceholder} className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl font-mono" />
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setDeleteOpen(false)} className="flex-1 border border-white/10 text-white/50 rounded-xl">Cancel</Button>
+              <Button onClick={deleteTeam} disabled={deletePhrase !== "DELETE PERMANENTLY" || deleteLoading}
+                className="flex-1 font-semibold rounded-xl h-10 bg-red-500/80 hover:bg-red-500 text-white">
+                {deleteLoading ? "…" : mg.deleteTeam}
+              </Button>
             </div>
-            <div>
-              <label className="stat-label text-white/40 block mb-1.5">{mg.deleteConfirmPhrase}</label>
-              <Input
-                value={deletePhrase}
-                onChange={e => setDeletePhrase(e.target.value)}
-                placeholder={mg.deletePhrasePlaceholder}
-                className="bg-white/6 border-red-400/20 text-white placeholder:text-white/30 rounded-xl"
-              />
-            </div>
-            <Button
-              onClick={deleteTeam}
-              disabled={deleteLoading || deletePhrase !== "DELETE PERMANENTLY"}
-              className="w-full font-semibold rounded-xl h-10 bg-red-600 hover:bg-red-500 text-white disabled:opacity-30">
-              <Trash2 className="h-3.5 w-3.5 me-2" />
-              {deleteLoading ? t.common.saving : mg.deleteTeam}
-            </Button>
           </div>
         </DialogContent>
       </Dialog>
