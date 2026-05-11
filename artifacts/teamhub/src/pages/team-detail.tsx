@@ -538,7 +538,7 @@ export default function TeamDetailPage() {
             <TabsContent value="games" className="mt-0"><GamesTab teamId={id} teamColor={teamColor} isCoach={isCoach} /></TabsContent>
             <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
-            <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} isCoach={isCoach} /></TabsContent>
+            <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} isCoach={isCoach} currentUserId={appUser?.id} /></TabsContent>
             <TabsContent value="files" className="mt-0"><FilesTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="management" className="mt-0">
               <TeamManagementTab

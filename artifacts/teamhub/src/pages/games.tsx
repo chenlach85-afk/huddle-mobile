@@ -188,7 +188,7 @@ function GameCard({ event, teamColor, isCoach, onEdit, onDelete, onView }: {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="rounded-xl border border-white/8 p-4" style={{ background: "var(--surface-card)" }}>
+    <div className="rounded-xl border border-white/10 p-4" style={{ background: "hsl(226,40%,10%)" }}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -325,7 +325,7 @@ function GameForm({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
+      <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "hsl(226,40%,8%)" }}>
         <DialogHeader>
           <DialogTitle className="font-display text-2xl text-white tracking-wide">
             {(initial?.id ? g.editGame : g.scheduleGameTitle).toUpperCase()}
@@ -344,7 +344,7 @@ function GameForm({
                     className="rounded-xl px-2 py-3 text-center text-xs font-semibold border transition-all"
                     style={active
                       ? { background: `${cfg.color}20`, borderColor: `${cfg.color}50`, color: cfg.color }
-                      : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)" }
+                      : { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.5)" }
                     }>
                     <div className="text-base mb-1">{cfg.icon}</div>
                     {gt === "league_game" ? g.leagueGame : gt === "friendly_game" ? g.friendlyGame : g.tournamentGame}
@@ -389,11 +389,16 @@ function GameForm({
           {/* Date / Times */}
           <div>
             <p className="stat-label text-white/40 mb-2">Date & Time *</p>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-3"><Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-white/6 border-white/10 text-white rounded-xl" /></div>
-              <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} placeholder="Start" className="bg-white/6 border-white/10 text-white rounded-xl text-xs" />
-              <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} placeholder="End" className="bg-white/6 border-white/10 text-white rounded-xl text-xs" />
-              <Input type="time" value={arrivalTime} onChange={e => setArrivalTime(e.target.value)} placeholder={ev.arrivalTime ?? "Arrival"} className="bg-white/6 border-white/10 text-white rounded-xl text-xs" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2"><Input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-white/6 border-white/10 text-white rounded-xl" /></div>
+              <div>
+                <label className="text-[10px] text-white/30 block mb-1">Kickoff *</label>
+                <Input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="bg-white/6 border-white/10 text-white rounded-xl" />
+              </div>
+              <div>
+                <label className="text-[10px] text-white/30 block mb-1">{ev.arrivalTime ?? "Arrival"} (optional)</label>
+                <Input type="time" value={arrivalTime} onChange={e => setArrivalTime(e.target.value)} className="bg-white/6 border-white/10 text-white rounded-xl" />
+              </div>
             </div>
           </div>
 
@@ -495,7 +500,7 @@ function DeleteGameDialog({ event, onClose, onDeleted }: { event: EventRow; onCl
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
+      <DialogContent className="max-w-sm border-border" style={{ background: "hsl(226,40%,8%)" }}>
         <DialogHeader>
           <DialogTitle className="font-display text-xl text-white tracking-wide">{g.deleteGameConfirmTitle.toUpperCase()}</DialogTitle>
         </DialogHeader>
@@ -576,13 +581,13 @@ export default function GamesTab({ teamId, teamColor, isCoach }: { teamId: numbe
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: "hsl(226,40%,10%)" }}>
         {SUB_TABS.map(tab => (
           <button key={tab.value} onClick={() => setActiveTab(tab.value)}
             className="flex-1 py-2 px-2 rounded-lg text-xs font-semibold transition-all"
             style={activeTab === tab.value
-              ? { background: "rgba(255,255,255,0.12)", color: "white" }
-              : { color: "rgba(255,255,255,0.4)" }
+              ? { background: "hsl(226,40%,18%)", color: "white" }
+              : { color: "rgba(255,255,255,0.5)" }
             }>
             {tab.label}
           </button>
@@ -600,7 +605,7 @@ export default function GamesTab({ teamId, teamColor, isCoach }: { teamId: numbe
               <HeroCard event={nextGame} teamColor={teamColor} isCoach={isCoach}
                 onEdit={() => { setEditEvent(nextGame); setFormOpen(true); }} />
             ) : (
-              <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
+              <div className="rounded-2xl border border-white/10 p-10 text-center" style={{ background: "hsl(226,40%,10%)" }}>
                 <Trophy className="h-10 w-10 mx-auto text-white/15 mb-3" />
                 <p className="font-display text-xl text-white/30 tracking-wide">{ng.noGame.toUpperCase()}</p>
                 <p className="text-xs text-white/25 mt-1">{ng.noGameDesc}</p>
@@ -616,7 +621,7 @@ export default function GamesTab({ teamId, teamColor, isCoach }: { teamId: numbe
 
           {activeTab === "upcoming" && (
             upcoming.length === 0 ? (
-              <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
+              <div className="rounded-2xl border border-white/10 p-10 text-center" style={{ background: "hsl(226,40%,10%)" }}>
                 <Calendar className="h-10 w-10 mx-auto text-white/15 mb-3" />
                 <p className="text-sm text-white/30">{g.noUpcomingGames}</p>
               </div>
@@ -634,7 +639,7 @@ export default function GamesTab({ teamId, teamColor, isCoach }: { teamId: numbe
 
           {activeTab === "past" && (
             past.length === 0 ? (
-              <div className="rounded-2xl border border-border p-10 text-center" style={{ background: "var(--surface-card)" }}>
+              <div className="rounded-2xl border border-white/10 p-10 text-center" style={{ background: "hsl(226,40%,10%)" }}>
                 <Calendar className="h-10 w-10 mx-auto text-white/15 mb-3" />
                 <p className="text-sm text-white/30">{g.noPastGames}</p>
               </div>

@@ -170,6 +170,58 @@ function typeEmoji(type: string): string {
   return m[type] ?? "📢";
 }
 
+/* ─── PATCH /messages/:msgId ─────────────────────────────── */
+router.patch("/messages/:msgId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
+  const msgId = parseInt(req.params.msgId as string);
+  if (isNaN(msgId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const existing = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).then(r => r[0]);
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
+  const isSender = existing.senderUserId === req.userId;
+  const teamMember = await db.select({ role: teamMembersTable.role })
+    .from(teamMembersTable)
+    .where(and(eq(teamMembersTable.teamId, existing.teamId), eq(teamMembersTable.userId, req.userId!)))
+    .then(r => r[0]);
+  const isCoach = teamMember?.role === "coach" || teamMember?.role === "assistant";
+
+  if (!isSender && !isCoach) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { title, content, pinned } = req.body as { title?: string; content?: string; pinned?: boolean };
+  const updates: Partial<typeof messagesTable.$inferInsert> = {};
+  if (title !== undefined) updates.title = title.trim();
+  if (content !== undefined) updates.content = content.trim();
+  if (pinned !== undefined) updates.pinned = pinned;
+
+  const [updated] = await db.update(messagesTable).set(updates).where(eq(messagesTable.id, msgId)).returning();
+  res.json(updated);
+});
+
+/* ─── DELETE /messages/:msgId ────────────────────────────── */
+router.delete("/messages/:msgId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
+  const msgId = parseInt(req.params.msgId as string);
+  if (isNaN(msgId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const existing = await db.select().from(messagesTable).where(eq(messagesTable.id, msgId)).then(r => r[0]);
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (!(await assertTeamAccess(existing.teamId, req, res))) return;
+
+  const isSender = existing.senderUserId === req.userId;
+  const teamMember = await db.select({ role: teamMembersTable.role })
+    .from(teamMembersTable)
+    .where(and(eq(teamMembersTable.teamId, existing.teamId), eq(teamMembersTable.userId, req.userId!)))
+    .then(r => r[0]);
+  const isCoach = teamMember?.role === "coach" || teamMember?.role === "assistant";
+
+  if (!isSender && !isCoach) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  await db.delete(messagesTable).where(eq(messagesTable.id, msgId));
+  res.json({ ok: true });
+});
+
 /* ─── GET /teams/:teamId/announcements/:msgId/deliveries ── */
 router.get("/teams/:teamId/announcements/:msgId/deliveries", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
   const teamId = parseInt(req.params.teamId as string);

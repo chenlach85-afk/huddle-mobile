@@ -133,7 +133,7 @@ function AddManagerDialog({ open, onClose, teamId, teamColor, initialData, onSav
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "var(--surface-card)" }}>
+      <DialogContent className="max-w-md border-border max-h-[90vh] overflow-y-auto" style={{ background: "hsl(226,40%,8%)" }}>
         <DialogHeader>
           <DialogTitle className="font-display text-2xl text-white tracking-wide">
             {(isEdit ? mg.editManager : mg.addManagerTitle).toUpperCase()}
@@ -142,68 +142,68 @@ function AddManagerDialog({ open, onClose, teamId, teamColor, initialData, onSav
         <div className="space-y-5 pb-2">
           {/* Personal info */}
           <section className="space-y-3">
-            <p className="stat-label text-white/30 uppercase tracking-widest">{mg.personalInfo}</p>
+            <p className="stat-label text-white/50 uppercase tracking-widest">{mg.personalInfo}</p>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="stat-label text-white/40 block mb-1.5">{mg.firstName} *</label>
+                <label className="stat-label text-white/60 block mb-1.5">{mg.firstName} *</label>
                 <Input value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="John"
-                  className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+                  className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl" />
               </div>
               <div>
-                <label className="stat-label text-white/40 block mb-1.5">{mg.familyName} *</label>
+                <label className="stat-label text-white/60 block mb-1.5">{mg.familyName} *</label>
                 <Input value={familyName} onChange={e => setFamilyName(e.target.value)} placeholder="Smith"
-                  className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+                  className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl" />
               </div>
             </div>
             <div>
-              <label className="stat-label text-white/40 block mb-1.5">{mg.roleTitle}</label>
+              <label className="stat-label text-white/60 block mb-1.5">{mg.roleTitle}</label>
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {TITLE_QUICK_PICKS.map(chip => (
                   <button key={chip} onClick={() => setCoachTitle(chip)}
                     className="px-2 py-0.5 rounded text-[10px] font-semibold transition-all border"
                     style={coachTitle === chip
                       ? { background: `${teamColor}25`, color: teamColor, borderColor: `${teamColor}50` }
-                      : { background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", borderColor: "rgba(255,255,255,0.1)" }
+                      : { background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)", borderColor: "rgba(255,255,255,0.15)" }
                     }>{chip}</button>
                 ))}
               </div>
               <Input value={coachTitle} onChange={e => setCoachTitle(e.target.value)} placeholder={mg.coachTitlePlaceholder}
-                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+                className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl" />
             </div>
             <div>
-              <label className="stat-label text-white/40 block mb-1.5">{mg.notesLabel}</label>
+              <label className="stat-label text-white/60 block mb-1.5">{mg.notesLabel}</label>
               <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={mg.notesHelp} rows={2}
-                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm resize-none" />
+                className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl text-sm resize-none" />
             </div>
           </section>
 
           {/* Contact */}
           <section className="space-y-3">
-            <p className="stat-label text-white/30 uppercase tracking-widest">{mg.contact}</p>
+            <p className="stat-label text-white/50 uppercase tracking-widest">{mg.contact}</p>
             <div>
-              <label className="stat-label text-white/40 block mb-1.5">Email</label>
+              <label className="stat-label text-white/60 block mb-1.5">Email</label>
               <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="coach@example.com"
-                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+                className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl" />
             </div>
             <div>
-              <label className="stat-label text-white/40 block mb-1.5">Phone</label>
+              <label className="stat-label text-white/60 block mb-1.5">Phone</label>
               <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 555 000 0000"
-                className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+                className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl" />
             </div>
           </section>
 
           {/* Permissions */}
           <section className="space-y-3">
-            <p className="stat-label text-white/30 uppercase tracking-widest">{mg.permissions}</p>
+            <p className="stat-label text-white/50 uppercase tracking-widest">{mg.permissions}</p>
             <div>
-              <p className="stat-label text-white/40 mb-2">{mg.permissionLevel}</p>
+              <p className="stat-label text-white/60 mb-2">{mg.permissionLevel}</p>
               <div className="grid grid-cols-2 gap-2">
                 {([{ v: "coach", label: mg.roleCoachOpt }, { v: "assistant", label: mg.roleAssistantOpt }] as const).map(opt => (
                   <button key={opt.v} onClick={() => setRole(opt.v)}
                     className="rounded-xl py-2.5 px-3 text-sm font-semibold border transition-all"
                     style={role === opt.v
                       ? { background: `${teamColor}20`, borderColor: `${teamColor}50`, color: "white" }
-                      : { background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }
+                      : { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.6)" }
                     }>{opt.label}</button>
                 ))}
               </div>
@@ -213,15 +213,15 @@ function AddManagerDialog({ open, onClose, teamId, teamColor, initialData, onSav
                 className="w-full flex items-start gap-3 rounded-xl px-3 py-3 border transition-all text-start"
                 style={canManage
                   ? { background: `${teamColor}15`, borderColor: `${teamColor}40` }
-                  : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)" }
+                  : { background: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }
                 }>
                 {canManage
                   ? <ToggleRight className="h-4 w-4 shrink-0 mt-0.5" style={{ color: teamColor }} />
-                  : <ToggleLeft className="h-4 w-4 shrink-0 mt-0.5 text-white/30" />
+                  : <ToggleLeft className="h-4 w-4 shrink-0 mt-0.5 text-white/40" />
                 }
                 <div>
                   <p className="text-sm font-semibold text-white">{mg.canManageToggle}</p>
-                  <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed">{mg.canManageHelp}</p>
+                  <p className="text-[10px] text-white/50 mt-0.5 leading-relaxed">{mg.canManageHelp}</p>
                 </div>
               </button>
             )}
@@ -230,37 +230,45 @@ function AddManagerDialog({ open, onClose, teamId, teamColor, initialData, onSav
           {/* Send invitation — only for new staff */}
           {!isEdit && (
             <section className="space-y-3">
-              <p className="stat-label text-white/30 uppercase tracking-widest">{mg.sendInvitation}</p>
-              <div className="space-y-1.5">
+              <p className="stat-label text-white/50 uppercase tracking-widest">{mg.sendInvitation}</p>
+              <div className="space-y-2">
                 {([
-                  { v: "none", label: mg.inviteNone, icon: <User className="h-3.5 w-3.5" /> },
-                  { v: "send_email", label: mg.inviteEmail, icon: <Mail className="h-3.5 w-3.5" /> },
-                  { v: "generate_link", label: mg.inviteLink, icon: <Link2 className="h-3.5 w-3.5" /> },
+                  { v: "none", label: mg.inviteNone, icon: <User className="h-4 w-4" />, desc: "Add to staff list only" },
+                  { v: "send_email", label: mg.inviteEmail, icon: <Mail className="h-4 w-4" />, desc: "They'll get an invite by email" },
+                  { v: "generate_link", label: mg.inviteLink, icon: <Link2 className="h-4 w-4" />, desc: "Copy a link to share" },
                 ] as const).map(opt => (
                   <button key={opt.v} onClick={() => setInviteAction(opt.v)}
-                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm border transition-all"
+                    className="w-full flex items-center gap-3 rounded-xl px-4 py-3 text-sm border transition-all"
                     style={inviteAction === opt.v
-                      ? { background: `${teamColor}15`, borderColor: `${teamColor}40`, color: "white" }
-                      : { background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }
+                      ? { background: `${teamColor}18`, borderColor: `${teamColor}50`, color: "white" }
+                      : { background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)" }
                     }>
-                    <span style={{ color: inviteAction === opt.v ? teamColor : "rgba(255,255,255,0.3)" }}>{opt.icon}</span>
-                    {opt.label}
+                    <span style={{ color: inviteAction === opt.v ? teamColor : "rgba(255,255,255,0.4)" }}>{opt.icon}</span>
+                    <div className="text-start">
+                      <p className="font-semibold text-sm">{opt.label}</p>
+                      <p className="text-[10px] opacity-60 mt-0.5">{opt.desc}</p>
+                    </div>
+                    {inviteAction === opt.v && (
+                      <span className="ms-auto w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: teamColor }}>
+                        <Check className="h-2.5 w-2.5 text-white" />
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
               {inviteAction !== "none" && (
                 <div>
-                  <label className="stat-label text-white/40 block mb-1.5">{mg.personalMessage}</label>
+                  <label className="stat-label text-white/60 block mb-1.5">{mg.personalMessage}</label>
                   <Textarea value={personalMessage} onChange={e => setPersonalMessage(e.target.value)} rows={2}
                     placeholder="Looking forward to working with you!"
-                    className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-sm resize-none" />
+                    className="bg-white/8 border-white/15 text-white placeholder:text-white/30 rounded-xl text-sm resize-none" />
                 </div>
               )}
             </section>
           )}
 
           <div className="flex gap-2 pt-1">
-            <Button variant="ghost" onClick={onClose} className="flex-1 border border-white/10 text-white/50 rounded-xl">Cancel</Button>
+            <Button variant="ghost" onClick={onClose} className="flex-1 border border-white/15 text-white/60 rounded-xl">Cancel</Button>
             <Button onClick={handleSave} disabled={loading} className="flex-1 font-semibold rounded-xl h-10"
               style={{ background: teamColor, color: "white" }}>
               {loading ? "Saving…" : isEdit ? "Save Changes" : mg.addManager}
