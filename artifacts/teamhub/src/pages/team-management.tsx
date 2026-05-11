@@ -462,9 +462,10 @@ function StaffRow({ coach, teamColor, isOwnerViewing, canManageSettings, onReloa
 }
 
 export default function TeamManagementTab({
-  teamId, teamColor, teamName, joinCode, isOwner,
+  teamId, teamColor, teamName, joinCode, isOwner, canManageSettings: canManageSettingsProp,
 }: {
   teamId: number; teamColor: string; teamName: string; joinCode?: string; isOwner: boolean;
+  canManageSettings?: boolean;
 }) {
   (window as any).__currentTeamId = teamId;
 
@@ -508,7 +509,7 @@ export default function TeamManagementTab({
   useEffect(() => { loadData(); }, [loadData]);
 
   const myMember = staff.find(s => s.clerkId === clerkUser?.id);
-  const canManageSettings = isOwner || (myMember?.canManageTeamSettings === true);
+  const canManageSettings = canManageSettingsProp ?? (isOwner || (myMember?.canManageTeamSettings === true));
   const otherCoaches = staff.filter(c => !c.isOwner && c.clerkId !== clerkUser?.id && !c.isPlaceholder && c.userId !== null);
 
   async function transferOwnership() {

@@ -153,6 +153,8 @@ router.patch("/events/:eventId", requireAuth, async (req: AuthedRequest, res): P
   if ("uniformSecondaryColor" in d) updates.uniformSecondaryColor = (d as any).uniformSecondaryColor;
   if ("uniformNotes" in d) updates.uniformNotes = (d as any).uniformNotes;
   if ("whatToBring" in d) updates.whatToBring = (d as any).whatToBring;
+  if ("homeScore" in d) updates.homeScore = (d as any).homeScore;
+  if ("awayScore" in d) updates.awayScore = (d as any).awayScore;
 
   const [event] = await db
     .update(eventsTable)

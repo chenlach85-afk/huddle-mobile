@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql, and } from "drizzle-orm";
 import { db, teamsTable, teamMembersTable, playersTable } from "@workspace/db";
 import {
   CreateTeamBody,
@@ -133,6 +133,7 @@ router.get("/teams/:teamId", requireAuth, async (req: AuthedRequest, res): Promi
       location: teamsTable.location,
       playerCount: teamsTable.playerCount,
       joinCode: teamsTable.joinCode,
+      createdBy: teamsTable.createdBy,
       createdAt: teamsTable.createdAt,
       updatedAt: teamsTable.updatedAt,
     })
@@ -142,7 +143,18 @@ router.get("/teams/:teamId", requireAuth, async (req: AuthedRequest, res): Promi
     res.status(404).json({ error: "Team not found" });
     return;
   }
-  res.json(team);
+
+  const userId = (req as AuthedRequest).userId!;
+  const [member] = await db
+    .select({ role: teamMembersTable.role, canManageTeamSettings: teamMembersTable.canManageTeamSettings })
+    .from(teamMembersTable)
+    .where(and(eq(teamMembersTable.teamId, teamId), eq(teamMembersTable.userId, userId)));
+
+  res.json({
+    ...team,
+    myRole: member?.role ?? null,
+    myCanManageSettings: member?.canManageTeamSettings ?? false,
+  });
 });
 
 router.patch("/teams/:teamId", requireAuth, async (req: AuthedRequest, res): Promise<void> => {

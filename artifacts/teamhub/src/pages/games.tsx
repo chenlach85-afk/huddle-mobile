@@ -28,6 +28,7 @@ type EventRow = {
   opponent: string | null; isHome: boolean | null; arrivalTime: string | null;
   uniformColor: string | null; uniformSecondaryColor: string | null;
   uniformNotes: string | null; whatToBring: string | null;
+  homeScore: number | null; awayScore: number | null;
   attendingCount: number; totalCount: number;
 };
 
@@ -128,6 +129,30 @@ function HeroCard({ event, teamColor, onEdit, isCoach }: { event: EventRow; team
             )}
           </div>
         )}
+        {gameIsPast && event.homeScore != null && event.awayScore != null && (
+          <div className="rounded-xl py-4 text-center" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-[9px] uppercase tracking-widest text-white/30 mb-2">Final Score</p>
+            <div className="flex items-center justify-center gap-4">
+              <div className="text-center">
+                <p className="font-display text-4xl text-white ltr-num leading-none">{event.isHome ? event.homeScore : event.awayScore}</p>
+                <p className="text-[9px] text-white/40 mt-1 uppercase tracking-wider">Us</p>
+              </div>
+              <p className="text-2xl text-white/20 font-bold">:</p>
+              <div className="text-center">
+                <p className="font-display text-4xl text-white/60 ltr-num leading-none">{event.isHome ? event.awayScore : event.homeScore}</p>
+                <p className="text-[9px] text-white/40 mt-1 uppercase tracking-wider">{event.opponent ?? "Opponent"}</p>
+              </div>
+            </div>
+            {(() => {
+              const ourScore = event.isHome ? event.homeScore : event.awayScore;
+              const theirScore = event.isHome ? event.awayScore : event.homeScore;
+              if (ourScore == null || theirScore == null) return null;
+              const result = ourScore > theirScore ? "WIN" : ourScore < theirScore ? "LOSS" : "DRAW";
+              const color = result === "WIN" ? "#2ecc71" : result === "LOSS" ? "#e74c3c" : "#f7b538";
+              return <p className="text-[10px] font-bold mt-2 tracking-widest" style={{ color }}>{result}</p>;
+            })()}
+          </div>
+        )}
         {!gameIsPast && (
           <div className="rounded-xl py-4" style={{ background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.06)" }}>
             <p className="text-center text-[9px] uppercase tracking-widest text-white/30 mb-3">{ng.countdown}</p>
@@ -185,11 +210,25 @@ function GameCard({ event, teamColor, isCoach, onEdit, onDelete, onView }: {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 mt-1.5">
-            <Users className="h-3 w-3 text-white/25" />
-            <span className="text-[10px] text-white/40">
-              {event.attendingCount} confirmed · {Math.max(0, event.totalCount - event.attendingCount)} pending
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="flex items-center gap-1">
+              <Users className="h-3 w-3 text-white/25" />
+              <span className="text-[10px] text-white/40">
+                {event.attendingCount} confirmed · {Math.max(0, event.totalCount - event.attendingCount)} pending
+              </span>
             </span>
+            {event.homeScore != null && event.awayScore != null && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded ltr-num" style={{
+                background: "rgba(255,255,255,0.06)",
+                color: (() => {
+                  const ours = event.isHome ? event.homeScore : event.awayScore;
+                  const theirs = event.isHome ? event.awayScore : event.homeScore;
+                  return ours != null && theirs != null && ours > theirs ? "#2ecc71" : ours != null && theirs != null && ours < theirs ? "#e74c3c" : "#f7b538";
+                })(),
+              }}>
+                {event.homeScore}–{event.awayScore}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -238,6 +277,8 @@ function GameForm({
   const [uniformNotes, setUniformNotes] = useState(initial?.uniformNotes ?? "");
   const [whatToBring, setWhatToBring] = useState(initial?.whatToBring ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [homeScore, setHomeScore] = useState<string>(initial?.homeScore != null ? String(initial.homeScore) : "");
+  const [awayScore, setAwayScore] = useState<string>(initial?.awayScore != null ? String(initial.awayScore) : "");
   const [showUniform, setShowUniform] = useState(!!(initial?.uniformColor || initial?.uniformNotes));
 
   useEffect(() => {
@@ -264,6 +305,8 @@ function GameForm({
       uniformNotes: showUniform && uniformNotes ? uniformNotes : null,
       whatToBring: whatToBring || null,
       notes: notes || null,
+      homeScore: homeScore !== "" ? parseInt(homeScore) : null,
+      awayScore: awayScore !== "" ? parseInt(awayScore) : null,
     };
 
     try {
@@ -390,6 +433,23 @@ function GameForm({
             <label className="stat-label text-white/40 block mb-1.5">{ev.whatToBring}</label>
             <Input value={whatToBring} onChange={e => setWhatToBring(e.target.value)} placeholder="Water bottle, boots, shin pads"
               className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" />
+          </div>
+
+          {/* Score (optional — for recording result) */}
+          <div>
+            <p className="stat-label text-white/40 mb-2">Score (optional)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-white/30 block mb-1">{isHome ? "Us (Home)" : "Us (Away)"}</label>
+                <Input type="number" min={0} value={homeScore} onChange={e => setHomeScore(e.target.value)}
+                  placeholder="0" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-center text-lg font-bold" />
+              </div>
+              <div>
+                <label className="text-[10px] text-white/30 block mb-1">{isHome ? `${opponent || "Opponent"} (Away)` : `${opponent || "Opponent"} (Home)`}</label>
+                <Input type="number" min={0} value={awayScore} onChange={e => setAwayScore(e.target.value)}
+                  placeholder="0" className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl text-center text-lg font-bold" />
+              </div>
+            </div>
           </div>
 
           {/* Notes */}

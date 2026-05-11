@@ -297,6 +297,9 @@ export default function TeamDetailPage() {
   }
 
   const isOwner = !!(appUser && (team as any)?.createdBy === appUser.id);
+  const myRole: string | null = (team as any)?.myRole ?? null;
+  const isCoach = isOwner || myRole === "coach" || myRole === "assistant";
+  const canManageSettings = isOwner || (team as any)?.myCanManageSettings === true;
 
   const tabs = [
     { value: "players", label: td.tabSquad, icon: Users },
@@ -532,10 +535,10 @@ export default function TeamDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
           <div className="lg:col-span-3">
             <TabsContent value="players" className="mt-0"><PlayersTab teamId={id} teamColor={teamColor} teamName={team?.name} /></TabsContent>
-            <TabsContent value="games" className="mt-0"><GamesTab teamId={id} teamColor={teamColor} isCoach={isOwner} /></TabsContent>
+            <TabsContent value="games" className="mt-0"><GamesTab teamId={id} teamColor={teamColor} isCoach={isCoach} /></TabsContent>
             <TabsContent value="events" className="mt-0"><EventsTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="tasks" className="mt-0"><TasksTab teamId={id} teamColor={teamColor} /></TabsContent>
-            <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} isCoach={isOwner} /></TabsContent>
+            <TabsContent value="messages" className="mt-0"><MessagesTab teamId={id} teamColor={teamColor} isCoach={isCoach} /></TabsContent>
             <TabsContent value="files" className="mt-0"><FilesTab teamId={id} teamColor={teamColor} /></TabsContent>
             <TabsContent value="management" className="mt-0">
               <TeamManagementTab
@@ -544,6 +547,7 @@ export default function TeamDetailPage() {
                 teamName={team?.name ?? ""}
                 joinCode={(team as any)?.joinCode ?? undefined}
                 isOwner={isOwner}
+                canManageSettings={canManageSettings}
               />
             </TabsContent>
           </div>

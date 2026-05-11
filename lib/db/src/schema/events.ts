@@ -31,6 +31,8 @@ export const eventsTable = pgTable("events", {
   uniformSecondaryColor: text("uniform_secondary_color"),
   uniformNotes: text("uniform_notes"),
   whatToBring: text("what_to_bring"),
+  homeScore: integer("home_score"),
+  awayScore: integer("away_score"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
