@@ -56,7 +56,7 @@ type AdminKpis = {
 };
 
 async function apiFetch(url: string, options?: RequestInit) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, { credentials: "include", ...options });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error ?? "Request failed");
@@ -296,7 +296,7 @@ function HardDeleteModal({ user, open, onClose, onDone, allUsers }: {
   const [saving, setSaving] = useState(false);
 
   const activeUsers = allUsers.filter(u => u.id !== user.id && u.accountStatus === "active");
-  const confirmMatch = confirmText === ad.hardDeleteConfirmPhrase;
+  const confirmMatch = confirmText.trim() === ad.hardDeleteConfirmPhrase;
   const canSubmit = confirmMatch && reason.trim().length >= 10 && !saving;
 
   async function handle() {
