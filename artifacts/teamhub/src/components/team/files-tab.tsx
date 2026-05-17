@@ -14,7 +14,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, ImageIcon, Trash2, ChevronRight, FolderOpen, FileText, Download,
-  Upload, MoreVertical, Pencil, FolderInput, ArrowLeft,
+  Upload, MoreVertical, Pencil, FolderInput, ArrowLeft, X, ZoomIn, Film,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
@@ -190,6 +190,87 @@ function FileKebab({
   );
 }
 
+function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => void }) {
+  const isImage = file.mimeType.startsWith("image/");
+  const isVideo = file.mimeType.startsWith("video/");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.85)" }}
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[90vh] rounded-2xl overflow-hidden flex flex-col"
+        style={{ background: "hsl(226,40%,8%)", border: "1px solid rgba(255,255,255,0.1)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/8 shrink-0">
+          <p className="text-sm font-semibold text-white truncate pe-4">{file.originalName}</p>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href={file.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/8"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download
+            </a>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/50 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4 min-h-0">
+          {isImage ? (
+            <img
+              src={file.url}
+              alt={file.originalName}
+              className="max-w-full max-h-[70vh] object-contain rounded-xl"
+            />
+          ) : isVideo ? (
+            <video
+              src={file.url}
+              controls
+              className="max-w-full max-h-[70vh] rounded-xl"
+            />
+          ) : (
+            <div className="text-center space-y-4 py-12">
+              <div
+                className="w-20 h-20 rounded-2xl mx-auto flex items-center justify-center"
+                style={{ background: "rgba(255,107,53,0.12)" }}
+              >
+                <FileText className="h-10 w-10 text-primary" />
+              </div>
+              <div>
+                <p className="text-white font-semibold">{file.originalName}</p>
+                <p className="text-white/40 text-sm mt-1">{formatBytes(file.size)}</p>
+              </div>
+              <a
+                href={file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm transition-opacity hover:opacity-90"
+                style={{ background: "hsl(22,100%,60%)" }}
+              >
+                <Download className="h-4 w-4" />
+                Open / Download
+              </a>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FileRow({
   file, albums, onRefresh, teamColor, dateLocale,
 }: {
@@ -202,6 +283,7 @@ function FileRow({
   const { toast } = useToast();
   const [renameOpen, setRenameOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   async function handleDelete() {
     if (!confirm(`Delete "${file.originalName}"?`)) return;
@@ -237,22 +319,40 @@ function FileRow({
   }
 
   const isImage = file.mimeType.startsWith("image/");
+  const isVideo = file.mimeType.startsWith("video/");
 
   return (
     <>
-      <div className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-white/3 transition-all group">
+      <div
+        className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-white/3 transition-all group cursor-pointer"
+        onClick={() => setPreviewOpen(true)}
+      >
         <div
-          className="w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center"
+          className="w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center relative"
           style={{ background: `${teamColor}18` }}
         >
           {isImage ? (
-            <img src={file.url} alt={file.originalName} className="w-full h-full object-cover" />
+            <>
+              <img src={file.url} alt={file.originalName} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                <ZoomIn className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </>
+          ) : isVideo ? (
+            <>
+              <Film className="h-5 w-5" style={{ color: teamColor }} />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <ZoomIn className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              </div>
+            </>
           ) : (
             <FileText className="h-5 w-5" style={{ color: teamColor }} />
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate">{file.originalName}</p>
+          <p className="text-sm font-semibold text-white truncate group-hover:text-primary transition-colors">
+            {file.originalName}
+          </p>
           <p className="text-xs text-white/40">
             {formatBytes(file.size)} · {formatDistanceToNow(new Date(file.createdAt), { addSuffix: true, locale: dateLocale })}
           </p>
@@ -267,16 +367,21 @@ function FileRow({
           >
             <Download className="h-4 w-4 text-white/40" />
           </a>
-          <FileKebab
-            file={file}
-            albums={albums}
-            onDelete={handleDelete}
-            onRename={() => setRenameOpen(true)}
-            onMove={() => setMoveOpen(true)}
-          />
+          <div onClick={(e) => e.stopPropagation()}>
+            <FileKebab
+              file={file}
+              albums={albums}
+              onDelete={handleDelete}
+              onRename={() => setRenameOpen(true)}
+              onMove={() => setMoveOpen(true)}
+            />
+          </div>
         </div>
       </div>
 
+      {previewOpen && (
+        <FilePreviewModal file={file} onClose={() => setPreviewOpen(false)} />
+      )}
       <RenameDialog
         open={renameOpen}
         onClose={() => setRenameOpen(false)}
