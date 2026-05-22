@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "wdeQxIY8kNFAFya6qARY8"
+uri = "file://artifacts/huddle-mobile/assets/images/icon.png"
+type = "image"
+title = "clasiko app icon orange C monogram"
+
+[[generated]]
+id = "VpjYg4GertgKDnynGD-7E"
+uri = "file://artifacts/huddle-mobile/assets/images/splash-icon.png"
+type = "image"
+title = "clasiko splash screen dark navy"
