@@ -12,7 +12,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
-import { useUser } from "@clerk/react";
+import { useAuth } from "@/lib/useAuth";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { formatDistanceToNow } from "date-fns";
 
 type StaffMember = {

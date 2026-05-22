@@ -8,7 +8,7 @@ import {
   MessageSquare, Pin, Plus, Send, ChevronDown, ChevronUp, Check,
   Smartphone, Mail, MessageCircle, Users, Filter, MoreVertical, Pencil, Trash2,
 } from "lucide-react";
-import { useUser } from "@clerk/react";
+import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { he, es, enUS } from "date-fns/locale";

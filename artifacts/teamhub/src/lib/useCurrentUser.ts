@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useUser } from "@clerk/react";
+import { useAuth } from "@/lib/useAuth";
 
 export interface AppUser {
   id: number;
@@ -16,17 +16,20 @@ export interface AppUser {
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-async function fetchCurrentUser(): Promise<AppUser> {
-  const res = await fetch(`${BASE}/api/auth/me`, { credentials: "include" });
-  if (!res.ok) throw new Error("User not found");
-  return res.json();
+async function fetchWithAuth(url: string, token: string, options: RequestInit = {}): Promise<Response> {
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
 }
 
-async function syncUser(data: { email: string; name: string; role?: string }): Promise<AppUser> {
-  const res = await fetch(`${BASE}/api/auth/sync`, {
+export async function syncUser(token: string, data: { email: string; name: string; role?: string }): Promise<AppUser> {
+  const res = await fetchWithAuth(`${BASE}/api/auth/sync`, token, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to sync user");
@@ -34,28 +37,32 @@ async function syncUser(data: { email: string; name: string; role?: string }): P
 }
 
 export function useCurrentUser() {
-  const { user: clerkUser, isLoaded } = useUser();
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   const { data: appUser, isLoading, error, refetch } = useQuery<AppUser>({
     queryKey: ["auth-me"],
-    queryFn: fetchCurrentUser,
-    enabled: isLoaded && !!clerkUser,
+    queryFn: async () => {
+      const res = await fetchWithAuth(`${BASE}/api/auth/me`, token!);
+      if (!res.ok) throw new Error("User not found");
+      return res.json();
+    },
+    enabled: !!token,
     retry: false,
   });
 
-  return { appUser, isLoading: !isLoaded || isLoading, error, refetch };
+  return { appUser, isLoading: !session && isLoading, error, refetch };
 }
 
 export function useUpdateSettings() {
   const queryClient = useQueryClient();
-  const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   return useMutation({
-    mutationFn: async (data: Partial<AppUser>) => {
-      const res = await fetch(`${BASE}/api/auth/me`, {
+    mutationFn: async (data: Partial<AppUser> & { name?: string }) => {
+      const res = await fetchWithAuth(`${BASE}/api/auth/me`, token!, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to update settings");
@@ -66,5 +73,3 @@ export function useUpdateSettings() {
     },
   });
 }
-
-export { syncUser };

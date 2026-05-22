@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useUser } from "@clerk/react";
+import { useAuth } from "@/lib/useAuth";
 
 export interface AppNotification {
   id: number;
@@ -16,28 +16,33 @@ export interface AppNotification {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export function useNotifications() {
-  const { user } = useUser();
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   return useQuery<AppNotification[]>({
     queryKey: ["notifications"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/notifications`, { credentials: "include" });
+      const res = await fetch(`${BASE}/api/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!res.ok) throw new Error("Failed to fetch notifications");
       return res.json();
     },
-    enabled: !!user,
+    enabled: !!token,
     refetchInterval: 30_000,
   });
 }
 
 export function useMarkNotificationRead() {
   const queryClient = useQueryClient();
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   return useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${BASE}/api/notifications/${id}/read`, {
         method: "PATCH",
-        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to mark as read");
     },
@@ -49,12 +54,14 @@ export function useMarkNotificationRead() {
 
 export function useMarkAllRead() {
   const queryClient = useQueryClient();
+  const { session } = useAuth();
+  const token = session?.access_token;
 
   return useMutation({
     mutationFn: async () => {
       const res = await fetch(`${BASE}/api/notifications/read-all`, {
         method: "PATCH",
-        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to mark all as read");
     },

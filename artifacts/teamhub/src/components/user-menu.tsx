@@ -1,4 +1,4 @@
-import { useUser, useClerk } from "@clerk/react";
+import { useAuth } from "@/lib/useAuth";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useI18n } from "@/lib/i18n";
 import { Link } from "wouter";
@@ -6,9 +6,8 @@ import { Settings, LogOut, ChevronDown, ShieldCheck, Users } from "lucide-react"
 import { useState, useRef, useEffect } from "react";
 
 export function UserMenu() {
-  const { user: clerkUser } = useUser();
+  const { user, signOut } = useAuth();
   const { appUser } = useCurrentUser();
-  const { signOut } = useClerk();
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -21,9 +20,8 @@ export function UserMenu() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const displayName = appUser?.name ?? clerkUser?.fullName ?? "—";
-  const displayEmail = appUser?.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? "—";
-  const avatarUrl = clerkUser?.imageUrl;
+  const displayName = appUser?.name ?? user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "—";
+  const displayEmail = appUser?.email ?? user?.email ?? "—";
   const initials = displayName !== "—" ? displayName.charAt(0).toUpperCase() : "?";
 
   return (
@@ -34,11 +32,7 @@ export function UserMenu() {
         data-testid="button-user-menu"
       >
         <div className="w-7 h-7 rounded-lg overflow-hidden bg-primary/20 flex items-center justify-center shrink-0">
-          {avatarUrl ? (
-            <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-xs font-bold text-primary">{initials}</span>
-          )}
+          <span className="text-xs font-bold text-primary">{initials}</span>
         </div>
         <span className="text-sm font-medium text-foreground/80 hidden lg:block max-w-[120px] truncate">
           {displayName}
@@ -60,8 +54,7 @@ export function UserMenu() {
               <span
                 className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md"
                 style={{
-                  background:
-                    appUser.role === "admin" ? "rgba(255,107,53,0.15)" : "rgba(74,144,226,0.12)",
+                  background: appUser.role === "admin" ? "rgba(255,107,53,0.15)" : "rgba(74,144,226,0.12)",
                   color: appUser.role === "admin" ? "#FF6B35" : "#4a90e2",
                 }}
               >
