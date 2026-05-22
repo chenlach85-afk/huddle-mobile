@@ -5,6 +5,7 @@ import {
 import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
+import { supabaseAdmin } from "../lib/supabase";
 import type { Request, Response } from "express";
 
 const router: IRouter = Router();
@@ -249,8 +250,33 @@ router.get("/team-invite/:token", async (req: Request, res: Response): Promise<v
 
 /* ─── Accept invitation (authenticated) ─────────────────── */
 
-router.post("/team-invite/:token/accept", requireAuth, async (req: AuthedRequest, res): Promise<void> => {
-  const userId = req.userId!;
+router.post("/team-invite/:token/accept", async (req: Request, res: Response): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!bearerToken) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { data: { user: supabaseUser }, error: authError } = await supabaseAdmin.auth.getUser(bearerToken);
+  if (authError || !supabaseUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  // Look up or auto-create DB user for this Supabase user
+  let [dbUser] = await db.select({ id: usersTable.id, accountStatus: usersTable.accountStatus })
+    .from(usersTable).where(eq(usersTable.clerkId, supabaseUser.id)).limit(1);
+
+  if (!dbUser) {
+    // New user arriving via team invite — create their DB record as a player
+    const email = supabaseUser.email ?? "";
+    const name = (supabaseUser.user_metadata?.full_name as string | undefined)
+      || email.split("@")[0] || "Player";
+    const [created] = await db.insert(usersTable).values({
+      clerkId: supabaseUser.id, email, name, role: "player", accountStatus: "active",
+    }).returning({ id: usersTable.id, accountStatus: usersTable.accountStatus });
+    dbUser = created;
+  }
+
+  if (dbUser.accountStatus === "suspended") { res.status(403).json({ error: "account_suspended" }); return; }
+  if (dbUser.accountStatus === "deleted") { res.status(403).json({ error: "account_deleted" }); return; }
+
+  const userId = dbUser.id;
   const { token } = req.params as { token: string };
 
   const [inv] = await db.select().from(teamInvitationsTable).where(eq(teamInvitationsTable.token, token));

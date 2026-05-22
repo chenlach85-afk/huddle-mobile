@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ type Mode = "sign_in" | "magic_link" | "reset_password";
 
 export default function SignInPage() {
   const { t } = useI18n();
+  const [, setLocation] = useLocation();
   const [mode, setMode] = useState<Mode>("sign_in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,13 +22,22 @@ export default function SignInPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  function getRedirectTarget(): string {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("redirect") || "/dashboard";
+  }
+
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError(""); setSuccess("");
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError(error.message);
+      if (error) {
+        setError(error.message);
+      } else {
+        setLocation(getRedirectTarget());
+      }
     } finally {
       setLoading(false);
     }
