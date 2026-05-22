@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Request, Response } from "express";
 import { supabaseAdmin } from "../lib/supabase";
 import type { AuthedRequest } from "../middlewares/requireAuth";
@@ -24,14 +24,12 @@ router.post("/auth/sync", async (req: Request, res: Response): Promise<void> => 
   }
 
   const supabaseUserId = supabaseUser.id;
-  const { email, name, role = "coach" } = req.body as {
-    email: string;
-    name: string;
-    role?: string;
-  };
-
-  const resolvedEmail = email || supabaseUser.email || "";
-  const resolvedName = name || resolvedEmail.split("@")[0] || "Coach";
+  const resolvedEmail = supabaseUser.email ?? (req.body as { email?: string }).email ?? "";
+  const resolvedName =
+    (supabaseUser.user_metadata?.full_name as string | undefined) ??
+    (req.body as { name?: string }).name ??
+    resolvedEmail.split("@")[0] ??
+    "Coach";
 
   if (!resolvedEmail) {
     res.status(400).json({ error: "email is required" });
@@ -44,47 +42,17 @@ router.post("/auth/sync", async (req: Request, res: Response): Promise<void> => 
     .where(eq(usersTable.clerkId, supabaseUserId))
     .limit(1);
 
-  const adminEmails = (process.env.ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  const shouldBeAdmin = adminEmails.includes(resolvedEmail.toLowerCase());
-
   if (existing[0]) {
-    const updateFields: { email: string; name: string; role?: "admin" | "coach" } = { email: resolvedEmail, name: resolvedName };
-    if (shouldBeAdmin && existing[0].role !== "admin") {
-      updateFields.role = "admin";
-    }
     const [updated] = await db
       .update(usersTable)
-      .set(updateFields)
+      .set({ email: resolvedEmail, name: resolvedName })
       .where(eq(usersTable.clerkId, supabaseUserId))
       .returning();
     res.json(updated);
     return;
   }
 
-  const [{ total }] = await db
-    .select({ total: count() })
-    .from(usersTable);
-
-  if (Number(total) > 0 && !shouldBeAdmin) {
-    res.status(403).json({ error: "Registration is by invitation only. Contact the platform administrator." });
-    return;
-  }
-
-  const [user] = await db
-    .insert(usersTable)
-    .values({
-      clerkId: supabaseUserId,
-      email: resolvedEmail,
-      name: resolvedName,
-      role: shouldBeAdmin || Number(total) === 0 ? "admin" : (role as "coach" | "player"),
-    })
-    .returning();
-
-  res.status(201).json(user);
+  res.status(404).json({ error: "User not found. Account must be provisioned via invitation or Supabase trigger." });
 });
 
 router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
