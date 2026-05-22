@@ -36,13 +36,14 @@ router.post("/auth/sync", async (req: Request, res: Response): Promise<void> => 
     return;
   }
 
-  const existing = await db
+  // 1. Look up by Supabase UUID (primary path)
+  const byId = await db
     .select()
     .from(usersTable)
     .where(eq(usersTable.clerkId, supabaseUserId))
     .limit(1);
 
-  if (existing[0]) {
+  if (byId[0]) {
     const [updated] = await db
       .update(usersTable)
       .set({ email: resolvedEmail, name: resolvedName })
@@ -52,7 +53,39 @@ router.post("/auth/sync", async (req: Request, res: Response): Promise<void> => 
     return;
   }
 
-  res.status(404).json({ error: "User not found. Account must be provisioned via invitation or Supabase trigger." });
+  // 2. Fallback: look up by email (handles migrated users from old auth systems)
+  if (resolvedEmail) {
+    const byEmail = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.email, resolvedEmail))
+      .limit(1);
+
+    if (byEmail[0]) {
+      // Migrate the clerk_id to the new Supabase UUID
+      const [updated] = await db
+        .update(usersTable)
+        .set({ clerkId: supabaseUserId, email: resolvedEmail, name: resolvedName })
+        .where(eq(usersTable.email, resolvedEmail))
+        .returning();
+      res.json(updated);
+      return;
+    }
+  }
+
+  // 3. Auto-create new users as coach
+  const [created] = await db
+    .insert(usersTable)
+    .values({
+      clerkId: supabaseUserId,
+      email: resolvedEmail,
+      name: resolvedName,
+      role: "coach",
+      accountStatus: "active",
+    })
+    .returning();
+
+  res.json(created);
 });
 
 router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
