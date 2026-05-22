@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, isToday } from "date-fns";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   ScrollView,
@@ -9,7 +10,6 @@ import {
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -17,24 +17,19 @@ import { useListTeams, useListEvents, getListEventsQueryKey } from "@workspace/a
 import { EmptyState } from "@/components/EmptyState";
 
 const EVENT_COLORS: Record<string, string> = {
-  training: "#4a90e2",
-  league_game: "#ff6b1a",
-  friendly_game: "#f7b538",
-  tournament: "#e74c3c",
-  celebration: "#2ecc71",
-  meeting: "#9b59b6",
-  other: "#7a8399",
+  training: "#4a90e2", league_game: "#ff6b1a", friendly_game: "#f7b538",
+  tournament: "#e74c3c", celebration: "#2ecc71", meeting: "#9b59b6", other: "#7a8399",
+};
+const EVENT_LABELS: Record<string, string> = {
+  training: "Training", league_game: "League", friendly_game: "Friendly",
+  tournament: "Tournament", celebration: "Celebration", meeting: "Meeting", other: "Other",
+};
+const EVENT_ICONS: Record<string, string> = {
+  training: "activity", league_game: "shield", friendly_game: "flag",
+  tournament: "award", celebration: "star", meeting: "users", other: "calendar",
 };
 
-const EVENT_LABELS: Record<string, string> = {
-  training: "Training",
-  league_game: "League",
-  friendly_game: "Friendly",
-  tournament: "Tournament",
-  celebration: "Celebration",
-  meeting: "Meeting",
-  other: "Other",
-};
+const ALL_TYPES = Object.keys(EVENT_LABELS);
 
 export default function CalendarScreen() {
   const colors = useColors();
@@ -42,6 +37,7 @@ export default function CalendarScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<Date | null>(new Date());
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
   const { data: teams } = useListTeams();
   const firstTeam = teams?.[0];
@@ -50,34 +46,60 @@ export default function CalendarScreen() {
     query: { queryKey: getListEventsQueryKey(calTeamId), enabled: !!firstTeam },
   });
 
-  const allEvents = events ?? [];
+  const filteredEvents = (events ?? []).filter(
+    (e: any) => activeFilters.length === 0 || activeFilters.includes(e.type)
+  );
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
   const startPad = getDay(monthStart);
 
-  const hasEvent = (day: Date) => allEvents.some((e: any) => isSameDay(new Date(e.startsAt), day));
+  const hasEvent = (day: Date) => filteredEvents.some((e: any) => isSameDay(new Date(e.startsAt), day));
   const dayEvents = selectedDay
-    ? allEvents.filter((e: any) => isSameDay(new Date(e.startsAt), selectedDay))
+    ? filteredEvents.filter((e: any) => isSameDay(new Date(e.startsAt), selectedDay))
     : [];
 
-  const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
-  const nextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  const toggleFilter = (type: string) => {
+    setActiveFilters((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 16 }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Calendar</Text>
+        <Text style={[styles.title, { color: colors.foreground, fontFamily: "Oswald_700Bold" }]}>Calendar</Text>
       </View>
+
+      {/* Event-type filter chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+        {ALL_TYPES.map((type) => {
+          const active = activeFilters.includes(type);
+          const color = EVENT_COLORS[type];
+          return (
+            <TouchableOpacity
+              key={type}
+              style={[styles.filterChip, { backgroundColor: active ? color : `${color}22`, borderColor: active ? color : "transparent", borderWidth: 1 }]}
+              onPress={() => toggleFilter(type)}
+              activeOpacity={0.75}
+            >
+              <Feather name={EVENT_ICONS[type] as any} size={11} color={active ? "#fff" : color} />
+              <Text style={[styles.filterChipText, { color: active ? "#fff" : color }]}>{EVENT_LABELS[type]}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       <View style={[styles.calCard, { backgroundColor: colors.card }]}>
         <View style={styles.monthRow}>
-          <TouchableOpacity onPress={prevMonth} hitSlop={8}>
+          <TouchableOpacity onPress={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} hitSlop={8}>
             <Feather name="chevron-left" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.monthLabel, { color: colors.foreground }]}>{format(currentMonth, "MMMM yyyy")}</Text>
-          <TouchableOpacity onPress={nextMonth} hitSlop={8}>
+          <Text style={[styles.monthLabel, { color: colors.foreground, fontFamily: "Oswald_600SemiBold" }]}>
+            {format(currentMonth, "MMMM yyyy")}
+          </Text>
+          <TouchableOpacity onPress={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} hitSlop={8}>
             <Feather name="chevron-right" size={22} color={colors.foreground} />
           </TouchableOpacity>
         </View>
@@ -92,6 +114,7 @@ export default function CalendarScreen() {
             const isSelected = selectedDay ? isSameDay(day, selectedDay) : false;
             const hasDot = hasEvent(day);
             const todayDay = isToday(day);
+            const dayEvts = filteredEvents.filter((e: any) => isSameDay(new Date(e.startsAt), day));
             return (
               <TouchableOpacity
                 key={day.toISOString()}
@@ -103,14 +126,15 @@ export default function CalendarScreen() {
                 onPress={() => setSelectedDay(day)}
                 activeOpacity={0.7}
               >
-                <Text style={[
-                  styles.dayNum,
-                  { color: isSelected ? "#fff" : todayDay ? colors.primary : colors.foreground },
-                ]}>
+                <Text style={[styles.dayNum, { color: isSelected ? "#fff" : todayDay ? colors.primary : colors.foreground }]}>
                   {day.getDate()}
                 </Text>
                 {hasDot && !isSelected && (
-                  <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+                  <View style={styles.dotRow}>
+                    {dayEvts.slice(0, 3).map((e: any, idx: number) => (
+                      <View key={idx} style={[styles.dot, { backgroundColor: EVENT_COLORS[e.type] ?? colors.primary }]} />
+                    ))}
+                  </View>
                 )}
               </TouchableOpacity>
             );
@@ -120,12 +144,15 @@ export default function CalendarScreen() {
 
       <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
         {selectedDay ? format(selectedDay, "EEEE, MMM d") : "Events"}
+        {activeFilters.length > 0 && (
+          <Text style={[styles.filterNote, { color: colors.mutedForeground }]}> (filtered)</Text>
+        )}
       </Text>
 
       {isLoading ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
       ) : dayEvents.length === 0 ? (
-        <EmptyState icon="calendar" title="No events" subtitle="No events scheduled for this day" />
+        <EmptyState icon="calendar" title="No events" subtitle="No events for this day" />
       ) : (
         <FlatList
           data={dayEvents}
@@ -138,6 +165,7 @@ export default function CalendarScreen() {
               <View style={styles.eventBody}>
                 <View style={styles.eventTop}>
                   <View style={[styles.typePill, { backgroundColor: `${EVENT_COLORS[event.type] ?? colors.primary}22` }]}>
+                    <Feather name={EVENT_ICONS[event.type] as any ?? "calendar"} size={11} color={EVENT_COLORS[event.type] ?? colors.primary} />
                     <Text style={[styles.typeText, { color: EVENT_COLORS[event.type] ?? colors.primary }]}>
                       {EVENT_LABELS[event.type] ?? "Event"}
                     </Text>
@@ -164,23 +192,28 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 16, marginBottom: 12 },
-  title: { fontSize: 28, fontWeight: "800" },
-  calCard: { marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 16 },
+  header: { paddingHorizontal: 16, marginBottom: 8 },
+  title: { fontSize: 32 },
+  filterRow: { paddingHorizontal: 12, paddingBottom: 10, gap: 8 },
+  filterChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  filterChipText: { fontSize: 12, fontWeight: "700" },
+  calCard: { marginHorizontal: 16, borderRadius: 16, padding: 16, marginBottom: 14 },
   monthRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  monthLabel: { fontSize: 17, fontWeight: "700" },
+  monthLabel: { fontSize: 17 },
   dayHeaders: { flexDirection: "row", marginBottom: 4 },
   dayHeader: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "600" },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   cell: { width: "14.28%", aspectRatio: 1, alignItems: "center", justifyContent: "center" },
   dayNum: { fontSize: 14, fontWeight: "500" },
-  dot: { width: 4, height: 4, borderRadius: 2, marginTop: 2 },
+  dotRow: { flexDirection: "row", gap: 2, marginTop: 1 },
+  dot: { width: 4, height: 4, borderRadius: 2 },
+  filterNote: { fontSize: 14, fontWeight: "400" },
   sectionTitle: { fontSize: 16, fontWeight: "700", paddingHorizontal: 16, marginBottom: 8 },
   eventCard: { flexDirection: "row", borderRadius: 14, overflow: "hidden" },
   eventAccent: { width: 4 },
   eventBody: { flex: 1, padding: 14, gap: 6 },
   eventTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  typePill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
+  typePill: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   typeText: { fontSize: 11, fontWeight: "700" },
   eventTime: { fontSize: 12 },
   eventTitle: { fontSize: 16, fontWeight: "600" },
