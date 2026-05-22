@@ -17,7 +17,7 @@ export default function SignUpPage() {
         <div className="space-y-2">
           <h1 className="font-display text-3xl text-white">Invitation Only</h1>
           <p className="text-sm text-white/50 leading-relaxed">
-            Huddle Pro is currently invite-only. Contact your team administrator to receive an invitation link.
+            Clasiko is currently invite-only. Contact your team administrator to receive an invitation link.
           </p>
         </div>
         <div

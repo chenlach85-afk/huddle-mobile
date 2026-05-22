@@ -134,7 +134,7 @@ router.post("/teams/:teamId/announcements", requireAuth, async (req: AuthedReque
               <div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#FF6B35;margin-bottom:8px;">${typeLabel[validType] ?? "📢"} ${validType.toUpperCase()}</div>
               <h2 style="margin:0 0 16px;color:#fff;font-size:20px;">${title.trim()}</h2>
               <p style="color:rgba(255,255,255,0.75);line-height:1.6;white-space:pre-wrap;">${content.trim()}</p>
-              <p style="margin-top:24px;font-size:11px;color:rgba(255,255,255,0.35);">Sent by ${senderUser?.name ?? "Coach"} via Huddle Pro</p>
+              <p style="margin-top:24px;font-size:11px;color:rgba(255,255,255,0.35);">Sent by ${senderUser?.name ?? "Coach"} via Clasiko</p>
             </div>
           `;
           const r = await fetch("https://api.resend.com/emails", {

@@ -1,11 +1,11 @@
 {
-  "name": "Huddle Pro",
-  "short_name": "Huddle",
+  "name": "Clasiko",
+  "short_name": "Clasiko",
   "description": "Professional sports team management for coaches",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f1729",
-  "theme_color": "#FF6B35",
+  "background_color": "#0c0f1a",
+  "theme_color": "#ff6b1a",
   "icons": [
     {
       "src": "/favicon.svg",

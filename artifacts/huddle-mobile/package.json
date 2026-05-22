@@ -54,5 +54,10 @@
     "typescript": "~5.9.2",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "date-fns": "^3.6.0",
+    "expo-secure-store": "^56.0.4"
   }
 }

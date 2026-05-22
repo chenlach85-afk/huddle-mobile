@@ -443,7 +443,7 @@ router.get("/admin/email-diagnostic", requireAuth, requireAdminMiddleware, async
         from,
         to,
         subject: "Huddle email diagnostic test",
-        html: "<p>This is a diagnostic test email from Huddle Pro. If you see this, email sending is configured correctly.</p>",
+        html: "<p>This is a diagnostic test email from Clasiko. If you see this, email sending is configured correctly.</p>",
       }),
     });
     const body = await r.json().catch(() => ({}));
