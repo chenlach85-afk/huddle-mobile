@@ -69,7 +69,7 @@ export default function SettingsScreen() {
       contentContainerStyle={[styles.content, { paddingTop: topPad + 16 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
+      <Text style={[styles.title, { color: colors.foreground, fontFamily: "Oswald_700Bold" }]}>Settings</Text>
 
       {isLoading ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 48 }} />
@@ -79,7 +79,9 @@ export default function SettingsScreen() {
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PROFILE</Text>
             <View style={styles.profileRow}>
               <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-                <Text style={styles.avatarText}>{(appUser?.name ?? "?")[0]?.toUpperCase()}</Text>
+                <Text style={[styles.avatarText, { fontFamily: "BebasNeue_400Regular" }]}>
+                  {(appUser?.name ?? "?")[0]?.toUpperCase()}
+                </Text>
               </View>
               <View style={styles.profileInfo}>
                 {editing ? (
@@ -110,9 +112,21 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               )}
             </View>
+
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.roleRow}>
-              <Text style={[styles.rowLabel, { color: colors.mutedForeground }]}>Role</Text>
+
+            <View style={styles.fieldRow}>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Email</Text>
+              <Text style={[styles.fieldValue, { color: colors.foreground }]}>{appUser?.email ?? "—"}</Text>
+            </View>
+            <Text style={[styles.emailNote, { color: colors.mutedForeground }]}>
+              Email is your sign-in identity and cannot be changed here.
+            </Text>
+
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+            <View style={styles.fieldRow}>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Role</Text>
               <View style={[styles.rolePill, { backgroundColor: `${colors.primary}22` }]}>
                 <Text style={[styles.rolePillText, { color: colors.primary }]}>{appUser?.role ?? "coach"}</Text>
               </View>
@@ -124,15 +138,9 @@ export default function SettingsScreen() {
             {LANGUAGES.map((lang, i) => (
               <React.Fragment key={lang.code}>
                 {i > 0 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
-                <TouchableOpacity
-                  style={styles.langRow}
-                  onPress={() => setLang(lang.code)}
-                  activeOpacity={0.7}
-                >
+                <TouchableOpacity style={styles.langRow} onPress={() => setLang(lang.code)} activeOpacity={0.7}>
                   <Text style={[styles.rowLabel, { color: colors.foreground }]}>{lang.label}</Text>
-                  {appUser?.language === lang.code && (
-                    <Feather name="check" size={18} color={colors.primary} />
-                  )}
+                  {appUser?.language === lang.code && <Feather name="check" size={18} color={colors.primary} />}
                 </TouchableOpacity>
               </React.Fragment>
             ))}
@@ -156,19 +164,22 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { paddingHorizontal: 16, gap: 16 },
-  title: { fontSize: 28, fontWeight: "800", marginBottom: 8 },
+  title: { fontSize: 32, marginBottom: 8 },
   section: { borderRadius: 16, padding: 16 },
   sectionLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, marginBottom: 12 },
   profileRow: { flexDirection: "row", alignItems: "center", gap: 14 },
   avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: "#fff", fontSize: 24, fontWeight: "800" },
+  avatarText: { color: "#fff", fontSize: 28 },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 18, fontWeight: "700" },
   profileEmail: { fontSize: 13, marginTop: 2 },
   editRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   nameInput: { flex: 1, fontSize: 18, fontWeight: "600", borderBottomWidth: 2, paddingBottom: 2 },
   divider: { height: 1, marginVertical: 12 },
-  roleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  fieldRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  fieldLabel: { fontSize: 14 },
+  fieldValue: { fontSize: 14, fontWeight: "500" },
+  emailNote: { fontSize: 11, marginTop: 6, fontStyle: "italic" },
   rowLabel: { fontSize: 15 },
   rolePill: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
   rolePillText: { fontSize: 13, fontWeight: "600" },

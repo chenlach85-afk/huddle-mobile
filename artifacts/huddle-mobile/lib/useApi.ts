@@ -3,7 +3,7 @@ import { supabase } from "./supabase";
 
 const BASE = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   const res = await fetch(`${BASE}${path}`, {
@@ -65,6 +65,20 @@ export function useRoster(teamId: number) {
   });
 }
 
+export function useCreateRosterMember(teamId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      placeholderFullName: string;
+      jerseyNumber?: string;
+      position?: string;
+      placeholderEmail?: string;
+      placeholderPhone?: string;
+    }) => apiFetch<RosterMember>(`/api/teams/${teamId}/roster`, { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["roster", teamId] }),
+  });
+}
+
 export function useAppUser() {
   return useQuery({
     queryKey: ["auth-me"],
@@ -95,4 +109,9 @@ export function useMarkAllRead() {
     mutationFn: () => apiFetch("/api/notifications/read-all", { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
   });
+}
+
+export function useUnreadCount() {
+  const { data } = useNotifications();
+  return (data ?? []).filter((n) => !n.read).length;
 }

@@ -5,8 +5,9 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { Platform, StyleSheet, View, useColorScheme } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useUnreadCount } from "@/lib/useApi";
 
 function NativeTabLayout() {
   return (
@@ -37,10 +38,9 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const colors = useColors();
-  const colorScheme = useColorScheme();
-  const isDark = true;
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+  const unreadCount = useUnreadCount();
 
   return (
     <Tabs
@@ -58,15 +58,11 @@ function ClassicTabLayout() {
         },
         tabBarBackground: () =>
           isIOS ? (
-            <BlurView
-              intensity={80}
-              tint="dark"
-              style={StyleSheet.absoluteFill}
-            />
+            <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
           ) : (
             <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]} />
           ),
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600", marginBottom: isIOS ? 0 : 4 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
       <Tabs.Screen
@@ -74,11 +70,7 @@ function ClassicTabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="house.fill" tintColor={color} size={22} />
-            ) : (
-              <Feather name="home" size={22} color={color} />
-            ),
+            isIOS ? <SymbolView name="house.fill" tintColor={color} size={22} /> : <Feather name="home" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -86,11 +78,7 @@ function ClassicTabLayout() {
         options={{
           title: "Teams",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="person.3.fill" tintColor={color} size={22} />
-            ) : (
-              <Feather name="users" size={22} color={color} />
-            ),
+            isIOS ? <SymbolView name="person.3.fill" tintColor={color} size={22} /> : <Feather name="users" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -98,23 +86,16 @@ function ClassicTabLayout() {
         options={{
           title: "Calendar",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="calendar" tintColor={color} size={22} />
-            ) : (
-              <Feather name="calendar" size={22} color={color} />
-            ),
+            isIOS ? <SymbolView name="calendar" tintColor={color} size={22} /> : <Feather name="calendar" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
           title: "Alerts",
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="bell.fill" tintColor={color} size={22} />
-            ) : (
-              <Feather name="bell" size={22} color={color} />
-            ),
+            isIOS ? <SymbolView name="bell.fill" tintColor={color} size={22} /> : <Feather name="bell" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -122,11 +103,7 @@ function ClassicTabLayout() {
         options={{
           title: "Settings",
           tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="gear" tintColor={color} size={22} />
-            ) : (
-              <Feather name="settings" size={22} color={color} />
-            ),
+            isIOS ? <SymbolView name="gear" tintColor={color} size={22} /> : <Feather name="settings" size={22} color={color} />,
         }}
       />
     </Tabs>
