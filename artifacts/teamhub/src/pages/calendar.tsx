@@ -29,6 +29,7 @@ import { useListTeams } from "@workspace/api-client-react";
 import { useI18n } from "@/lib/i18n";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/lib/useTheme";
+import { apiFetch } from "@/lib/apiFetch";
 
 export const EVENT_TYPES = ["training", "league_game", "friendly_game", "tournament", "celebration", "meeting", "other"] as const;
 export type EventType = typeof EVENT_TYPES[number];
@@ -97,7 +98,7 @@ export default function CalendarPage() {
   const { data: allEvents = [], isLoading, error } = useQuery<CalendarEvent[]>({
     queryKey: ["calendar"],
     queryFn: async () => {
-      const res = await fetch("/api/calendar");
+      const res = await apiFetch("/api/calendar");
       if (!res.ok) throw new Error("Failed to load calendar");
       return res.json();
     },
@@ -157,9 +158,8 @@ export default function CalendarPage() {
     if (!newTitle.trim() || !newTeamId || !newStartsAt) return;
     setAddSaving(true);
     try {
-      const res = await fetch(`/api/teams/${newTeamId}/events`, {
+      const res = await apiFetch(`/api/teams/${newTeamId}/events`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: newTitle.trim(),
           type: newType,

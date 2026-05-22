@@ -15,6 +15,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/useAuth";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { formatDistanceToNow } from "date-fns";
+import { apiFetch } from "@/lib/apiFetch";
 
 type StaffMember = {
   id: number;
@@ -120,7 +121,7 @@ function AddManagerDialog({ open, onClose, teamId, teamColor, initialData, onSav
       };
       const url = isEdit ? `/api/teams/${teamId}/managers/${initialData!.id}` : `/api/teams/${teamId}/managers`;
       const method = isEdit ? "PATCH" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await apiFetch(url, { method, body: JSON.stringify(body) });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error((d as any).error ?? "Error"); }
       toast({ title: isEdit ? mg.staffUpdated : "Manager added" });
       onSaved();
@@ -302,7 +303,7 @@ function StaffRow({ coach, teamColor, isOwnerViewing, canManageSettings, onReloa
     const url = coach.userId
       ? `/api/teams/${coach.id}/placeholder-placeholder`
       : `/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}`;
-    const res = await fetch(
+    const res = await apiFetch(
       coach.isPlaceholder
         ? `/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}`
         : `/api/teams/${(window as any).__currentTeamId}/coaches/${coach.userId}`,
@@ -314,9 +315,8 @@ function StaffRow({ coach, teamColor, isOwnerViewing, canManageSettings, onReloa
   }
 
   async function handleSendInvite(type: "send_email" | "generate_link") {
-    const res = await fetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}/send-invite`, {
+    const res = await apiFetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}/send-invite`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: type === "send_email" ? "email" : "link" }),
     });
     if (res.ok) {
@@ -335,14 +335,14 @@ function StaffRow({ coach, teamColor, isOwnerViewing, canManageSettings, onReloa
   }
 
   async function handleCancelInvite() {
-    const res = await fetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}/cancel-invite`, { method: "POST" });
+    const res = await apiFetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.id}/cancel-invite`, { method: "POST" });
     if (res.ok) { toast({ title: "Invitation cancelled" }); onReload(); }
     else toast({ title: mg.failedAction, variant: "destructive" });
     setMenuOpen(false);
   }
 
   async function handleToggleSettings() {
-    const res = await fetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.userId ?? coach.id}/toggle-settings`, { method: "PATCH" });
+    const res = await apiFetch(`/api/teams/${(window as any).__currentTeamId}/managers/${coach.userId ?? coach.id}/toggle-settings`, { method: "PATCH" });
     if (res.ok) { toast({ title: mg.staffUpdated }); onReload(); }
     else toast({ title: mg.failedAction, variant: "destructive" });
     setMenuOpen(false);
@@ -506,7 +506,7 @@ export default function TeamManagementTab({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/coaches`);
+      const res = await apiFetch(`/api/teams/${teamId}/coaches`);
       if (res.ok) {
         const data = await res.json();
         setStaff(Array.isArray(data) ? data : (data.coaches ?? []));
@@ -524,9 +524,8 @@ export default function TeamManagementTab({
   async function transferOwnership() {
     if (!transferTargetId) return;
     setTransferLoading(true);
-    const res = await fetch(`/api/teams/${teamId}/transfer-ownership`, {
+    const res = await apiFetch(`/api/teams/${teamId}/transfer-ownership`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ newOwnerId: parseInt(transferTargetId), confirm: true }),
     });
     if (res.ok) { toast({ title: mg.ownershipTransferred }); setTransferOpen(false); loadData(); }
@@ -536,8 +535,8 @@ export default function TeamManagementTab({
 
   async function archiveTeam() {
     setArchiveLoading(true);
-    const res = await fetch(`/api/teams/${teamId}/archive`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+    const res = await apiFetch(`/api/teams/${teamId}/archive`, {
+      method: "POST",
       body: JSON.stringify({ reason: archiveReason || null }),
     });
     if (res.ok) { toast({ title: mg.teamArchived }); setArchiveOpen(false); }
@@ -548,8 +547,8 @@ export default function TeamManagementTab({
   async function deleteTeam() {
     if (deletePhrase !== "DELETE PERMANENTLY") return;
     setDeleteLoading(true);
-    const res = await fetch(`/api/teams/${teamId}/destroy`, {
-      method: "DELETE", headers: { "Content-Type": "application/json" },
+    const res = await apiFetch(`/api/teams/${teamId}/destroy`, {
+      method: "DELETE",
       body: JSON.stringify({ confirmPhrase: "DELETE PERMANENTLY" }),
     });
     if (res.ok) { toast({ title: mg.teamDeleted }); window.location.href = "/teams"; }

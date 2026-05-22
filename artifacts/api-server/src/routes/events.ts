@@ -41,8 +41,8 @@ async function notifyTeamMembers(teamId: number, title: string, body: string, re
     const members = await db.select({ userId: teamMembersTable.userId })
       .from(teamMembersTable)
       .where(eq(teamMembersTable.teamId, teamId));
-    await Promise.all(members.map(m =>
-      createNotification({ userId: m.userId, type: "event", title, body, relatedId, relatedType: "event" })
+    await Promise.all(members.filter(m => m.userId !== null).map(m =>
+      createNotification({ userId: m.userId!, type: "event", title, body, relatedId, relatedType: "event" })
         .catch(() => {})
     ));
   } catch {}
@@ -251,8 +251,8 @@ router.get("/teams/:teamId/games", requireAuth, async (req: AuthedRequest, res):
 
   const games = await db.select().from(eventsTable).where(
     filter === "past"
-      ? drizzleAnd(eq(eventsTable.teamId, teamId), inArray(eventsTable.type, gameTypes as unknown as string[]), lte(eventsTable.startsAt, now))
-      : drizzleAnd(eq(eventsTable.teamId, teamId), inArray(eventsTable.type, gameTypes as unknown as string[]), gt(eventsTable.startsAt, now))
+      ? drizzleAnd(eq(eventsTable.teamId, teamId), inArray(eventsTable.type, [...gameTypes]), lte(eventsTable.startsAt, now))
+      : drizzleAnd(eq(eventsTable.teamId, teamId), inArray(eventsTable.type, [...gameTypes]), gt(eventsTable.startsAt, now))
   ).orderBy(filter === "past" ? eventsTable.startsAt : eventsTable.startsAt);
 
   const [{ total }] = await db.select({ total: count() }).from(playersTable).where(eq(playersTable.teamId, teamId));

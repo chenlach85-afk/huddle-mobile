@@ -3,6 +3,7 @@ import { Upload, X, FileImage, Film, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/apiFetch";
 
 export interface UploadedFile {
   id: number;
@@ -47,10 +48,8 @@ async function uploadFile(params: {
     reader.readAsDataURL(file);
   });
 
-  const res = await fetch(`${BASE}/api/files/upload`, {
+  const res = await apiFetch(`${BASE}/api/files/upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({
       filename: file.name,
       mimeType: file.type,

@@ -12,6 +12,7 @@ import {
 import { useI18n } from "@/lib/i18n";
 import { formatDistanceToNow, format, isPast } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/apiFetch";
 
 const GAME_TYPES = ["league_game", "friendly_game", "tournament"] as const;
 type GameType = typeof GAME_TYPES[number];
@@ -312,7 +313,7 @@ function GameForm({
     try {
       const url = initial?.id ? `/api/events/${initial.id}` : `/api/teams/${teamId}/events`;
       const method = initial?.id ? "PATCH" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await apiFetch(url, { method, body: JSON.stringify(body) });
       if (!res.ok) throw new Error();
       onSaved();
       onClose();
@@ -487,7 +488,7 @@ function DeleteGameDialog({ event, onClose, onDeleted }: { event: EventRow; onCl
   async function handleDelete() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/events/${event.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/events/${event.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onDeleted();
       onClose();
@@ -546,9 +547,9 @@ export default function GamesTab({ teamId, teamColor, isCoach }: { teamId: numbe
     setLoading(true);
     try {
       const [nextRes, upcomingRes, pastRes] = await Promise.all([
-        fetch(`/api/teams/${teamId}/games?filter=next`),
-        fetch(`/api/teams/${teamId}/games?filter=upcoming`),
-        fetch(`/api/teams/${teamId}/games?filter=past`),
+        apiFetch(`/api/teams/${teamId}/games?filter=next`),
+        apiFetch(`/api/teams/${teamId}/games?filter=upcoming`),
+        apiFetch(`/api/teams/${teamId}/games?filter=past`),
       ]);
       if (nextRes.ok) setNextGame(await nextRes.json());
       if (upcomingRes.ok) setUpcoming(await upcomingRes.json());

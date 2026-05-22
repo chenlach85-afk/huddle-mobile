@@ -58,10 +58,10 @@ router.post("/teams/:teamId/messages", requireAuth, async (req: AuthedRequest, r
       .where(eq(teamMembersTable.teamId, teamId));
     await Promise.all(
       members
-        .filter(m => m.userId !== senderId)
+        .filter(m => m.userId !== null && m.userId !== senderId)
         .map(m =>
           createNotification({
-            userId: m.userId,
+            userId: m.userId!,
             type: "message",
             title: `${d.senderName} in ${team?.name ?? "your team"}`,
             body: d.content.slice(0, 100),

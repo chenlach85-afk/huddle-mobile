@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { he, es, enUS } from "date-fns/locale";
 import { useI18n } from "@/lib/i18n";
+import { apiFetch } from "@/lib/apiFetch";
 
 type BroadcastMsg = {
   id: number;
@@ -132,9 +133,8 @@ function ComposeDialog({ open, onClose, teamId, teamColor, onSent }: {
     if (!title.trim() || !content.trim()) { toast({ title: "Headline and message required", variant: "destructive" }); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/announcements`, {
+      const res = await apiFetch(`/api/teams/${teamId}/announcements`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: title.trim(), content: content.trim(),
           messageType: msgType, targetAudience: audience,
@@ -262,9 +262,8 @@ function MessageCard({ msg, teamColor, canEdit, onDeleted, onEdited }: {
     if (!editTitle.trim() || !editContent.trim()) return;
     setEditLoading(true);
     try {
-      const res = await fetch(`/api/messages/${msg.id}`, {
+      const res = await apiFetch(`/api/messages/${msg.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: editTitle.trim(), content: editContent.trim() }),
       });
       if (!res.ok) throw new Error();
@@ -280,7 +279,7 @@ function MessageCard({ msg, teamColor, canEdit, onDeleted, onEdited }: {
   async function handleDelete() {
     setDelLoading(true);
     try {
-      const res = await fetch(`/api/messages/${msg.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/messages/${msg.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       onDeleted();
     } catch {
@@ -391,7 +390,7 @@ export default function MessagesTab({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/announcements`);
+      const res = await apiFetch(`/api/teams/${teamId}/announcements`);
       if (res.ok) setMessages(await res.json());
     } finally {
       setLoading(false);

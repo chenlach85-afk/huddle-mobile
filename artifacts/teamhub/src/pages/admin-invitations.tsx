@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetchJson as apiFetch } from "@/lib/apiFetch";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -33,16 +34,6 @@ type Invitation = {
   createdAt: string;
   inviterName: string | null;
 };
-
-async function apiFetch(url: string, options?: RequestInit) {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? "Request failed");
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
 
 function getInviteLink(token: string) {
   const domain = window.location.origin;

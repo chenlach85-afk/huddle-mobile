@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { apiFetchJson as apiFetch } from "@/lib/apiFetch";
 import { useTheme } from "@/lib/useTheme";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -54,16 +55,6 @@ type AdminKpis = {
   activeUsers: number;
   recentUsers: AdminUser[];
 };
-
-async function apiFetch(url: string, options?: RequestInit) {
-  const res = await fetch(url, { credentials: "include", ...options });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? "Request failed");
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
 
 const STATUS_COLORS: Record<AccountStatus, { bg: string; text: string; label: string }> = {
   active: { bg: "rgba(46,204,113,0.15)", text: "#2ecc71", label: "" },

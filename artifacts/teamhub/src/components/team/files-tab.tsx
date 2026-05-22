@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   useListAlbums, useCreateAlbum, useDeleteAlbum, useListAlbumFiles, useListTeamDocs,
   getListAlbumsQueryKey, getListAlbumFilesQueryKey, getListTeamDocsQueryKey,
@@ -51,28 +52,21 @@ type FileRecord = {
 type Album = { id: number; name: string; fileCount: number };
 
 async function apiDeleteFile(fileId: number) {
-  const res = await fetch(`${BASE}/api/files/${fileId}`, {
-    method: "DELETE",
-    credentials: "include",
-  });
+  const res = await apiFetch(`${BASE}/api/files/${fileId}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete");
 }
 
 async function apiRenameFile(fileId: number, originalName: string) {
-  const res = await fetch(`${BASE}/api/files/${fileId}`, {
+  const res = await apiFetch(`${BASE}/api/files/${fileId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ originalName }),
   });
   if (!res.ok) throw new Error("Failed to rename");
 }
 
 async function apiMoveFile(fileId: number, albumId: number) {
-  const res = await fetch(`${BASE}/api/files/${fileId}`, {
+  const res = await apiFetch(`${BASE}/api/files/${fileId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify({ relatedType: "album", relatedId: albumId }),
   });
   if (!res.ok) throw new Error("Failed to move");
@@ -506,7 +500,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
   const { data: teamFiles = [], isLoading: filesLoading, refetch: refetchFiles } = useQuery<FileRecord[]>({
     queryKey: teamFilesKey,
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/files?teamId=${teamId}&relatedType=team_file`, { credentials: "include" });
+      const res = await apiFetch(`${BASE}/api/files?teamId=${teamId}&relatedType=team_file`);
       if (!res.ok) throw new Error("Failed to fetch files");
       return res.json();
     },

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { apiFetchJson as apiFetch } from "@/lib/apiFetch";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -51,11 +52,6 @@ const ACTION_LABELS: Record<string, string> = {
   team_deleted: "Team Deleted",
 };
 
-async function apiFetch(url: string) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Failed to load");
-  return res.json();
-}
 
 export default function AuditLogPage() {
   const { t, language } = useI18n();

@@ -61,6 +61,7 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import { Upload, X } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 function LogoUploadField({
   value,
@@ -79,9 +80,8 @@ function LogoUploadField({
     setUploading(true);
     setError("");
     try {
-      const res = await fetch("/api/storage/uploads/request-url", {
+      const res = await apiFetch("/api/storage/uploads/request-url", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
       });
       if (!res.ok) throw new Error("Failed to get upload URL");

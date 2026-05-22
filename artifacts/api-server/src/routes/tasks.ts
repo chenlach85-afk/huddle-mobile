@@ -29,8 +29,8 @@ async function notifyTeamMembers(teamId: number, title: string, body: string, re
     const members = await db.select({ userId: teamMembersTable.userId })
       .from(teamMembersTable)
       .where(eq(teamMembersTable.teamId, teamId));
-    await Promise.all(members.map(m =>
-      createNotification({ userId: m.userId, type: "task", title, body, relatedId, relatedType: "task" })
+    await Promise.all(members.filter(m => m.userId !== null).map(m =>
+      createNotification({ userId: m.userId!, type: "task", title, body, relatedId, relatedType: "task" })
         .catch(() => {})
     ));
   } catch {}

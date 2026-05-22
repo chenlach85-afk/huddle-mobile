@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { formatDistanceToNow } from "date-fns";
+import { apiFetch } from "@/lib/apiFetch";
 
 type EventRow = {
   id: number;
@@ -118,7 +119,7 @@ export default function NextGameTab({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/next-game`);
+      const res = await apiFetch(`/api/teams/${teamId}/next-game`);
       if (res.ok) {
         const data = await res.json();
         setEvent(data.event ?? null);

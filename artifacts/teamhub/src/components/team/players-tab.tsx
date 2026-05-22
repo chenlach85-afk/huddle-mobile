@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
+import { apiFetch } from "@/lib/apiFetch";
 
 type RosterMember = {
   id: number;
@@ -92,7 +93,7 @@ export default function PlayersTab({
   const loadRoster = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/roster`);
+      const res = await apiFetch(`/api/teams/${teamId}/roster`);
       if (res.ok) {
         const all: RosterMember[] = await res.json();
         setMembers(all.filter(m => m.role === "player"));
@@ -115,9 +116,8 @@ export default function PlayersTab({
     setSubmitting(true);
     setInviteResult(null);
     try {
-      const res = await fetch(`/api/teams/${teamId}/roster`, {
+      const res = await apiFetch(`/api/teams/${teamId}/roster`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName: form.fullName,
           jerseyNumber: form.jerseyNumber ? parseInt(form.jerseyNumber) : undefined,
@@ -156,9 +156,8 @@ export default function PlayersTab({
     if (!editMember) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/teams/${teamId}/roster/${editMember.id}`, {
+      const res = await apiFetch(`/api/teams/${teamId}/roster/${editMember.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName: form.fullName || undefined,
           jerseyNumber: form.jerseyNumber ? parseInt(form.jerseyNumber) : null,
@@ -193,9 +192,8 @@ export default function PlayersTab({
   }
 
   async function sendInvite(m: RosterMember, method: "email" | "link") {
-    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/send-invite`, {
+    const res = await apiFetch(`/api/teams/${teamId}/roster/${m.id}/send-invite`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ method }),
     });
     if (res.ok) {
@@ -215,23 +213,23 @@ export default function PlayersTab({
   }
 
   async function cancelInvite(m: RosterMember) {
-    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/cancel-invite`, { method: "POST" });
+    const res = await apiFetch(`/api/teams/${teamId}/roster/${m.id}/cancel-invite`, { method: "POST" });
     if (res.ok) { toast({ title: p.inviteCancelled }); loadRoster(); }
   }
 
   async function deactivate(m: RosterMember) {
-    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/deactivate`, { method: "POST" });
+    const res = await apiFetch(`/api/teams/${teamId}/roster/${m.id}/deactivate`, { method: "POST" });
     if (res.ok) { toast({ title: p.deactivated }); loadRoster(); }
   }
 
   async function reactivate(m: RosterMember) {
-    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}/reactivate`, { method: "POST" });
+    const res = await apiFetch(`/api/teams/${teamId}/roster/${m.id}/reactivate`, { method: "POST" });
     if (res.ok) { toast({ title: p.reactivated }); loadRoster(); }
   }
 
   async function removeMember(m: RosterMember) {
     if (!confirm(p.confirmRemove)) return;
-    const res = await fetch(`/api/teams/${teamId}/roster/${m.id}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/teams/${teamId}/roster/${m.id}`, { method: "DELETE" });
     if (res.ok) { toast({ title: p.playerRemoved }); loadRoster(); }
     else toast({ title: p.failedRemove, variant: "destructive" });
   }
