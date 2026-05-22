@@ -27,23 +27,18 @@ async function auditLog(adminId: number, action: typeof adminAuditLogTable.$infe
   await db.insert(adminAuditLogTable).values({ adminId, action, ...opts });
 }
 
-async function clerkBan(clerkId: string, banned: boolean) {
-  const key = process.env.CLERK_SECRET_KEY;
-  if (!key) return;
-  await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-    method: "PATCH",
-    headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ banned }),
-  }).catch(() => null);
+async function supabaseBan(supabaseUserId: string, banned: boolean) {
+  const { supabaseAdmin } = await import("../lib/supabase");
+  if (banned) {
+    await supabaseAdmin.auth.admin.updateUserById(supabaseUserId, { ban_duration: "876600h" }).catch(() => null);
+  } else {
+    await supabaseAdmin.auth.admin.updateUserById(supabaseUserId, { ban_duration: "none" }).catch(() => null);
+  }
 }
 
-async function clerkDelete(clerkId: string) {
-  const key = process.env.CLERK_SECRET_KEY;
-  if (!key) return;
-  await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-    method: "DELETE",
-    headers: { "Authorization": `Bearer ${key}` },
-  }).catch(() => null);
+async function supabaseDeleteUser(supabaseUserId: string) {
+  const { supabaseAdmin } = await import("../lib/supabase");
+  await supabaseAdmin.auth.admin.deleteUser(supabaseUserId).catch(() => null);
 }
 
 /* ─── KPIs ─────────────────────────────────────────────────── */
@@ -202,7 +197,7 @@ router.post("/admin/users/:userId/suspend", requireAuth, requireAdminMiddleware,
     suspensionReason: reason ?? null,
   }).where(eq(usersTable.id, userId));
 
-  await clerkBan(target.clerkId, true);
+  await supabaseBan(target.clerkId, true);
   await auditLog(adminId, "user_suspended", { targetUserId: userId, metadata: { reason } });
 
   res.json({ success: true });
@@ -225,7 +220,7 @@ router.post("/admin/users/:userId/reactivate", requireAuth, requireAdminMiddlewa
     suspensionReason: null,
   }).where(eq(usersTable.id, userId));
 
-  await clerkBan(target.clerkId, false);
+  await supabaseBan(target.clerkId, false);
   await auditLog(adminId, "user_reactivated", { targetUserId: userId });
 
   res.json({ success: true });
@@ -295,7 +290,7 @@ router.post("/admin/users/:userId/soft-delete", requireAuth, requireAdminMiddlew
     suspensionReason: null,
   }).where(eq(usersTable.id, userId));
 
-  await clerkBan(target.clerkId, true);
+  await supabaseBan(target.clerkId, true);
   await auditLog(adminId, "user_soft_deleted", {
     targetUserId: userId,
     metadata: { reason, teamAction, teamsAffected: ownedTeams.length, originalName: target.name, originalEmail: target.email },
@@ -360,8 +355,8 @@ router.post("/admin/users/:userId/hard-delete", requireAuth, requireAdminMiddlew
   }
 
   await db.delete(notificationsTable).where(eq(notificationsTable.userId, userId));
+  await supabaseDeleteUser(target.clerkId);
   await db.delete(usersTable).where(eq(usersTable.id, userId));
-  await clerkDelete(target.clerkId);
 
   res.json({ success: true });
 });

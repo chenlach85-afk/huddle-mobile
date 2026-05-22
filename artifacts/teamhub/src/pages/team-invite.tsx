@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useUser, useClerk } from "@clerk/react";
+import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users, Calendar, MapPin, CheckCircle, AlertCircle, Clock, Lock } from "lucide-react";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type InviteData = {
   id: number;
@@ -22,8 +24,8 @@ type InviteData = {
 };
 
 function TeamInviteContent({ token }: { token: string }) {
-  const { isLoaded, isSignedIn } = useUser();
-  const { openSignIn } = useClerk();
+  const { user, session } = useAuth();
+  const isSignedIn = !!user;
   const [, setLocation] = useLocation();
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
@@ -32,7 +34,7 @@ function TeamInviteContent({ token }: { token: string }) {
   const { data: invite, isLoading, error } = useQuery<InviteData>({
     queryKey: ["team-invite", token],
     queryFn: async () => {
-      const res = await fetch(`/api/team-invite/${token}`);
+      const res = await fetch(`${BASE}/api/team-invite/${token}`);
       if (!res.ok) throw new Error("Not found");
       return res.json();
     },
@@ -41,18 +43,20 @@ function TeamInviteContent({ token }: { token: string }) {
 
   async function handleAccept() {
     if (!isSignedIn) {
-      openSignIn({ redirectUrl: window.location.href } as Parameters<typeof openSignIn>[0]);
+      setLocation(`/sign-in?redirect=/team-invite/${token}`);
       return;
     }
     setAccepting(true);
     setAcceptError(null);
     try {
-      // Ensure the user record exists in our DB (needed for new registrations)
-      await fetch("/api/auth/sync", { method: "POST", credentials: "include" });
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
 
-      const res = await fetch(`/api/team-invite/${token}/accept`, {
+      const res = await fetch(`${BASE}/api/team-invite/${token}/accept`, {
         method: "POST",
-        credentials: "include",
+        headers,
       });
       const body = await res.json();
       if (!res.ok) {
@@ -74,7 +78,7 @@ function TeamInviteContent({ token }: { token: string }) {
     }
   }
 
-  if (!isLoaded || isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-12 w-3/4 rounded-xl" style={{ background: "rgba(255,255,255,0.08)" }} />
@@ -247,7 +251,7 @@ export default function TeamInvitePage() {
       style={{ backgroundImage: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,107,53,0.12) 0%, transparent 60%)" }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <img src="/logo.svg" alt="Huddle" className="h-8 w-auto mx-auto mb-2" />
+          <span className="font-display text-2xl text-primary tracking-wide">HUDDLE</span>
         </div>
         <div className="rounded-2xl p-8" style={{ background: "var(--surface-elevated)", border: "1px solid rgba(255,255,255,0.08)" }}>
           {token ? <TeamInviteContent token={token} /> : (

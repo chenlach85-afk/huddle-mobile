@@ -291,9 +291,9 @@ function StaffRow({ coach, teamColor, isOwnerViewing, canManageSettings, onReloa
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const { user: clerkUser } = useUser();
+  const { appUser } = useCurrentUser();
 
-  const isMe = clerkUser?.id === coach.clerkId;
+  const isMe = appUser?.clerkId === coach.clerkId;
   const RoleIcon = coach.isOwner ? Crown : (ROLE_ICONS[coach.role] ?? User);
   const roleColor = coach.isOwner ? "#f7b538" : "rgba(255,255,255,0.35)";
 
@@ -482,7 +482,7 @@ export default function TeamManagementTab({
   const mg = t.management;
   const ti = t.teamInvite;
   const { toast } = useToast();
-  const { user: clerkUser } = useUser();
+  const { appUser } = useCurrentUser();
 
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [ownerId, setOwnerId] = useState<number | null>(null);
@@ -517,9 +517,9 @@ export default function TeamManagementTab({
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const myMember = staff.find(s => s.clerkId === clerkUser?.id);
+  const myMember = staff.find(s => s.clerkId === appUser?.clerkId);
   const canManageSettings = canManageSettingsProp ?? (isOwner || (myMember?.canManageTeamSettings === true));
-  const otherCoaches = staff.filter(c => !c.isOwner && c.clerkId !== clerkUser?.id && !c.isPlaceholder && c.userId !== null);
+  const otherCoaches = staff.filter(c => !c.isOwner && c.clerkId !== appUser?.clerkId && !c.isPlaceholder && c.userId !== null);
 
   async function transferOwnership() {
     if (!transferTargetId) return;

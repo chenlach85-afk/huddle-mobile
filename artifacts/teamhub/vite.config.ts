@@ -53,9 +53,6 @@ export default defineConfig({
     },
     dedupe: ["react", "react-dom"],
   },
-  optimizeDeps: {
-    include: ["@clerk/react", "@clerk/themes"],
-  },
   root: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),

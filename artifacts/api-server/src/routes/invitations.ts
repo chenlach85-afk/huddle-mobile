@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { getAuth } from "@clerk/express";
 import { db, usersTable, platformInvitationsTable, adminAuditLogTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import type { Request, Response } from "express";
 import { requireAuth, type AuthedRequest } from "../middlewares/requireAuth";
+import { supabaseAdmin } from "../lib/supabase";
 
 const router = Router();
 
@@ -98,16 +98,23 @@ router.get("/invitations/:token", async (req: Request, res: Response): Promise<v
   res.json(inv);
 });
 
-/* ─── Accept invitation (Clerk auth required, no DB user yet) ─ */
+/* ─── Accept invitation (Supabase auth required, no DB user yet) ─ */
 
 router.post("/invitations/:token/accept", async (req: Request, res: Response): Promise<void> => {
-  const auth = getAuth(req);
-  const clerkId = auth?.userId;
-  if (!clerkId) {
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!bearerToken) {
     res.status(401).json({ error: "Unauthorized — please sign in first" });
     return;
   }
 
+  const { data: { user: supabaseUser }, error: authError } = await supabaseAdmin.auth.getUser(bearerToken);
+  if (authError || !supabaseUser) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const supabaseId = supabaseUser.id;
   const { token } = req.params as { token: string };
 
   const [inv] = await db
@@ -116,29 +123,22 @@ router.post("/invitations/:token/accept", async (req: Request, res: Response): P
     .where(eq(platformInvitationsTable.token, token))
     .limit(1);
 
-  if (!inv) {
-    res.status(404).json({ error: "Invitation not found" });
-    return;
-  }
-  if (inv.status !== "pending") {
-    res.status(400).json({ error: `Invitation is ${inv.status}` });
-    return;
-  }
+  if (!inv) { res.status(404).json({ error: "Invitation not found" }); return; }
+  if (inv.status !== "pending") { res.status(400).json({ error: `Invitation is ${inv.status}` }); return; }
   if (new Date(inv.expiresAt) < new Date()) {
     await db.update(platformInvitationsTable).set({ status: "expired" }).where(eq(platformInvitationsTable.token, token));
     res.status(400).json({ error: "Invitation has expired" });
     return;
   }
 
-  // Check if this Clerk user already has a DB record
+  // Check if this Supabase user already has a DB record
   const [existing] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.clerkId, clerkId))
+    .where(eq(usersTable.clerkId, supabaseId))
     .limit(1);
 
   if (existing) {
-    // Already registered — if they need a role upgrade, do it
     if (inv.invitedRole === "admin" && existing.role !== "admin") {
       await db.update(usersTable).set({ role: "admin" }).where(eq(usersTable.id, existing.id));
     }
@@ -152,33 +152,17 @@ router.post("/invitations/:token/accept", async (req: Request, res: Response): P
     return;
   }
 
-  // Fetch Clerk user details via Clerk API
-  const clerkKey = process.env.CLERK_SECRET_KEY;
-  let email = inv.email;
-  let name = "";
-
-  if (clerkKey) {
-    try {
-      const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-        headers: { "Authorization": `Bearer ${clerkKey}` },
-      });
-      if (clerkRes.ok) {
-        const clerkUser = await clerkRes.json() as { email_addresses?: { email_address: string }[]; first_name?: string; last_name?: string };
-        email = clerkUser.email_addresses?.[0]?.email_address ?? inv.email;
-        const firstName = clerkUser.first_name ?? "";
-        const lastName = clerkUser.last_name ?? "";
-        name = [firstName, lastName].filter(Boolean).join(" ") || email.split("@")[0] || "User";
-      }
-    } catch {
-      // fall back to invitation email
-    }
-  }
+  // Get user details from Supabase
+  const email = supabaseUser.email ?? inv.email;
+  const name = (supabaseUser.user_metadata?.full_name as string | undefined)
+    || email.split("@")[0]
+    || "User";
 
   // Create the DB user
   const [newUser] = await db
     .insert(usersTable)
     .values({
-      clerkId,
+      clerkId: supabaseId,
       email,
       name,
       role: inv.invitedRole as "coach" | "admin",
@@ -186,14 +170,12 @@ router.post("/invitations/:token/accept", async (req: Request, res: Response): P
     })
     .returning();
 
-  // Mark invitation accepted
   await db.update(platformInvitationsTable).set({
     status: "accepted",
     acceptedAt: new Date(),
     acceptedByUserId: newUser.id,
   }).where(eq(platformInvitationsTable.token, token));
 
-  // Audit log
   await db.insert(adminAuditLogTable).values({
     adminId: inv.invitedByUserId,
     action: "user_registered_via_invitation",
@@ -207,71 +189,50 @@ router.post("/invitations/:token/accept", async (req: Request, res: Response): P
 /* ─── Auto-accept by email (for users who bypass invite page) ─ */
 
 router.post("/invitations/auto-accept", async (req: Request, res: Response): Promise<void> => {
-  const auth = getAuth(req);
-  const clerkId = auth?.userId;
-  if (!clerkId) {
+  const authHeader = req.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!bearerToken) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+
+  const { data: { user: supabaseUser }, error: authError } = await supabaseAdmin.auth.getUser(bearerToken);
+  if (authError || !supabaseUser) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const supabaseId = supabaseUser.id;
 
   // Check if already in DB (e.g. race condition or double-call)
   const [existing] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.clerkId, clerkId))
+    .where(eq(usersTable.clerkId, supabaseId))
     .limit(1);
   if (existing) {
     res.json({ user: existing, alreadyRegistered: true });
     return;
   }
 
-  // Fetch email + name from Clerk
-  const clerkKey = process.env.CLERK_SECRET_KEY;
-  if (!clerkKey) {
-    res.status(500).json({ error: "Server configuration error" });
-    return;
-  }
-
-  let email = "";
-  let name = "";
-  try {
-    const clerkRes = await fetch(`https://api.clerk.com/v1/users/${clerkId}`, {
-      headers: { Authorization: `Bearer ${clerkKey}` },
-    });
-    if (!clerkRes.ok) {
-      res.status(500).json({ error: "Failed to fetch user from Clerk" });
-      return;
-    }
-    const cu = (await clerkRes.json()) as {
-      email_addresses?: { email_address: string }[];
-      first_name?: string;
-      last_name?: string;
-    };
-    email = cu.email_addresses?.[0]?.email_address ?? "";
-    name =
-      [cu.first_name ?? "", cu.last_name ?? ""].filter(Boolean).join(" ") ||
-      email.split("@")[0] ||
-      "User";
-  } catch {
-    res.status(500).json({ error: "Failed to fetch user details from Clerk" });
-    return;
-  }
-
+  const email = supabaseUser.email ?? "";
   if (!email) {
     res.status(400).json({ error: "No email found for this user" });
     return;
   }
 
+  const name = (supabaseUser.user_metadata?.full_name as string | undefined)
+    || email.split("@")[0]
+    || "User";
+
   // Find a pending invitation for this email
   const [inv] = await db
     .select()
     .from(platformInvitationsTable)
-    .where(
-      and(
-        eq(platformInvitationsTable.email, email),
-        eq(platformInvitationsTable.status, "pending"),
-      ),
-    )
+    .where(and(
+      eq(platformInvitationsTable.email, email),
+      eq(platformInvitationsTable.status, "pending"),
+    ))
     .limit(1);
 
   if (!inv) {
@@ -280,19 +241,15 @@ router.post("/invitations/auto-accept", async (req: Request, res: Response): Pro
   }
 
   if (new Date(inv.expiresAt) < new Date()) {
-    await db
-      .update(platformInvitationsTable)
-      .set({ status: "expired" })
-      .where(eq(platformInvitationsTable.id, inv.id));
+    await db.update(platformInvitationsTable).set({ status: "expired" }).where(eq(platformInvitationsTable.id, inv.id));
     res.status(400).json({ error: "Invitation has expired" });
     return;
   }
 
-  // Create the DB user
   const [newUser] = await db
     .insert(usersTable)
     .values({
-      clerkId,
+      clerkId: supabaseId,
       email,
       name,
       role: inv.invitedRole as "coach" | "admin",
@@ -300,13 +257,10 @@ router.post("/invitations/auto-accept", async (req: Request, res: Response): Pro
     })
     .returning();
 
-  // Mark invitation accepted
-  await db
-    .update(platformInvitationsTable)
+  await db.update(platformInvitationsTable)
     .set({ status: "accepted", acceptedAt: new Date(), acceptedByUserId: newUser.id })
     .where(eq(platformInvitationsTable.id, inv.id));
 
-  // Audit log
   await db.insert(adminAuditLogTable).values({
     adminId: inv.invitedByUserId,
     action: "user_registered_via_invitation",
