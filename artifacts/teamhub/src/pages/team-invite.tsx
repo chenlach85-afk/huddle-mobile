@@ -251,7 +251,7 @@ export default function TeamInvitePage() {
       style={{ backgroundImage: "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,107,53,0.12) 0%, transparent 60%)" }}>
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <span className="font-display text-2xl text-primary tracking-wide">HUDDLE</span>
+          <span className="font-display text-2xl text-primary tracking-wide">CLASIKO</span>
         </div>
         <div className="rounded-2xl p-8" style={{ background: "var(--surface-elevated)", border: "1px solid rgba(255,255,255,0.08)" }}>
           {token ? <TeamInviteContent token={token} /> : (

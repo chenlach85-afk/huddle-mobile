@@ -85,7 +85,7 @@ export default function SignInPage() {
           <div className="w-11 h-11 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
             <Zap className="h-6 w-6 text-white" fill="white" />
           </div>
-          <span className="font-wordmark text-3xl text-foreground tracking-wide">HUDDLE</span>
+          <span className="font-wordmark text-3xl text-foreground tracking-wide">CLASIKO</span>
         </div>
 
         {/* Card */}

@@ -298,7 +298,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
       style={{ backgroundImage: "radial-gradient(ellipse 80% 50% at 20% -10%, rgba(255,107,53,0.1) 0%, transparent 60%)" }}>
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <span className="font-display text-2xl text-primary tracking-wide">HUDDLE</span>
+          <span className="font-display text-2xl text-primary tracking-wide">CLASIKO</span>
         </div>
         {children}
       </div>

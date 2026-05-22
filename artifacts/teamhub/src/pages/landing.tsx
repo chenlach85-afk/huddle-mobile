@@ -21,7 +21,7 @@ export default function LandingPage() {
           <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
             <Zap className="h-5 w-5 text-white" fill="white" />
           </div>
-          <span className="font-wordmark text-xl text-white">HUDDLE</span>
+          <span className="font-wordmark text-xl text-white">CLASIKO</span>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/sign-in">
@@ -44,7 +44,7 @@ export default function LandingPage() {
         </div>
 
         <h1 className="font-wordmark text-6xl md:text-8xl text-white mb-6 leading-none">
-          HUDDLE
+          CLASIKO
         </h1>
 
         <p className="text-white/50 text-xl mb-10 max-w-xl mx-auto">

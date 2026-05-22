@@ -89,7 +89,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/30 group-hover:scale-105 transition-transform">
                 <Zap className="h-5 w-5 text-white" fill="white" />
               </div>
-              <span className="font-wordmark text-xl text-foreground">HUDDLE</span>
+              <span className="font-wordmark text-xl text-foreground">CLASIKO</span>
             </div>
           </Link>
         </div>
@@ -111,7 +111,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/30">
                 <Zap className="h-4 w-4 text-white" fill="white" />
               </div>
-              <span className="font-wordmark text-lg text-foreground">HUDDLE</span>
+              <span className="font-wordmark text-lg text-foreground">CLASIKO</span>
             </div>
           </Link>
           <div className="flex items-center gap-1">
@@ -127,7 +127,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <SheetContent side={isRTL ? "right" : "left"} className="w-56 p-0"
                 style={{ background: "var(--surface-overlay)", borderColor: "var(--border-subtle)" }}>
                 <div className="p-4 h-14 flex items-center border-b" style={{ borderColor: "var(--border-subtle)" }}>
-                  <span className="font-wordmark text-lg text-foreground">HUDDLE</span>
+                  <span className="font-wordmark text-lg text-foreground">CLASIKO</span>
                 </div>
                 <nav className="p-3 pt-4">
                   <NavItems onClose={() => setMobileOpen(false)} />
