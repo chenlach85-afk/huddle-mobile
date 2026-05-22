@@ -224,6 +224,31 @@ create table if not exists files (
   created_at    timestamptz not null default now()
 );
 
+create table if not exists albums (
+  id          serial primary key,
+  team_id     integer not null references teams(id) on delete cascade,
+  name        text not null,
+  description text,
+  cover_url   text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create table if not exists message_deliveries (
+  id           serial primary key,
+  message_id   integer not null references messages(id) on delete cascade,
+  user_id      integer not null references users(id) on delete cascade,
+  channel      text not null check (channel in ('in_app','email','whatsapp')),
+  status       text default 'pending' check (status in ('pending','sent','read','failed')),
+  sent_at      timestamptz,
+  read_at      timestamptz,
+  error_detail text,
+  created_at   timestamptz not null default now()
+);
+
+create unique index if not exists message_deliveries_unique
+  on message_deliveries (message_id, user_id, channel);
+
 -- ============================================================
 -- SUPABASE TRIGGER: auto-provision users row on auth signup
 --
