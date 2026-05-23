@@ -1,9 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   ScrollView,
   StyleSheet,
@@ -15,13 +17,36 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/lib/auth";
-import { useAppUser, useUpdateAppUser } from "@/lib/useApi";
+import { useAppUser, useUpdateAppUser, apiFetch } from "@/lib/useApi";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "he", label: "עברית" },
   { code: "es", label: "Español" },
 ] as const;
+
+async function uploadAvatarBase64(uri: string): Promise<string | null> {
+  try {
+    const resp = await fetch(uri);
+    const blob = await resp.blob();
+    const b64: string = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const r = reader.result as string;
+        resolve(r.split(",")[1] ?? "");
+      };
+      reader.readAsDataURL(blob);
+    });
+    if (!b64) return null;
+    const result = await apiFetch<{ url: string }>("/api/files/upload", {
+      method: "POST",
+      body: JSON.stringify({ filename: "avatar.jpg", mimeType: "image/jpeg", size: b64.length, data: b64 }),
+    });
+    return result.url ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export default function SettingsScreen() {
   const colors = useColors();
@@ -34,6 +59,7 @@ export default function SettingsScreen() {
 
   const [name, setName] = useState(appUser?.name ?? "");
   const [editing, setEditing] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   React.useEffect(() => {
     if (appUser?.name) setName(appUser.name);
@@ -41,7 +67,7 @@ export default function SettingsScreen() {
 
   const saveName = () => {
     if (!name.trim()) return;
-    updateMe({ name: name.trim() }, {
+    updateMe({ name: name.trim() } as any, {
       onSuccess: () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         refetch();
@@ -51,9 +77,51 @@ export default function SettingsScreen() {
   };
 
   const setLang = (lang: string) => {
-    updateMe({ language: lang as "en" | "he" | "es" }, {
+    updateMe({ language: lang as "en" | "he" | "es" } as any, {
       onSuccess: () => { Haptics.selectionAsync(); refetch(); },
     });
+  };
+
+  const pickAvatar = async (source: "library" | "camera") => {
+    const pick =
+      source === "camera"
+        ? await ImagePicker.launchCameraAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+          });
+
+    if (pick.canceled || !pick.assets[0]) return;
+    const uri = pick.assets[0].uri;
+    setAvatarUploading(true);
+    const url = await uploadAvatarBase64(uri);
+    setAvatarUploading(false);
+    if (!url) {
+      Alert.alert("Upload failed", "Could not upload avatar. Please try again.");
+      return;
+    }
+    updateMe({ imageUrl: url } as any, {
+      onSuccess: () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        refetch();
+      },
+      onError: () => Alert.alert("Error", "Failed to save avatar"),
+    });
+  };
+
+  const showAvatarOptions = () => {
+    Alert.alert("Profile Photo", "Choose a source", [
+      { text: "Camera", onPress: () => pickAvatar("camera") },
+      { text: "Photo Library", onPress: () => pickAvatar("library") },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const confirmSignOut = () => {
@@ -62,6 +130,8 @@ export default function SettingsScreen() {
       { text: "Sign out", style: "destructive", onPress: signOut },
     ]);
   };
+
+  const avatarUrl = (appUser as any)?.imageUrl as string | undefined;
 
   return (
     <ScrollView
@@ -78,11 +148,26 @@ export default function SettingsScreen() {
           <View style={[styles.section, { backgroundColor: colors.card }]}>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>PROFILE</Text>
             <View style={styles.profileRow}>
-              <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.avatarText, { fontFamily: "BebasNeue_400Regular" }]}>
-                  {(appUser?.name ?? "?")[0]?.toUpperCase()}
-                </Text>
-              </View>
+              {/* Avatar with upload button */}
+              <TouchableOpacity style={styles.avatarWrap} onPress={showAvatarOptions} activeOpacity={0.8}>
+                {avatarUploading ? (
+                  <View style={[styles.avatar, { backgroundColor: colors.muted }]}>
+                    <ActivityIndicator color={colors.primary} />
+                  </View>
+                ) : avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+                    <Text style={[styles.avatarText, { fontFamily: "BebasNeue_400Regular" }]}>
+                      {(appUser?.name ?? "?")[0]?.toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+                <View style={[styles.avatarBadge, { backgroundColor: colors.primary }]}>
+                  <Feather name="camera" size={12} color="#fff" />
+                </View>
+              </TouchableOpacity>
+
               <View style={styles.profileInfo}>
                 {editing ? (
                   <View style={styles.editRow}>
@@ -95,7 +180,11 @@ export default function SettingsScreen() {
                       onSubmitEditing={saveName}
                     />
                     <TouchableOpacity onPress={saveName} disabled={isPending}>
-                      {isPending ? <ActivityIndicator size="small" color={colors.primary} /> : <Feather name="check" size={20} color={colors.primary} />}
+                      {isPending ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Feather name="check" size={20} color={colors.primary} />
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => { setEditing(false); setName(appUser?.name ?? ""); }}>
                       <Feather name="x" size={20} color={colors.mutedForeground} />
@@ -106,6 +195,7 @@ export default function SettingsScreen() {
                 )}
                 <Text style={[styles.profileEmail, { color: colors.mutedForeground }]}>{appUser?.email ?? "—"}</Text>
               </View>
+
               {!editing && (
                 <TouchableOpacity onPress={() => setEditing(true)} hitSlop={8}>
                   <Feather name="edit-2" size={18} color={colors.mutedForeground} />
@@ -168,8 +258,14 @@ const styles = StyleSheet.create({
   section: { borderRadius: 16, padding: 16 },
   sectionLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, marginBottom: 12 },
   profileRow: { flexDirection: "row", alignItems: "center", gap: 14 },
-  avatar: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: "#fff", fontSize: 28 },
+  avatarWrap: { position: "relative" },
+  avatar: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
+  avatarImg: { width: 64, height: 64, borderRadius: 32 },
+  avatarText: { color: "#fff", fontSize: 32 },
+  avatarBadge: {
+    position: "absolute", bottom: 0, right: 0, width: 22, height: 22,
+    borderRadius: 11, alignItems: "center", justifyContent: "center",
+  },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 18, fontWeight: "700" },
   profileEmail: { fontSize: 13, marginTop: 2 },

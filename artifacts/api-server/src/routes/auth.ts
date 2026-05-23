@@ -104,13 +104,14 @@ router.get("/auth/me", requireAuth, async (req: AuthedRequest, res: Response): P
 });
 
 router.patch("/auth/me", requireAuth, async (req: AuthedRequest, res: Response): Promise<void> => {
-  const { language, notificationsEnabled, emailNotifications, pushNotifications, calendarReminderMinutes, name } = req.body as {
+  const { language, notificationsEnabled, emailNotifications, pushNotifications, calendarReminderMinutes, name, imageUrl } = req.body as {
     language?: "en" | "he" | "es";
     notificationsEnabled?: boolean;
     emailNotifications?: boolean;
     pushNotifications?: boolean;
     calendarReminderMinutes?: string;
     name?: string;
+    imageUrl?: string;
   };
 
   const updateData: Record<string, unknown> = {};
@@ -120,6 +121,7 @@ router.patch("/auth/me", requireAuth, async (req: AuthedRequest, res: Response):
   if (pushNotifications !== undefined) updateData.pushNotifications = pushNotifications;
   if (calendarReminderMinutes !== undefined) updateData.calendarReminderMinutes = calendarReminderMinutes;
   if (name !== undefined) updateData.name = name;
+  if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
 
   const [user] = await db
     .update(usersTable)

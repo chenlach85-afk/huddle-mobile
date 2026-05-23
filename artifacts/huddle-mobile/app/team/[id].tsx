@@ -869,24 +869,32 @@ const msgStyles = StyleSheet.create({
   sendBtn: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
 });
 
+/* ─────── Files Tab translations ─────── */
+const FILES_T: Record<string, Record<string, string>> = {
+  en: { albums: "ALBUMS", documents: "DOCUMENTS", noFiles: "No files", noFilesYet: "No files uploaded yet", newAlbum: "New Album", uploadMedia: "Upload Media" },
+  he: { albums: "אלבומים", documents: "מסמכים", noFiles: "אין קבצים", noFilesYet: "לא הועלו קבצים עדיין", newAlbum: "אלבום חדש", uploadMedia: "העלאת מדיה" },
+  es: { albums: "ÁLBUMES", documents: "DOCUMENTOS", noFiles: "Sin archivos", noFilesYet: "Aún no hay archivos", newAlbum: "Nuevo Álbum", uploadMedia: "Subir Medios" },
+};
+
 /* ─────── Files Tab ─────── */
-function FilesTab({ teamId }: { teamId: number }) {
+function FilesTab({ teamId, language }: { teamId: number; language?: string }) {
   const colors = useColors();
   const { data: albums, isLoading } = useListAlbums(teamId);
   const { data: docs } = useListTeamDocs(teamId);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const t = FILES_T[language ?? "en"] ?? FILES_T.en;
 
   if (isLoading) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
   const albumList = albums ?? [];
   const docList = (docs ?? []) as any[];
-  if (!albumList.length && !docList.length) return <EmptyState icon="folder" title="No files" subtitle="No files uploaded yet" />;
+  if (!albumList.length && !docList.length) return <EmptyState icon="folder" title={t.noFiles} subtitle={t.noFilesYet} />;
 
   return (
     <>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}>
         {albumList.length > 0 && (
           <>
-            <Text style={[flStyles.sectionTitle, { color: colors.mutedForeground }]}>ALBUMS</Text>
+            <Text style={[flStyles.sectionTitle, { color: colors.mutedForeground }]}>{t.albums}</Text>
             <View style={flStyles.albumGrid}>
               {albumList.map((album: any) => {
                 const cover = album.coverUrl ?? album.files?.[0]?.url;
@@ -909,7 +917,7 @@ function FilesTab({ teamId }: { teamId: number }) {
         )}
         {docList.length > 0 && (
           <>
-            <Text style={[flStyles.sectionTitle, { color: colors.mutedForeground }]}>DOCUMENTS</Text>
+            <Text style={[flStyles.sectionTitle, { color: colors.mutedForeground }]}>{t.documents}</Text>
             {docList.map((doc: any, i: number) => (
               <TouchableOpacity key={doc.id ?? i}
                 style={[flStyles.docRow, { backgroundColor: colors.card }]}
@@ -1032,7 +1040,7 @@ export default function TeamDetailScreen() {
         {activeTab === "schedule"  && <ScheduleTab teamId={teamId} />}
         {activeTab === "tasks"     && <TasksTab teamId={teamId} isCoach={isCoach} roster={roster ?? []} />}
         {activeTab === "messages"  && <MessagesTab teamId={teamId} />}
-        {activeTab === "files"     && <FilesTab teamId={teamId} />}
+        {activeTab === "files"     && <FilesTab teamId={teamId} language={appUser?.language} />}
       </View>
     </View>
   );

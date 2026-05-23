@@ -13,20 +13,47 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useListTeams, useListEvents, useListTasks, getListEventsQueryKey, getListTasksQueryKey } from "@workspace/api-client-react";
+import { useUnreadCount } from "@/lib/useApi";
 import { CountdownTimer } from "@/components/CountdownTimer";
+import { format } from "date-fns";
 
 const GAME_TYPES = ["league_game", "friendly_game", "tournament"];
 
-function StatCard({ icon, value, label, color }: { icon: string; value: string | number; label: string; color?: string }) {
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  training: "Training", league_game: "League", friendly_game: "Friendly",
+  tournament: "Tournament", celebration: "Celebration", meeting: "Meeting", other: "Other",
+};
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  training: "#4a90e2", league_game: "#ff6b1a", friendly_game: "#f7b538",
+  tournament: "#e74c3c", celebration: "#2ecc71", meeting: "#9b59b6", other: "#7a8399",
+};
+const EVENT_TYPE_ICONS: Record<string, string> = {
+  training: "activity", league_game: "shield", friendly_game: "flag",
+  tournament: "award", celebration: "star", meeting: "users", other: "calendar",
+};
+
+function StatCard({
+  icon, value, label, color, onPress,
+}: {
+  icon: string; value: string | number; label: string; color?: string; onPress?: () => void;
+}) {
   const colors = useColors();
+  const Wrap = onPress ? TouchableOpacity : View;
   return (
-    <View style={[statStyles.card, { backgroundColor: colors.card }]}>
+    <Wrap
+      style={[statStyles.card, { backgroundColor: colors.card }]}
+      onPress={onPress}
+      activeOpacity={0.75}
+    >
       <View style={[statStyles.iconBox, { backgroundColor: color ? `${color}22` : colors.muted }]}>
         <Feather name={icon as any} size={20} color={color ?? colors.primary} />
       </View>
       <Text style={[statStyles.value, { color: colors.foreground }]}>{value}</Text>
       <Text style={[statStyles.label, { color: colors.mutedForeground }]}>{label}</Text>
-    </View>
+      {onPress && (
+        <Feather name="chevron-right" size={12} color={colors.mutedForeground} style={{ position: "absolute", top: 12, right: 12 }} />
+      )}
+    </Wrap>
   );
 }
 
@@ -41,6 +68,7 @@ export default function DashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const unreadCount = useUnreadCount();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   const { data: teams, isLoading: teamsLoading } = useListTeams();
@@ -54,11 +82,20 @@ export default function DashboardScreen() {
   });
 
   const now = Date.now();
-  const upcoming = (events ?? []).filter((e) => new Date(e.startsAt).getTime() > now);
+  const upcoming = (events ?? [])
+    .filter((e) => new Date(e.startsAt).getTime() > now)
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   const nextGame = upcoming.find((e) => GAME_TYPES.includes(e.type));
   const openTasks = (tasks ?? []).filter((t) => t.status !== "done");
+  const rosterCount = firstTeam?.playerCount ?? 0;
+
+  const upcomingEvents = upcoming.slice(0, 5);
 
   const isLoading = teamsLoading || eventsLoading;
+
+  const goToTeamTab = (tab: string) => {
+    if (firstTeam?.id) router.push(`/team/${firstTeam.id}?tab=${tab}`);
+  };
 
   return (
     <ScrollView
@@ -66,13 +103,28 @@ export default function DashboardScreen() {
       contentContainerStyle={[styles.content, { paddingTop: topPad + 16 }]}
       showsVerticalScrollIndicator={false}
     >
+      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Good game day</Text>
           <Text style={[styles.appName, { color: colors.foreground }]}>CLASIKO</Text>
         </View>
-        <View style={[styles.avatarBox, { backgroundColor: colors.primary }]}>
-          <Feather name="user" size={20} color="#fff" />
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.bellBtn, { backgroundColor: colors.card }]}
+            onPress={() => router.push("/(tabs)/notifications")}
+            activeOpacity={0.75}
+          >
+            <Feather name="bell" size={20} color={unreadCount > 0 ? colors.primary : colors.mutedForeground} />
+            {unreadCount > 0 && (
+              <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.badgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <View style={[styles.avatarBox, { backgroundColor: colors.primary }]}>
+            <Feather name="user" size={20} color="#fff" />
+          </View>
         </View>
       </View>
 
@@ -80,6 +132,7 @@ export default function DashboardScreen() {
         <ActivityIndicator color={colors.primary} style={{ marginTop: 48 }} />
       ) : (
         <>
+          {/* Next Game Card */}
           {nextGame && (
             <View style={[styles.nextGameCard, { backgroundColor: colors.card }]}>
               <View style={styles.ngTop}>
@@ -89,9 +142,7 @@ export default function DashboardScreen() {
                     {nextGame.type === "league_game" ? "League" : nextGame.type === "friendly_game" ? "Friendly" : "Tournament"}
                   </Text>
                 </View>
-                <Text style={[styles.ngTeam, { color: colors.mutedForeground }]}>
-                  {firstTeam?.name}
-                </Text>
+                <Text style={[styles.ngTeam, { color: colors.mutedForeground }]}>{firstTeam?.name}</Text>
               </View>
               <Text style={[styles.ngTitle, { color: colors.foreground }]}>{nextGame.title}</Text>
               {nextGame.location ? (
@@ -114,12 +165,73 @@ export default function DashboardScreen() {
             </View>
           )}
 
+          {/* Stats Row — clickable */}
           <View style={styles.statsRow}>
-            <StatCard icon="users" value={teams?.length ?? 0} label="Teams" color={colors.info} />
-            <StatCard icon="calendar" value={upcoming.length} label="Upcoming" color={colors.primary} />
-            <StatCard icon="check-square" value={openTasks.length} label="Open tasks" color={colors.warning} />
+            <StatCard
+              icon="users"
+              value={rosterCount || (teams?.length ?? 0)}
+              label="Lineup"
+              color={colors.info}
+              onPress={firstTeam ? () => goToTeamTab("squad") : undefined}
+            />
+            <StatCard
+              icon="calendar"
+              value={upcoming.length}
+              label="Upcoming"
+              color={colors.primary}
+              onPress={firstTeam ? () => goToTeamTab("schedule") : undefined}
+            />
+            <StatCard
+              icon="check-square"
+              value={openTasks.length}
+              label="Open Tasks"
+              color={colors.warning}
+              onPress={firstTeam ? () => goToTeamTab("tasks") : undefined}
+            />
           </View>
 
+          {/* Upcoming Events */}
+          {upcomingEvents.length > 0 && (
+            <>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Upcoming Events</Text>
+              {upcomingEvents.map((evt) => {
+                const evtColor = EVENT_TYPE_COLORS[evt.type] ?? colors.primary;
+                const evtIcon = EVENT_TYPE_ICONS[evt.type] ?? "calendar";
+                const evtLabel = EVENT_TYPE_LABELS[evt.type] ?? evt.type;
+                const startsAt = new Date(evt.startsAt);
+                return (
+                  <TouchableOpacity
+                    key={evt.id}
+                    style={[styles.eventRow, { backgroundColor: colors.card }]}
+                    onPress={() => router.push(`/team/${firstTeam?.id}?tab=schedule`)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.eventIcon, { backgroundColor: `${evtColor}22` }]}>
+                      <Feather name={evtIcon as any} size={18} color={evtColor} />
+                    </View>
+                    <View style={styles.eventInfo}>
+                      <Text style={[styles.eventTitle, { color: colors.foreground }]} numberOfLines={1}>{evt.title}</Text>
+                      <Text style={[styles.eventMeta, { color: colors.mutedForeground }]}>
+                        {evtLabel} · {format(startsAt, "EEE dd MMM, HH:mm")}
+                      </Text>
+                      {evt.location ? (
+                        <View style={styles.eventLocRow}>
+                          <Feather name="map-pin" size={10} color={colors.mutedForeground} />
+                          <Text style={[styles.eventLoc, { color: colors.mutedForeground }]} numberOfLines={1}>{evt.location}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={[styles.eventDateBox, { backgroundColor: `${evtColor}18` }]}>
+                      <Text style={[styles.eventDay, { color: evtColor }]}>{format(startsAt, "dd")}</Text>
+                      <Text style={[styles.eventMonth, { color: evtColor }]}>{format(startsAt, "MMM")}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          )}
+
+          {/* Teams */}
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your Teams</Text>
           {(teams ?? []).length === 0 ? (
             <View style={[styles.emptyTeams, { backgroundColor: colors.card }]}>
@@ -160,6 +272,15 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
   greeting: { fontSize: 13, fontWeight: "500" },
   appName: { fontSize: 26, fontWeight: "900", letterSpacing: 3 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  bellBtn: {
+    width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center",
+  },
+  badge: {
+    position: "absolute", top: 4, right: 4, minWidth: 16, height: 16, borderRadius: 8,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
+  },
+  badgeText: { color: "#fff", fontSize: 9, fontWeight: "800" },
   avatarBox: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   nextGameCard: { borderRadius: 18, padding: 20, gap: 10 },
   ngTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
@@ -173,7 +294,17 @@ const styles = StyleSheet.create({
   ngBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 14, borderRadius: 12 },
   ngBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
   statsRow: { flexDirection: "row", gap: 10 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", marginTop: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", marginTop: 4 },
+  eventRow: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 14, padding: 14 },
+  eventIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  eventInfo: { flex: 1, minWidth: 0 },
+  eventTitle: { fontSize: 15, fontWeight: "600" },
+  eventMeta: { fontSize: 12, marginTop: 2 },
+  eventLocRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
+  eventLoc: { fontSize: 11 },
+  eventDateBox: { alignItems: "center", justifyContent: "center", borderRadius: 10, padding: 8, minWidth: 44 },
+  eventDay: { fontSize: 18, fontWeight: "800", lineHeight: 20 },
+  eventMonth: { fontSize: 10, fontWeight: "600" },
   teamRow: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 14, padding: 14 },
   teamAvatar: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   teamAvatarText: { color: "#fff", fontWeight: "800", fontSize: 20 },

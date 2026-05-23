@@ -20,6 +20,7 @@ export const usersTable = pgTable("users", {
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   suspendedBy: integer("suspended_by"),
   suspensionReason: text("suspension_reason"),
+  imageUrl: text("image_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

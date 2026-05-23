@@ -16,16 +16,15 @@ async function sendTeamInviteEmail(
   const key = process.env.RESEND_API_KEY;
   if (!key) return { success: false, error: "RESEND_API_KEY not configured" };
 
-  const from = process.env.RESEND_FROM_EMAIL ?? "Huddle <onboarding@resend.dev>";
-  const basePath = process.env.BASE_PATH ?? "";
+  const from = process.env.RESEND_FROM_EMAIL ?? "Clasiko <onboarding@resend.dev>";
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
-  const link = `https://${domain}${basePath}/team-invite/${token}`;
+  const link = `https://${domain}/invite/${token}`;
 
-  const subject = `${inviterName} invited you to join ${teamName} on Huddle`;
+  const subject = `${inviterName} invited you to join ${teamName} on Clasiko`;
   const html = `
     <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;background:#f9f9f9;border-radius:12px;">
       <h2 style="color:#FF6B35;margin-bottom:8px;">You're invited to join a team!</h2>
-      <p style="color:#333;"><strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong> (${sport}) on Huddle.</p>
+      <p style="color:#333;"><strong>${inviterName}</strong> has invited you to join <strong>${teamName}</strong> (${sport}) on Clasiko.</p>
       <a href="${link}" style="display:inline-block;margin-top:20px;padding:12px 28px;background:#FF6B35;color:white;border-radius:8px;text-decoration:none;font-weight:bold;font-size:15px;">
         Accept Invitation
       </a>
@@ -61,9 +60,8 @@ async function canManageTeam(userId: number, teamId: number): Promise<boolean> {
 }
 
 function inviteUrl(token: string): string {
-  const basePath = process.env.BASE_PATH ?? "";
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "localhost";
-  return `https://${domain}${basePath}/team-invite/${token}`;
+  return `https://${domain}/invite/${token}`;
 }
 
 /* ─── Create invitation ─────────────────────────────────── */
