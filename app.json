@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Clasiko",
+    "slug": "clasiko",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "clasiko",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.clasiko.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Clasiko needs camera access to take team and profile photos.",
+        "NSPhotoLibraryUsageDescription": "Clasiko needs photo library access to upload team and profile pictures.",
+        "NSPhotoLibraryAddUsageDescription": "Clasiko needs permission to save photos to your library."
+      }
+    },
+    "android": {
+      "package": "com.clasiko.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://clasiko.replit.app/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Clasiko needs access to your photos to add team and profile pictures.",
+          "cameraPermission": "Clasiko needs camera access to take team and profile photos."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
