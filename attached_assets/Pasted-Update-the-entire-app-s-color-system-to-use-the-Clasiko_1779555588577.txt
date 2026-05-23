@@ -1,0 +1,85 @@
+Update the entire app's color system to use the Clasiko design system. Replace all existing color values with the CSS custom properties below. Apply them globally in the root stylesheet.
+
+---
+
+Add this to the top of your global CSS file (e.g. index.css or globals.css):
+
+```css
+:root {
+  /* ── DARK MODE (default) ── */
+  --bg-primary: #0F172A;
+  --bg-surface: #182235;
+  --bg-surface-2: #24324A;
+  --bg-hover: #2D3D59;
+  --border: #31415F;
+
+  --text-primary: #F8FAFC;
+  --text-secondary: #A8B3C7;
+  --text-muted: #73839B;
+
+  --brand: #18C6B4;
+
+  --success: #22C55E;
+  --warning: #F5B700;
+  --error: #EF4444;
+  --info: #60A5FA;
+  --premium: #7C3AED;
+}
+
+[data-theme="light"] {
+  /* ── LIGHT MODE ── */
+  --bg-primary: #F4F7FB;
+  --bg-surface: #FFFFFF;
+  --bg-surface-2: #E9EEF5;
+  --bg-hover: #DCE5F1;
+  --border: #D5DEE9;
+
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #7C8CA0;
+
+  --brand: #18C6B4;
+
+  --success: #16A34A;
+  --warning: #D97706;
+  --error: #DC2626;
+  --info: #2563EB;
+  --premium: #7C3AED;
+}
+```
+
+---
+
+Then do the following across the entire codebase:
+
+1. Replace every hardcoded background color with the matching variable:
+   - App/page background → var(--bg-primary)
+   - Cards, nav, modals → var(--bg-surface)
+   - Nested cards, grouped sections → var(--bg-surface-2)
+   - Hover and selected states → var(--bg-hover)
+   - All borders and dividers → var(--border)
+
+2. Replace all hardcoded text colors:
+   - Main text → var(--text-primary)
+   - Descriptions, labels → var(--text-secondary)
+   - Placeholders, timestamps, hints → var(--text-muted)
+
+3. Replace all accent/action colors:
+   - Primary buttons, active tabs, CTAs, focus rings, selected items, key icons → var(--brand)
+   - Success states → var(--success)
+   - Warnings → var(--warning)
+   - Errors → var(--error)
+   - Info/links → var(--info)
+   - Premium/upgrade UI → var(--premium)
+
+4. Toggle dark/light mode:
+   - Default: apply dark mode (no attribute needed, uses :root)
+   - Light mode: add data-theme="light" to the <html> or <body> element
+   - Wire the existing theme toggle button to add/remove this attribute
+
+5. Remove all references to the old orange, red, or navy colors from the previous TeamHub palette. The orange (#FF6B35 or similar) should be fully replaced by the teal brand color (#18C6B4).
+
+6. Font: if not already installed, add Plus Jakarta Sans via Google Fonts and set it as the global font-family:
+   font-family: 'Plus Jakarta Sans', sans-serif;
+
+Do not change any layout, spacing, component structure, or logic. Only update colors and font. Keep all existing class names and component hierarchy intact.

@@ -230,6 +230,9 @@ importers:
       '@expo-google-fonts/oswald':
         specifier: ^0.4.2
         version: 0.4.2
+      '@expo-google-fonts/plus-jakarta-sans':
+        specifier: ^0.4.2
+        version: 0.4.2
       '@supabase/supabase-js':
         specifier: ^2.106.1
         version: 2.106.1
@@ -1374,6 +1377,9 @@ packages:
 
   '@expo-google-fonts/oswald@0.4.2':
     resolution: {integrity: sha512-ZLB8ou0SmSWThyLDCHQdFnbMrj93hRrpkKMLLoPrIs4QTrPxZyOxHoJ4mFoFCs0efZdV1Yd8mULfaggAblX5Mg==}
+
+  '@expo-google-fonts/plus-jakarta-sans@0.4.2':
+    resolution: {integrity: sha512-6LYVmVGwjQvH+uzzWlVc9+oMj4lkNQ41aymVDjO+x8aFk8kCye20wOyLomYMZaMezA++Uf1mZRCw3W3Fy/hxEA==}
 
   '@expo/cli@54.0.23':
     resolution: {integrity: sha512-km0h72SFfQCmVycH/JtPFTVy69w6Lx1cHNDmfLfQqgKFYeeHTjx7LVDP4POHCtNxFP2UeRazrygJhlh4zz498g==}
@@ -7009,6 +7015,8 @@ snapshots:
   '@expo-google-fonts/inter@0.4.2': {}
 
   '@expo-google-fonts/oswald@0.4.2': {}
+
+  '@expo-google-fonts/plus-jakarta-sans@0.4.2': {}
 
   '@expo/cli@54.0.23(expo-router@6.0.23)(expo@54.0.34)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(typescript@5.9.3)':
     dependencies:
