@@ -114,8 +114,8 @@ function TeamImageField({ form, label }: { form: any; label: string }) {
   }
 
   return (
-    <FormItem>
-      <FormLabel className="stat-label text-white/50">{label}</FormLabel>
+    <div className="space-y-2">
+      <label className="stat-label text-white/50">{label}</label>
       <div className="flex items-center gap-4">
         <div
           className="w-16 h-16 rounded-xl overflow-hidden shrink-0 flex items-center justify-center cursor-pointer relative group"
@@ -157,7 +157,7 @@ function TeamImageField({ form, label }: { form: any; label: string }) {
         </div>
       </div>
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-    </FormItem>
+    </div>
   );
 }
 
