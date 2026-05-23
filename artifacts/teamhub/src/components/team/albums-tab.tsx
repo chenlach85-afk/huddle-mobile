@@ -5,17 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, ImageIcon, Trash2, ChevronRight, FolderOpen, X } from "lucide-react";
+import { Plus, ImageIcon, Trash2, ChevronRight, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 
 function AlbumFilesView({ albumId, teamColor, onClose }: { albumId: number; teamColor: string; onClose: () => void }) {
   const { data: files = [], isLoading } = useListAlbumFiles(albumId);
+  const { t } = useI18n();
+  const f = t.files;
   return (
     <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl border-border" style={{ background: "var(--surface-card)" }}>
         <DialogHeader>
-          <DialogTitle className="font-display text-xl text-white tracking-wide">Album Files</DialogTitle>
+          <DialogTitle className="font-display text-xl text-white tracking-wide">{f.albumFilesTitle}</DialogTitle>
         </DialogHeader>
         {isLoading ? (
           <div className="grid grid-cols-3 gap-3">
@@ -24,20 +26,20 @@ function AlbumFilesView({ albumId, teamColor, onClose }: { albumId: number; team
         ) : files.length === 0 ? (
           <div className="text-center py-8 text-white/30">
             <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">No files in this album yet</p>
+            <p className="text-sm">{f.noFilesInAlbum}</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
-            {files.map(f => (
-              <div key={f.id} className="rounded-xl overflow-hidden border border-border" style={{ background: "rgba(255,255,255,0.04)" }}>
-                {f.mimeType.startsWith("image/") ? (
-                  <img src={f.url} alt={f.originalName} className="w-full h-28 object-cover" />
+            {files.map(file => (
+              <div key={file.id} className="rounded-xl overflow-hidden border border-border" style={{ background: "rgba(255,255,255,0.04)" }}>
+                {file.mimeType.startsWith("image/") ? (
+                  <img src={file.url} alt={file.originalName} className="w-full h-28 object-cover" />
                 ) : (
                   <div className="w-full h-28 flex items-center justify-center">
                     <ImageIcon className="h-8 w-8 text-white/30" />
                   </div>
                 )}
-                <p className="text-xs text-white/40 p-2 truncate">{f.originalName}</p>
+                <p className="text-xs text-white/40 p-2 truncate">{file.originalName}</p>
               </div>
             ))}
           </div>
@@ -54,6 +56,7 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const f = t.files;
 
   const { data: albums = [], isLoading } = useListAlbums(teamId);
   const createAlbum = useCreateAlbum();
@@ -68,22 +71,22 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
           queryClient.invalidateQueries({ queryKey: getListAlbumsQueryKey(teamId) });
           setOpen(false);
           setName("");
-          toast({ title: "Album created" });
+          toast({ title: f.albumCreated });
         },
-        onError: () => toast({ title: "Failed to create album", variant: "destructive" }),
+        onError: () => toast({ title: f.failedCreateAlbum, variant: "destructive" }),
       }
     );
   }
 
   function handleDelete(e: React.MouseEvent, albumId: number) {
     e.stopPropagation();
-    if (!confirm("Delete this album?")) return;
+    if (!confirm(f.deleteAlbumConfirm)) return;
     deleteAlbum.mutate({ albumId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListAlbumsQueryKey(teamId) });
-        toast({ title: "Album deleted" });
+        toast({ title: f.albumDeleted });
       },
-      onError: () => toast({ title: "Failed to delete album", variant: "destructive" }),
+      onError: () => toast({ title: f.failedDeleteAlbum, variant: "destructive" }),
     });
   }
 
@@ -98,23 +101,23 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
           <DialogTrigger asChild>
             <Button size="sm" className="font-semibold rounded-xl text-white text-xs" style={{ background: teamColor }}>
               <Plus className="h-3.5 w-3.5 me-1.5" />
-              New Album
+              {f.newAlbum}
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-sm border-border" style={{ background: "var(--surface-card)" }}>
             <DialogHeader>
-              <DialogTitle className="font-display text-xl text-white tracking-wide">CREATE ALBUM</DialogTitle>
+              <DialogTitle className="font-display text-xl text-white tracking-wide">{f.createAlbumTitle.toUpperCase()}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <Input
-                placeholder="Album name"
+                placeholder={f.albumNamePlaceholder}
                 value={name}
                 onChange={e => setName(e.target.value)}
                 className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
                 onKeyDown={e => e.key === "Enter" && handleCreate()}
               />
               <Button onClick={handleCreate} disabled={createAlbum.isPending || !name.trim()} className="w-full rounded-xl font-semibold" style={{ background: teamColor }}>
-                {createAlbum.isPending ? "Creating..." : "Create Album"}
+                {createAlbum.isPending ? f.creatingAlbum : f.createAlbumBtn}
               </Button>
             </div>
           </DialogContent>
@@ -127,7 +130,7 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
         ) : albums.length === 0 ? (
           <div className="text-center py-8 text-white/30">
             <FolderOpen className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">No albums yet</p>
+            <p className="text-sm">{f.noAlbumsYet}</p>
           </div>
         ) : (
           albums.map(album => (
@@ -141,7 +144,7 @@ export default function AlbumsTab({ teamId, teamColor }: { teamId: number; teamC
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-white">{album.name}</p>
-                <p className="text-xs text-white/40">{album.fileCount} files</p>
+                <p className="text-xs text-white/40">{album.fileCount} {f.filesCount}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <Button

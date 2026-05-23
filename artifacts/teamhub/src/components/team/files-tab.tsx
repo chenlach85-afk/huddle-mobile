@@ -73,16 +73,16 @@ async function apiMoveFile(fileId: number, albumId: number) {
 }
 
 function RenameDialog({
-  open, onClose, onConfirm, initialName,
+  open, onClose, onConfirm, initialName, f,
 }: {
-  open: boolean; onClose: () => void; onConfirm: (name: string) => void; initialName: string;
+  open: boolean; onClose: () => void; onConfirm: (name: string) => void; initialName: string; f: any;
 }) {
   const [name, setName] = useState(initialName);
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-sm border-border" style={{ background: "hsl(226,40%,8%)" }}>
         <DialogHeader>
-          <DialogTitle className="font-display text-xl text-white tracking-wide">Rename File</DialogTitle>
+          <DialogTitle className="font-display text-xl text-white tracking-wide">{f.renameFile}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <Input
@@ -93,14 +93,14 @@ function RenameDialog({
             autoFocus
           />
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose} className="flex-1 text-white/50">Cancel</Button>
+            <Button variant="ghost" onClick={onClose} className="flex-1 text-white/50">{f.cancel}</Button>
             <Button
               onClick={() => onConfirm(name.trim())}
               disabled={!name.trim()}
               className="flex-1 rounded-xl font-semibold text-white"
               style={{ background: "hsl(22,100%,60%)" }}
             >
-              Rename
+              {f.rename}
             </Button>
           </div>
         </div>
@@ -110,19 +110,19 @@ function RenameDialog({
 }
 
 function MoveToAlbumDialog({
-  open, onClose, onConfirm, albums,
+  open, onClose, onConfirm, albums, f,
 }: {
-  open: boolean; onClose: () => void; onConfirm: (albumId: number) => void; albums: Album[];
+  open: boolean; onClose: () => void; onConfirm: (albumId: number) => void; albums: Album[]; f: any;
 }) {
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-sm border-border" style={{ background: "hsl(226,40%,8%)" }}>
         <DialogHeader>
-          <DialogTitle className="font-display text-xl text-white tracking-wide">Move to Album</DialogTitle>
+          <DialogTitle className="font-display text-xl text-white tracking-wide">{f.moveToAlbum}</DialogTitle>
         </DialogHeader>
         <div className="space-y-2 max-h-64 overflow-y-auto">
           {albums.length === 0 && (
-            <p className="text-sm text-white/40 text-center py-4">No albums yet</p>
+            <p className="text-sm text-white/40 text-center py-4">{f.noAlbumsYet}</p>
           )}
           {albums.map((album) => (
             <button
@@ -134,7 +134,7 @@ function MoveToAlbumDialog({
                 <ImageIcon className="h-4 w-4 text-primary" />
               </div>
               <span className="text-sm text-white">{album.name}</span>
-              <span className="text-xs text-white/30 ms-auto">{album.fileCount} files</span>
+              <span className="text-xs text-white/30 ms-auto">{album.fileCount} {f.filesCount}</span>
             </button>
           ))}
         </div>
@@ -144,13 +144,14 @@ function MoveToAlbumDialog({
 }
 
 function FileKebab({
-  file, albums, onDelete, onRename, onMove,
+  file, albums, onDelete, onRename, onMove, f,
 }: {
   file: FileRecord;
   albums: Album[];
   onDelete: () => void;
   onRename: () => void;
   onMove: () => void;
+  f: any;
 }) {
   return (
     <DropdownMenu>
@@ -165,11 +166,11 @@ function FileKebab({
       <DropdownMenuContent className="border-border" style={{ background: "hsl(226,40%,10%)" }} align="end">
         <DropdownMenuItem onClick={onRename} className="text-white/80 text-xs cursor-pointer">
           <Pencil className="h-3.5 w-3.5 me-2 text-white/40" />
-          Rename
+          {f.rename}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onMove} className="text-white/80 text-xs cursor-pointer">
           <FolderInput className="h-3.5 w-3.5 me-2 text-white/40" />
-          Move to Album
+          {f.moveToAlbum}
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-white/8" />
         <DropdownMenuItem
@@ -177,14 +178,14 @@ function FileKebab({
           className="text-red-400 text-xs cursor-pointer focus:text-red-400 focus:bg-red-400/10"
         >
           <Trash2 className="h-3.5 w-3.5 me-2" />
-          Delete
+          {f.deleteFileConfirm}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => void }) {
+function FilePreviewModal({ file, onClose, f }: { file: FileRecord; onClose: () => void; f: any }) {
   const isImage = file.mimeType.startsWith("image/");
   const isVideo = file.mimeType.startsWith("video/");
 
@@ -199,7 +200,6 @@ function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => 
         style={{ background: "hsl(226,40%,8%)", border: "1px solid rgba(255,255,255,0.1)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/8 shrink-0">
           <p className="text-sm font-semibold text-white truncate pe-4">{file.originalName}</p>
           <div className="flex items-center gap-2 shrink-0">
@@ -210,7 +210,7 @@ function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => 
               className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/8"
             >
               <Download className="h-3.5 w-3.5" />
-              Download
+              {f.download}
             </a>
             <button
               onClick={onClose}
@@ -221,7 +221,6 @@ function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => 
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-auto flex items-center justify-center p-4 min-h-0">
           {isImage ? (
             <img
@@ -255,7 +254,7 @@ function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => 
                 style={{ background: "hsl(22,100%,60%)" }}
               >
                 <Download className="h-4 w-4" />
-                Open / Download
+                {f.openDownload}
               </a>
             </div>
           )}
@@ -266,13 +265,14 @@ function FilePreviewModal({ file, onClose }: { file: FileRecord; onClose: () => 
 }
 
 function FileRow({
-  file, albums, onRefresh, teamColor, dateLocale,
+  file, albums, onRefresh, teamColor, dateLocale, f,
 }: {
   file: FileRecord;
   albums: Album[];
   onRefresh: () => void;
   teamColor: string;
   dateLocale: Locale;
+  f: any;
 }) {
   const { toast } = useToast();
   const [renameOpen, setRenameOpen] = useState(false);
@@ -280,13 +280,13 @@ function FileRow({
   const [previewOpen, setPreviewOpen] = useState(false);
 
   async function handleDelete() {
-    if (!confirm(`Delete "${file.originalName}"?`)) return;
+    if (!confirm(`${f.deleteFileConfirm} "${file.originalName}"?`)) return;
     try {
       await apiDeleteFile(file.id);
       onRefresh();
-      toast({ title: "File deleted" });
+      toast({ title: f.fileDeleted });
     } catch {
-      toast({ title: "Failed to delete file", variant: "destructive" });
+      toast({ title: f.failedDeleteFile, variant: "destructive" });
     }
   }
 
@@ -295,9 +295,9 @@ function FileRow({
       await apiRenameFile(file.id, newName);
       setRenameOpen(false);
       onRefresh();
-      toast({ title: "File renamed" });
+      toast({ title: f.fileRenamed });
     } catch {
-      toast({ title: "Failed to rename file", variant: "destructive" });
+      toast({ title: f.failedRenameFile, variant: "destructive" });
     }
   }
 
@@ -306,9 +306,9 @@ function FileRow({
       await apiMoveFile(file.id, albumId);
       setMoveOpen(false);
       onRefresh();
-      toast({ title: "File moved to album" });
+      toast({ title: f.fileMoved });
     } catch {
-      toast({ title: "Failed to move file", variant: "destructive" });
+      toast({ title: f.failedMoveFile, variant: "destructive" });
     }
   }
 
@@ -368,34 +368,37 @@ function FileRow({
               onDelete={handleDelete}
               onRename={() => setRenameOpen(true)}
               onMove={() => setMoveOpen(true)}
+              f={f}
             />
           </div>
         </div>
       </div>
 
       {previewOpen && (
-        <FilePreviewModal file={file} onClose={() => setPreviewOpen(false)} />
+        <FilePreviewModal file={file} onClose={() => setPreviewOpen(false)} f={f} />
       )}
       <RenameDialog
         open={renameOpen}
         onClose={() => setRenameOpen(false)}
         onConfirm={handleRename}
         initialName={file.originalName}
+        f={f}
       />
       <MoveToAlbumDialog
         open={moveOpen}
         onClose={() => setMoveOpen(false)}
         onConfirm={handleMove}
         albums={albums}
+        f={f}
       />
     </>
   );
 }
 
 function AlbumDetailView({
-  album, teamId, teamColor, albums, onBack,
+  album, teamId, teamColor, albums, onBack, f,
 }: {
-  album: Album; teamId: number; teamColor: string; albums: Album[]; onBack: () => void;
+  album: Album; teamId: number; teamColor: string; albums: Album[]; onBack: () => void; f: any;
 }) {
   const { language } = useI18n();
   const dateLocale = DATE_LOCALES[language as keyof typeof DATE_LOCALES] ?? enUS;
@@ -409,7 +412,7 @@ function AlbumDetailView({
     queryClient.invalidateQueries({ queryKey: getListAlbumFilesQueryKey(album.id) });
     queryClient.invalidateQueries({ queryKey: getListAlbumsQueryKey(teamId) });
     setShowUploader(false);
-    toast({ title: "File uploaded" });
+    toast({ title: f.fileUploaded });
   }
 
   function handleRefresh() {
@@ -425,7 +428,7 @@ function AlbumDetailView({
           className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Albums
+          {f.backToAlbums}
         </button>
         <span className="text-white/20">/</span>
         <span className="text-sm font-semibold text-white">{album.name}</span>
@@ -437,7 +440,7 @@ function AlbumDetailView({
             style={{ background: teamColor }}
           >
             <Upload className="h-3.5 w-3.5 me-1.5" />
-            Upload
+            {f.uploadBtn}
           </Button>
         </div>
       </div>
@@ -461,19 +464,20 @@ function AlbumDetailView({
       ) : files.length === 0 ? (
         <div className="text-center py-8 text-white/30">
           <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm">No files in this album yet</p>
-          <p className="text-xs mt-1 text-white/20">Click Upload to add photos or videos</p>
+          <p className="text-sm">{f.noFilesInAlbum}</p>
+          <p className="text-xs mt-1 text-white/20">{f.clickUpload}</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {(files as FileRecord[]).map((f) => (
+          {(files as FileRecord[]).map((file) => (
             <FileRow
-              key={f.id}
-              file={f}
+              key={file.id}
+              file={file}
               albums={albums.filter((a) => a.id !== album.id)}
               onRefresh={handleRefresh}
               teamColor={teamColor}
               dateLocale={dateLocale}
+              f={f}
             />
           ))}
         </div>
@@ -483,7 +487,8 @@ function AlbumDetailView({
 }
 
 function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string }) {
-  const { language } = useI18n();
+  const { t, language } = useI18n();
+  const f = t.files;
   const dateLocale = DATE_LOCALES[language as keyof typeof DATE_LOCALES] ?? enUS;
   const [createOpen, setCreateOpen] = useState(false);
   const [albumName, setAlbumName] = useState("");
@@ -515,29 +520,29 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
           queryClient.invalidateQueries({ queryKey: getListAlbumsQueryKey(teamId) });
           setCreateOpen(false);
           setAlbumName("");
-          toast({ title: "Album created" });
+          toast({ title: f.albumCreated });
         },
-        onError: () => toast({ title: "Failed to create album", variant: "destructive" }),
+        onError: () => toast({ title: f.failedCreateAlbum, variant: "destructive" }),
       }
     );
   }
 
   function handleDeleteAlbum(e: React.MouseEvent, albumId: number) {
     e.stopPropagation();
-    if (!confirm("Delete this album and all its files?")) return;
+    if (!confirm(f.deleteAlbumConfirm)) return;
     deleteAlbum.mutate({ albumId }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListAlbumsQueryKey(teamId) });
-        toast({ title: "Album deleted" });
+        toast({ title: f.albumDeleted });
       },
-      onError: () => toast({ title: "Failed to delete album", variant: "destructive" }),
+      onError: () => toast({ title: f.failedDeleteAlbum, variant: "destructive" }),
     });
   }
 
   function handleFileUploaded() {
     queryClient.invalidateQueries({ queryKey: teamFilesKey });
     setShowUploader(false);
-    toast({ title: "File uploaded" });
+    toast({ title: f.fileUploaded });
   }
 
   function handleFileRefresh() {
@@ -552,6 +557,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
         teamColor={teamColor}
         albums={albums as Album[]}
         onBack={() => setSelectedAlbum(null)}
+        f={f}
       />
     );
   }
@@ -560,7 +566,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
     <div className="space-y-6">
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="section-label">Files</p>
+          <p className="section-label">{f.filesSection}</p>
           <Button
             size="sm"
             onClick={() => setShowUploader((v) => !v)}
@@ -568,7 +574,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
             style={{ background: teamColor }}
           >
             <Upload className="h-3.5 w-3.5 me-1.5" />
-            Upload
+            {f.uploadBtn}
           </Button>
         </div>
 
@@ -590,17 +596,18 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
           ) : teamFiles.length === 0 ? (
             <div className="text-center py-6 text-white/30">
               <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No files yet. Upload one above.</p>
+              <p className="text-sm">{f.noFilesYet}</p>
             </div>
           ) : (
-            teamFiles.map((f) => (
+            teamFiles.map((file) => (
               <FileRow
-                key={f.id}
-                file={f}
+                key={file.id}
+                file={file}
                 albums={albums as Album[]}
                 onRefresh={handleFileRefresh}
                 teamColor={teamColor}
                 dateLocale={dateLocale}
+                f={f}
               />
             ))
           )}
@@ -609,7 +616,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="section-label">Albums</p>
+          <p className="section-label">{f.albumsSection}</p>
           <Button
             size="sm"
             onClick={() => setCreateOpen(true)}
@@ -617,7 +624,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
             style={{ background: teamColor }}
           >
             <Plus className="h-3.5 w-3.5 me-1.5" />
-            New Album
+            {f.newAlbum}
           </Button>
         </div>
 
@@ -629,7 +636,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
           ) : albums.length === 0 ? (
             <div className="text-center py-6 text-white/30">
               <FolderOpen className="h-8 w-8 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No albums yet</p>
+              <p className="text-sm">{f.noAlbumsYet}</p>
             </div>
           ) : (
             albums.map((album) => (
@@ -646,7 +653,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white">{album.name}</p>
-                  <p className="text-xs text-white/40">{album.fileCount} files</p>
+                  <p className="text-xs text-white/40">{album.fileCount} {f.filesCount}</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
@@ -668,15 +675,16 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-sm border-border" style={{ background: "hsl(226,40%,8%)" }}>
           <DialogHeader>
-            <DialogTitle className="font-display text-xl text-white tracking-wide">CREATE ALBUM</DialogTitle>
+            <DialogTitle className="font-display text-xl text-white tracking-wide">{f.createAlbumTitle.toUpperCase()}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Input
-              placeholder="Album name"
+              placeholder={f.albumNamePlaceholder}
               value={albumName}
               onChange={(e) => setAlbumName(e.target.value)}
               className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl"
-              onKeyDown={(e) => e.key === "Enter" && handleCreateAlbum()}
+              onKeyDown={(e) => e.key === "Enter" && albumName.trim() && handleCreateAlbum()}
+              autoFocus
             />
             <Button
               onClick={handleCreateAlbum}
@@ -684,7 +692,7 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
               className="w-full rounded-xl font-semibold text-white"
               style={{ background: teamColor }}
             >
-              {createAlbum.isPending ? "Creating..." : "Create Album"}
+              {createAlbum.isPending ? f.creatingAlbum : f.createAlbumBtn}
             </Button>
           </div>
         </DialogContent>
@@ -694,19 +702,19 @@ function MediaSection({ teamId, teamColor }: { teamId: number; teamColor: string
 }
 
 function DocsSection({ teamId, teamColor }: { teamId: number; teamColor: string }) {
-  const { language } = useI18n();
+  const { t, language } = useI18n();
+  const f = t.files;
   const dateLocale = DATE_LOCALES[language as keyof typeof DATE_LOCALES] ?? enUS;
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [showUploader, setShowUploader] = useState(false);
 
-  const { data: docs = [], isLoading } = useListTeamDocs(teamId);
-  const { data: albums = [] } = useListAlbums(teamId);
+  const { data: docs = [], isLoading, refetch } = useListTeamDocs(teamId);
 
   function handleUploaded() {
     queryClient.invalidateQueries({ queryKey: getListTeamDocsQueryKey(teamId) });
     setShowUploader(false);
-    toast({ title: "Document uploaded" });
+    toast({ title: f.fileUploaded });
   }
 
   function handleRefresh() {
@@ -716,7 +724,7 @@ function DocsSection({ teamId, teamColor }: { teamId: number; teamColor: string 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="section-label">Documents</p>
+        <p className="section-label">{f.documents}</p>
         <Button
           size="sm"
           onClick={() => setShowUploader((v) => !v)}
@@ -724,17 +732,19 @@ function DocsSection({ teamId, teamColor }: { teamId: number; teamColor: string 
           style={{ background: teamColor }}
         >
           <Upload className="h-3.5 w-3.5 me-1.5" />
-          Upload
+          {f.uploadBtn}
         </Button>
       </div>
 
       {showUploader && (
-        <FileUploader
-          teamId={teamId}
-          relatedType="team_doc"
-          onUploaded={handleUploaded}
-          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
-        />
+        <div className="mb-3">
+          <FileUploader
+            teamId={teamId}
+            relatedType="team_doc"
+            onUploaded={handleUploaded}
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+          />
+        </div>
       )}
 
       <div className="space-y-2">
@@ -742,21 +752,21 @@ function DocsSection({ teamId, teamColor }: { teamId: number; teamColor: string 
           [1, 2].map((i) => (
             <Skeleton key={i} className="h-14 rounded-xl" style={{ background: "rgba(255,255,255,0.06)" }} />
           ))
-        ) : docs.length === 0 ? (
-          <div className="text-center py-8 text-white/30">
-            <FolderOpen className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">No documents yet</p>
-            <p className="text-xs mt-1 text-white/20">Click Upload to add PDFs, spreadsheets, etc.</p>
+        ) : (docs as FileRecord[]).length === 0 ? (
+          <div className="text-center py-6 text-white/30">
+            <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">{f.noFilesYet}</p>
           </div>
         ) : (
-          (docs as FileRecord[]).map((doc) => (
+          (docs as FileRecord[]).map((file) => (
             <FileRow
-              key={doc.id}
-              file={doc}
-              albums={albums as Album[]}
+              key={file.id}
+              file={file}
+              albums={[]}
               onRefresh={handleRefresh}
               teamColor={teamColor}
               dateLocale={dateLocale}
+              f={f}
             />
           ))
         )}
@@ -768,37 +778,40 @@ function DocsSection({ teamId, teamColor }: { teamId: number; teamColor: string 
 type SubTab = "media" | "docs";
 
 export default function FilesTab({ teamId, teamColor }: { teamId: number; teamColor: string }) {
-  const [activeTab, setActiveTab] = useState<SubTab>("media");
+  const { t } = useI18n();
+  const f = t.files;
+  const [subTab, setSubTab] = useState<SubTab>("media");
+
+  const tabs = (
+    [
+      { key: "media" as SubTab, label: t.teamDetail.tabAlbums, icon: ImageIcon },
+      { key: "docs" as SubTab, label: t.teamDetail.tabDocs, icon: FileText },
+    ] as { key: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(({ key, label, icon: Icon }) => (
+    <button
+      key={key}
+      onClick={() => setSubTab(key)}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+        subTab === key
+          ? "text-white"
+          : "text-white/40 hover:text-white/70"
+      }`}
+      style={subTab === key ? { background: `${teamColor}22`, color: teamColor } : {}}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </button>
+  ));
 
   return (
-    <div className="rounded-2xl border border-border overflow-hidden" style={{ background: "var(--surface-card)" }}>
-      <div className="flex border-b border-white/6">
-        {([
-          { key: "media" as SubTab, label: "Media", icon: ImageIcon },
-          { key: "docs" as SubTab, label: "Documents", icon: FileText },
-        ] as { key: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[]).map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-widest transition-colors"
-            style={{
-              color: activeTab === key ? teamColor : "rgba(255,255,255,0.35)",
-              borderBottom: activeTab === key ? `2px solid ${teamColor}` : "2px solid transparent",
-            }}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
+    <div className="space-y-4">
+      <div className="flex gap-1 p-1 rounded-xl border border-border w-fit" style={{ background: "rgba(255,255,255,0.03)" }}>
+        {tabs}
       </div>
-
-      <div className="p-4">
-        {activeTab === "media" ? (
-          <MediaSection teamId={teamId} teamColor={teamColor} />
-        ) : (
-          <DocsSection teamId={teamId} teamColor={teamColor} />
-        )}
-      </div>
+      {subTab === "media" ? (
+        <MediaSection teamId={teamId} teamColor={teamColor} />
+      ) : (
+        <DocsSection teamId={teamId} teamColor={teamColor} />
+      )}
     </div>
   );
 }

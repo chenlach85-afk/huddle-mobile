@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   useListTeams,
   useCreateTeam,
@@ -36,9 +36,12 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Users, ChevronRight, Trash2, AlertCircle, Pencil } from "lucide-react";
+import { Plus, Users, ChevronRight, Trash2, AlertCircle, Pencil, Camera, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
+import { apiFetch } from "@/lib/apiFetch";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const SPORTS = ["Soccer", "Basketball", "Baseball", "Softball", "Football", "Volleyball", "Tennis", "Swimming", "Track", "Other"];
 
@@ -77,6 +80,86 @@ type TeamRow = {
   location?: string | null;
   playerCount: number;
 };
+
+function TeamImageField({ form, label }: { form: any; label: string }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const currentUrl = form.watch("imageUrl") as string | undefined;
+  const { t } = useI18n();
+  const f = t.files;
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await apiFetch(`${BASE}/api/files/upload`, {
+        method: "POST",
+        body: JSON.stringify({ filename: file.name, mimeType: file.type, size: file.size, data }),
+      });
+      if (!res.ok) throw new Error("Upload failed");
+      const uploaded = await res.json();
+      form.setValue("imageUrl", uploaded.url);
+    } catch {
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return (
+    <FormItem>
+      <FormLabel className="stat-label text-white/50">{label}</FormLabel>
+      <div className="flex items-center gap-4">
+        <div
+          className="w-16 h-16 rounded-xl overflow-hidden shrink-0 flex items-center justify-center cursor-pointer relative group"
+          style={{ background: "rgba(255,107,53,0.10)", border: "1px solid rgba(255,255,255,0.10)" }}
+          onClick={() => !uploading && inputRef.current?.click()}
+        >
+          {currentUrl ? (
+            <>
+              <img src={currentUrl} alt="" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera className="h-5 w-5 text-white" />
+              </div>
+            </>
+          ) : (
+            <Camera className="h-6 w-6 text-primary/60" />
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="text-white/60 hover:text-white border border-white/10 rounded-xl text-xs h-8 px-3"
+          >
+            {uploading ? f.uploading : currentUrl ? f.changeImage : f.uploadImage}
+          </Button>
+          {currentUrl && (
+            <button
+              type="button"
+              onClick={() => form.setValue("imageUrl", "")}
+              className="flex items-center gap-1 text-xs text-white/30 hover:text-white/60 transition-colors"
+            >
+              <X className="h-3 w-3" />
+              {f.removeImage}
+            </button>
+          )}
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+    </FormItem>
+  );
+}
 
 function TeamFormFields({ form, sq }: { form: any; sq: any }) {
   return (
@@ -133,15 +216,7 @@ function TeamFormFields({ form, sq }: { form: any; sq: any }) {
           <FormMessage />
         </FormItem>
       )} />
-      <FormField control={form.control} name="imageUrl" render={({ field }) => (
-        <FormItem>
-          <FormLabel className="stat-label text-white/50">{sq.teamImageOptional}</FormLabel>
-          <FormControl>
-            <Input className="bg-white/6 border-white/10 text-white placeholder:text-white/30 rounded-xl" placeholder="https://..." {...field} />
-          </FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
+      <TeamImageField form={form} label={sq.teamImageOptional} />
       <FormField control={form.control} name="avatarColor" render={({ field }) => (
         <FormItem>
           <FormLabel className="stat-label text-white/50">{sq.squadColor}</FormLabel>
