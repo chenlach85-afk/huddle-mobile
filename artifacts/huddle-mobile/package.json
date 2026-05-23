@@ -60,6 +60,6 @@
     "@expo-google-fonts/oswald": "^0.4.2",
     "@supabase/supabase-js": "^2.106.1",
     "date-fns": "^3.6.0",
-    "expo-secure-store": "^56.0.4"
+    "expo-secure-store": "~15.0.8"
   }
 }
