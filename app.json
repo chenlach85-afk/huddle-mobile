@@ -58,6 +58,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "926960e3-df77-4351-86bf-ccaf162bf1c6"
+      }
+    },
+    "owner": "lcons"
   }
 }
