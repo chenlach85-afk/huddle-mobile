@@ -19,7 +19,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Clasiko needs camera access to take team and profile photos.",
         "NSPhotoLibraryUsageDescription": "Clasiko needs photo library access to upload team and profile pictures.",
-        "NSPhotoLibraryAddUsageDescription": "Clasiko needs permission to save photos to your library."
+        "NSPhotoLibraryAddUsageDescription": "Clasiko needs permission to save photos to your library.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
