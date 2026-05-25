@@ -12,6 +12,7 @@
   },
   "packageManager": "pnpm@10.26.1",
   "dependencies": {
+    "@workspace/api-client-react": "workspace:*",
     "@expo-google-fonts/bebas-neue": "^0.4.1",
     "@expo-google-fonts/oswald": "^0.4.2",
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
