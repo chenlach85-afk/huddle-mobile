@@ -1,21 +1,20 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
 
-const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, "../..");
+const config = getDefaultConfig(__dirname);
 
-const config = getDefaultConfig(projectRoot);
-
-// Watch all monorepo packages so Metro can bundle them
-config.watchFolders = [workspaceRoot];
-
-// Resolve from both the app's node_modules and the monorepo root
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, "node_modules"),
-  path.resolve(workspaceRoot, "node_modules"),
-];
-
-// Required for pnpm workspace symlinks (@workspace/api-client-react etc.)
-config.resolver.unstable_enableSymlinks = true;
+// Force CJS build of supabase-js — its ESM has a bare import(OTEL_PKG)
+// that Hermes bytecode compile cannot parse in production builds.
+const supabasePkg = require.resolve("@supabase/supabase-js/package.json");
+const supabaseCjs = path.resolve(path.dirname(supabasePkg), "dist/index.cjs");
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "@supabase/supabase-js") {
+    return { type: "sourceFile", filePath: supabaseCjs };
+  }
+  return originalResolveRequest
+    ? originalResolveRequest(context, moduleName, platform)
+    : context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;
